@@ -196,3 +196,48 @@ or removed fields). Additions and clarified meanings:
 (import from `@lil-dudes/client`). Options are the same (`mySide`, `myName`, `opponentName`,
 `stake`, `speed`) plus `seed`, `botSeed`, `tutorial`; `startTick` is mock-only. No Vite config needed.
 Extras: `src.step()`, `src.view`, `src.dispose()`. Details: `packages/client/README.md`.
+
+## 2026-11-21 22:50 IST · Kai · M1 sim + offline · [STAGE] [DECISION]
+**Did:** M1 back-end track done. A full 2:00 match runs through `OfflineSource` with the real rules
+and the bot (headless smoke: `pnpm --filter @lil-dudes/client smoke`).
+- `crates/sim` (no_std, no alloc, integer-only, no deps, no-panic clippy lints, builds under the SBF
+  rustc 1.84): `MatchState { public, secret }`, `step(&mut state, &Inputs, &mut impl EventSink)`,
+  mirrored deals from `f(seed, phase)` (SplitMix64), every SPEC v2.1 rule, SPEC §7 `payout()`,
+  `Warlord::decide(&PublicState)` (cannot see secrets by construction), state `digest()`.
+- Tests: **63** in `crates/sim` (per-rule unit tests; determinism tick by tick; fuzz on 1,204
+  seeds with random/invalid inputs; payout parity on 3,010 vectors generated from
+  `settle_fuzz.settle`; golden bot-vs-bot match), **5** in `crates/sim-wasm`, **7** TS tests in
+  `packages/client`. Clippy, fmt, typecheck, `anchor build --ignore-keys` all pass.
+- Balance runner: `cargo run -p lil-dudes-sim --example balance --release` (5,000 bot-vs-bot):
+  **KO 68.6%** (phase 1/2/3: 761/1286/1383), side 0/1/draw 49.7/49.9/0.5%, **avg length 86.9 s**,
+  **avg payout 89.2% of S** (65.7% on timer endings), final HP winner 1832 / loser 340, 3.0
+  GOTCHAs per match, peak 27 live cohorts per side (cap 40).
+
+**Decided** (written into SPEC.md, marked **(M1)**):
+- Plant windows: gates face-down and inactive (in-flight cohorts pass unchanged); hints hidden
+  except gold; cannons can still move. The first volley fires on the first tick of play.
+- Hint coin flips are per side (values mirrored, hints not), so a fake blue can't be spotted by
+  comparing the grids. Hints go public only after rigs lock.
+- Rig trap (÷2) is the gate's value for the rest of the phase. Peek: play only (never stale);
+  gold can be peeked; revealed cells are refused without using the peek.
+- Clash: cohorts meet once they've reached each other along the lane and their x differ by
+  ≤ `CLASH_REACH` (half a column); they subtract wherever they meet; front-most pairs first.
+- Double KO on one tick = draw. Tick order: inputs → cannons → move + gates → clash → hits → KO → fire.
+- Bot: defends against grown cohorts within 3,000 units; best column by revealed values else hints
+  (blue/gold ×2, grey ×1, red ÷2); random rig on the first plant tick, random peek on the first
+  play tick; tutorial = aims into a gap in phase 1, no rig/peek. Its seed must be independent of
+  the match seed (on-chain: separate VRF bytes, M3/M4).
+- `crates/sim` declares `rust-version = 1.84` (Solana platform-tools); `programs/lil_dudes`
+  declares `target_os = "solana"` for check-cfg so workspace clippy passes.
+
+**Blocked / risks:**
+- KO rate 68.6% vs the ~25% target. Not tuned (M6): likely the bots often pick different columns
+  (independent hints), so streams pass each other and race. Knobs: HP, `CLASH_REACH`, the bot.
+- The bot is weak against a player who reads revealed gates (smoke run: 2110 vs 116 HP). M6.
+- Not yet tried inside `apps/web`/Vite (not on main). The WASM is inlined and initialised
+  synchronously, so no plugin or asset URL is needed.
+- Double-or-Toll is not in the sim; payout parity covers the no-Double path only.
+
+**Next / handoff:** Kai: **M2** (Stage 0 spikes on devnet-tee, TECH §7 checklist), including the
+compute of `advance` × 40 steps with the real sim. Suparno: swap to `OfflineSource` (entry above)
+and tell me what feels wrong in the real rules (speeds, gate gaps, clash reach).
