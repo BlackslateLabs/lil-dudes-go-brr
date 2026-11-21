@@ -1,0 +1,32 @@
+[package]
+name = "stage0"
+version = "0.1.0"
+description = "Stage 0 spike (throwaway): MagicBlock TEE checks for Lil Dudes Go Brr"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "stage0"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+
+[dependencies]
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+ephemeral-rollups-sdk = { version = "=0.18.0", features = ["anchor", "vrf", "access-control", "crank"] }
+lil-dudes-sim = { path = "../../../../crates/sim" }
+# Pod for [u8; 1312] / [u16; 4096] in the zero-copy accounts.
+solana-define-syscall = "=3.0.0"
+bytemuck = { version = "1", features = ["min_const_generics"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

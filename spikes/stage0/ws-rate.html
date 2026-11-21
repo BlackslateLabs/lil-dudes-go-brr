@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TEE ws rate</title>
+<!-- Stage 0 check 5 on a phone: accountSubscribe (or slotSubscribe) over the TEE websocket with a
+     token, measuring updates/s and inter-arrival jitter. Serve over the LAN, e.g.
+       cd spikes/stage0 && python3 -m http.server 8000
+     then open http://<laptop-ip>:8000/ws-rate.html?account=<BOARD_PUBKEY> on the phone.
+     A burner keypair is generated in memory to get the TEE token (nothing is stored). -->
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mute:#666; --line:#ddd; --ok:#0a7d32; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --mute:#999; --line:#333; --ok:#5ad17a; --bad:#ff8a80; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  label { display:block; margin:8px 0 2px; color:var(--mute); font-size:13px; }
+  input, select, button, textarea { font:inherit; width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; }
+  button { margin-top:12px; font-weight:600; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .big { font-size:40px; font-weight:700; font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-variant-numeric:tabular-nums; }
+  td { padding:4px 0; border-bottom:1px solid var(--line); } td:last-child { text-align:right; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:13px; }
+  textarea { height:140px; font:12px ui-monospace, monospace; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>TEE websocket rate</h1>
+<div class="mute">Check 5: does the phone get ~20 updates/s from the TEE?</div>
+
+<label>Endpoint</label>
+<input id="ep" value="https://devnet-tee.magicblock.app">
+<div class="row">
+  <div><label>Mode</label>
+    <select id="mode"><option value="account">accountSubscribe</option><option value="slot">slotSubscribe (no program)</option></select></div>
+  <div><label>Commitment</label>
+    <select id="cm"><option>processed</option><option>confirmed</option></select></div>
+  <div><label>Seconds</label><input id="dur" type="number" value="60" min="5"></div>
+</div>
+<label>Account (Board / Match pubkey)</label>
+<input id="acct" placeholder="pubkey updated ~20×/s by a crank">
+<label>Token (optional: leave empty to sign one with a fresh burner)</label>
+<input id="tok" placeholder="auto">
+<button id="go">Start</button>
+
+<div style="margin-top:16px" class="row">
+  <div><div class="mute">updates/s (last 1 s)</div><div class="big" id="rate">–</div></div>
+  <div><div class="mute">received</div><div class="big" id="count">0</div></div>
+</div>
+<div id="status" class="mute">idle</div>
+<table id="stats"></table>
+<textarea id="out" readonly placeholder="Result JSON appears here when the run ends (copy it into RESULTS.md)."></textarea>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+if (qs.get("account")) $("acct").value = qs.get("account");
+if (qs.get("mode")) $("mode").value = qs.get("mode");
+if (qs.get("endpoint")) $("ep").value = qs.get("endpoint");
+if (qs.get("seconds")) $("dur").value = qs.get("seconds");
+
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function b58(bytes) {
+  let n = 0n; for (const b of bytes) n = n * 256n + BigInt(b);
+  let s = ""; while (n > 0n) { s = B58[Number(n % 58n)] + s; n /= 58n; }
+  for (const b of bytes) { if (b === 0) s = "1" + s; else break; }
+  return s;
+}
+function stats(xs) {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b), q = (p) => s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))];
+  const mean = s.reduce((a, b) => a + b, 0) / s.length;
+  const sd = Math.sqrt(s.reduce((a, b) => a + (b - mean) ** 2, 0) / s.length);
+  const r = (x) => Math.round(x * 10) / 10;
+  return { n: s.length, min: r(s[0]), p50: r(q(0.5)), p90: r(q(0.9)), p99: r(q(0.99)), max: r(s[s.length - 1]), mean: r(mean), sd: r(sd) };
+}
+async function token(ep) {
+  const kp = nacl.sign.keyPair();
+  const pub = b58(kp.publicKey);
+  const c = await (await fetch(`${ep}/auth/challenge?pubkey=${pub}`)).json();
+  if (!c.challenge) throw new Error("challenge: " + JSON.stringify(c));
+  const sig = nacl.sign.detached(new TextEncoder().encode(c.challenge), kp.secretKey);
+  const r = await fetch(`${ep}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pubkey: pub, challenge: c.challenge, signature: b58(sig) }) });
+  const j = await r.json();
+  if (!j.token) throw new Error("login: " + JSON.stringify(j));
+  return j.token;
+}
+
+let ws = null, timer = null;
+$("go").onclick = async () => {
+  if (ws) { ws.close(); ws = null; clearInterval(timer); $("go").textContent = "Start"; return; }
+  const ep = $("ep").value.replace(/\/$/, ""), mode = $("mode").value, dur = Number($("dur").value) * 1000;
+  const acct = $("acct").value.trim();
+  if (mode === "account" && !acct) { $("status").textContent = "enter an account pubkey (or use slot mode)"; return; }
+  $("status").textContent = "getting token…"; $("out").value = "";
+  let tok = $("tok").value.trim();
+  try { if (!tok) tok = await token(ep); } catch (e) { $("status").innerHTML = `<span class="bad">auth failed: ${e.message}</span>`; return; }
+  const t = []; const slots = []; let t0 = 0, opened = 0;
+  ws = new WebSocket(`${ep.replace(/^http/, "ws")}?token=${tok}`);
+  $("go").textContent = "Stop";
+  const t00 = performance.now();
+  ws.onopen = () => {
+    opened = performance.now() - t00;
+    $("status").textContent = `connected in ${Math.round(opened)} ms, subscribing…`;
+    const params = mode === "account" ? [acct, { encoding: "base64", commitment: $("cm").value }] : [];
+    ws.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: mode === "account" ? "accountSubscribe" : "slotSubscribe", params }));
+  };
+  ws.onerror = () => { $("status").innerHTML = '<span class="bad">websocket error</span>'; };
+  ws.onmessage = (ev) => {
+    const now = performance.now();
+    const m = JSON.parse(ev.data);
+    if (m.id === 1) { t0 = now; $("status").textContent = `subscribed (id ${m.result}); measuring ${dur / 1000} s…`; return; }
+    if (!m.params) return;
+    t.push(now);
+    const slot = mode === "account" ? m.params.result.context.slot : m.params.result.slot;
+    slots.push(slot);
+  };
+  const render = (final) => {
+    const now = performance.now();
+    const last1 = t.filter((x) => x > now - 1000).length;
+    $("rate").textContent = last1; $("count").textContent = t.length;
+    $("rate").className = "big " + (mode === "slot" ? "" : last1 >= 18 ? "ok" : "bad");
+    const gaps = t.slice(1).map((x, i) => x - t[i]);
+    const g = stats(gaps);
+    const secs = Math.max(1, (now - (t[0] ?? now)) / 1000);
+    const perSec = []; for (let s = 1; s < Math.floor(secs); s++) perSec.push(t.filter((x) => x >= t[0] + s * 1000 && x < t[0] + (s + 1) * 1000).length);
+    const ps = stats(perSec);
+    const rows = [["mean updates/s", (t.length / secs).toFixed(2)], ["updates/s min / p50", ps ? `${ps.min} / ${ps.p50}` : "–"],
+      ["inter-arrival p50 / p90 / p99 ms", g ? `${g.p50} / ${g.p90} / ${g.p99}` : "–"], ["max gap ms", g ? g.max : "–"], ["jitter sd ms", g ? g.sd : "–"],
+      ["gaps > 100 ms", gaps.filter((x) => x > 100).length], ["ws connect ms", Math.round(opened)]];
+    $("stats").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    if (final) {
+      $("out").value = JSON.stringify({ when: new Date().toISOString(), ua: navigator.userAgent, endpoint: ep, mode, account: acct || null, commitment: $("cm").value,
+        seconds: Math.round(secs), received: t.length, meanPerSec: +(t.length / secs).toFixed(2), perSecond: ps, interArrivalMs: g, gapsOver100: gaps.filter((x) => x > 100).length,
+        slotSpan: slots.length ? slots[slots.length - 1] - slots[0] : 0, wsConnectMs: Math.round(opened) }, null, 1);
+    }
+  };
+  timer = setInterval(() => {
+    render(false);
+    if (t0 && performance.now() - t0 > dur) { clearInterval(timer); render(true); ws.close(); ws = null; $("go").textContent = "Start"; $("status").textContent = "done"; }
+  }, 250);
+};
+</script>
+</body>
+</html>

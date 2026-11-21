@@ -1,0 +1,15 @@
+[toolchain]
+anchor_version = "1.0.2"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+stage0 = "7BE2WwiCdz8SHMagZ3YSGWrhJhYwh3HZ9MQSWT277HGM"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[hooks]
