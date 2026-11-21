@@ -305,3 +305,31 @@ Match on devnet.
 **Next / handoff:** **Suparno:** merge into `main` tomorrow morning (your branch is ~14 commits behind;
 dry-run merge showed no conflicts): `git pull`, `pnpm install`, swap `MockSource` → `OfflineSource`,
 then merge. `MatchSource` won't change for `LiveSource`. Kai: M3 (real `lil_dudes` program) now.
+
+## 2026-11-22 03:10 IST · Kai · M3 step 1 (codec) · [DECISION]
+**Did:** M3 step 1 done; next: step 2 (accounts + permissions).
+- `crates/sim/src/codec.rs`: compact LE codec, public part (1,046 B, Match account) and secret part
+  (85 B, Secrets account) separately; fixed offsets, only live cohorts copied, `MatchState::zeroed()`
+  so decoding builds nothing. TS decoder `packages/client/src/codec.ts` (`decodePublic`,
+  `toMatchView`), checked every tick against the WASM build (`public_bytes`).
+- Sim: `apply_input` (player txs apply inputs between ticks, same as the next `step`), per-phase
+  rig + peek `history` in `SecretState` (not in `digest`, so M1 digests and the golden match are
+  unchanged), clash loop over a flat copy with an x-bucket pre-check (same pairs, same order;
+  tested against the plain loop on 4,000 random fronts).
+- MagicSVM bench (`tests-magicsvm/tests/bench.rs`, program feature `bench`), same states, new build
+  vs the M2 spike `.so`:
+
+| | new | M2 |
+|---|---|---|
+| codec (decode + encode, full 40v40) | **5,870 CU** | 68,388 CU |
+| tick, M2 worst (40v40 crossed, far apart) | 13,483 | 50,493 |
+| tick, near miss (40v40 crossed, dx 700, the new worst) | 38,443 | 50,493 |
+| tick, Surge peak of a real bot match | 6,022 | 5,715 |
+| ticks per 400k crank tx at the worst state | **10** | 6 |
+
+**Decided:** release profile `opt-level = "z"`, sim at 3 (root `Cargo.toml`). SBF builds need
+`cargo build-sbf --tools-version v1.52` (v1.51's cargo can't parse an edition-2024 dep).
+Crank cancel: the SDK's legacy `CancelCrankCpi` needs an undocumented task-context account, so
+`start` schedules exactly the iterations a match needs and `advance` is a no-op after the end.
+
+**Blocked / risks:** none.
