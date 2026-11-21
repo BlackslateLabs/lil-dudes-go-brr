@@ -1281,8 +1281,10 @@ name = "lil_dudes"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "bytemuck",
  "ephemeral-rollups-sdk",
  "lil-dudes-sim",
+ "solana-define-syscall 3.0.0",
 ]
 
 [[package]]

@@ -1,0 +1,22 @@
+[package]
+name = "lil-dudes-magicsvm-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "MagicSVM integration tests and compute benches for programs/lil_dudes (own workspace, like MagicBlock's examples)"
+
+# Own workspace: MagicSVM pulls newer Solana crates than the program does.
+[workspace]
+
+[dev-dependencies]
+magicsvm = "=0.3.0"
+lil-dudes-sim = { path = "../crates/sim" }
+solana-account = "4.3.1"
+solana-address = "~2.6.1"
+solana-clock = "~3.1.1"
+solana-instruction = "~3.4.0"
+solana-keypair = "3.1.2"
+solana-message = "4.2.4"
+solana-sha256-hasher = "3.1.0"
+solana-signer = "3.0.1"
+solana-transaction = "4.1.5"

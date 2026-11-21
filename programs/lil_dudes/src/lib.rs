@@ -8,6 +8,11 @@
 use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::anchor::ephemeral;
 
+#[cfg(feature = "bench")]
+mod bench;
+#[cfg(feature = "bench")]
+use bench::*;
+
 declare_id!("4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa");
 
 #[ephemeral]
@@ -19,6 +24,12 @@ pub mod lil_dudes {
     pub fn ping(_ctx: Context<Ping>) -> Result<()> {
         msg!("lil_dudes sim rules v{}", lil_dudes_sim::RULES_VERSION);
         Ok(())
+    }
+
+    /// Compute measurement only (feature "bench"), see bench.rs.
+    #[cfg(feature = "bench")]
+    pub fn bench(ctx: Context<Bench>, n: u16, with_bot: bool) -> Result<()> {
+        bench::handler(ctx, n, with_bot)
     }
 }
 

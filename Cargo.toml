@@ -17,6 +17,12 @@ opt-level = 2
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+# Size matters on devnet: every KB of the program locks ~0.007 SOL of rent (×2 during an
+# upgrade). The hot path (the sim) stays at full speed (TECH §6).
+opt-level = "z"
+
+[profile.release.package.lil-dudes-sim]
+opt-level = 3
 
 [profile.release.build-override]
 opt-level = 3
