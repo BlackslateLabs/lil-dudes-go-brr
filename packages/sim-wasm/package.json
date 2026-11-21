@@ -4,5 +4,18 @@
   "private": true,
   "type": "module",
   "description": "PREBUILT wasm-pack output of crates/sim-wasm. Committed so front-end work never needs Rust.",
-  "files": ["pkg"]
+  "exports": {
+    ".": {
+      "types": "./pkg/sim.d.ts",
+      "default": "./pkg/sim.js"
+    },
+    "./inline": {
+      "types": "./pkg/sim_inline.d.ts",
+      "default": "./pkg/sim_inline.js"
+    }
+  },
+  "files": ["pkg"],
+  "scripts": {
+    "rebuild": "bash build.sh"
+  }
 }

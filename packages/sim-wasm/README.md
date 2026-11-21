@@ -1,11 +1,19 @@
 # @lil-dudes/sim-wasm
 
-Prebuilt browser build of the match rules (`crates/sim` via `crates/sim-wasm`). The `pkg/` output is
-**committed**, so the web app can use the real rules with only Node + pnpm. Kai rebuilds it whenever the
-sim changes:
+Prebuilt browser build of the match rules (`crates/sim` via `crates/sim-wasm`, with the Warlord bot
+built in). The `pkg/` output is **committed**, so the web app runs the real rules with only Node +
+pnpm. You normally never import this directly: `OfflineSource` in `@lil-dudes/client` wraps it.
+
+- `pkg/sim.js` + `pkg/sim.d.ts`: the wasm-bindgen API (`SimMatch`, `constants_json`, `rules_version`).
+- `pkg/sim_inline.js`: the `.wasm` as base64, so it loads synchronously (`initSync`) in the browser,
+  Vite and Node, with no fetch, asset URL or bundler plugin. ~60 KB.
+- `pkg/sim_bg.wasm`: the raw module (~45 KB).
+
+The flat view/event layouts are documented at the top of `crates/sim-wasm/src/lib.rs` and decoded
+in `packages/client/src/offline.ts`.
+
+Kai rebuilds it whenever the sim changes (needs Rust + `wasm32-unknown-unknown` + `wasm-pack`):
 
 ```bash
-wasm-pack build crates/sim-wasm --target web --out-dir ../../packages/sim-wasm/pkg
+bash packages/sim-wasm/build.sh     # or: pnpm --filter @lil-dudes/sim-wasm rebuild
 ```
-
-Empty until M1 (`OfflineSource` in `@lil-dudes/client` will wrap it).

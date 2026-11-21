@@ -7,3 +7,7 @@ PROGRESS_LOG.md merge=union
 *.ogg binary
 *.mp3 binary
 *.wav binary
+*.wasm binary
+# Prebuilt sim (packages/sim-wasm/build.sh); the inlined base64 is one huge line.
+packages/sim-wasm/pkg/** linguist-generated=true
+packages/sim-wasm/pkg/sim_inline.js -diff
