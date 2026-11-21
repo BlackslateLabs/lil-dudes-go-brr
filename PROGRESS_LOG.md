@@ -241,3 +241,51 @@ and the bot (headless smoke: `pnpm --filter @lil-dudes/client smoke`).
 **Next / handoff:** Kai: **M2** (Stage 0 spikes on devnet-tee, TECH §7 checklist), including the
 compute of `advance` × 40 steps with the real sim. Suparno: swap to `OfflineSource` (entry above)
 and tell me what feels wrong in the real rules (speeds, gate gaps, clash reach).
+
+## 2026-11-22 01:45 IST · Kai · M2 chain proven · [STAGE] [DECISION]
+**Did:** Stage 0 on devnet + devnet-tee with a throwaway program (`spikes/stage0/`: Anchor 1.0.2, ER SDK
+=0.18.0, the real `crates/sim` in a public Board account, private Secret/Peek, crank, ER VRF, vault +
+Magic Action) and TS scripts per check. Full numbers + rerun commands: `spikes/stage0/RESULTS.md`.
+Docs: TECH §1/§4/§5/§6/§7/§8 updated (⚠️ → ✅/❌, compute budget, permission sizes, rules below).
+
+| Check | Result | Numbers |
+|---|---|---|
+| 1 private account, no members | ✅ | invisible to both players, authority, no-token; program reads it; Peek visible to its member only |
+| 2 opponent can't see plant_rig | ✅ | any tx touching a private account is redacted (even read-only, even failed); 0 leaks. Exception: failed VRF callbacks are public |
+| 3 crank 50 ms, 2+ min | ✅ | 3,000/3,000 + 2,600/2,600 calls, 0 missed; 40–60 ms steady; sim lag 0 over a real bot match |
+| 4 ER VRF from the TEE | ✅ after fix | callback 2 slots (~20 ms) after the request, 10/10. SDK 0.18.0 `#[vrf_callback]` burns ~250k CU → fails until `vrf_program_identity` is declared with a `const` address |
+| 5 ws accountSubscribe ~20/s | ✅ Node, phone pending | 20.0/s, inter-arrival p50 49.9 / p99 157 ms, no state skipped |
+| 6 commit+undelegate+action, fallback | ✅ | vault → recipient by the action (≤ 5.3 s after finish); skipped action → third-party `settle` works; double settle refused |
+| a 0-SOL burner on the TEE | ✅ | never-funded keys send all ER txs |
+| b `advance` CU, real sim | ❌ 40 ticks/tx | worst tick ~50k CU + 74k fixed (codec 68k): max 26 ticks at 1.4M, 6 per crank call (400k), 2 at 200k; real crank calls p50 45k / max 92k |
+| c TEE identity | ✅ | `MTEWGuqx…xzo` (devnet-tee = devnet-tee-as), validator 1.1.1 |
+| d SOL spent | 0.0764 SOL | 5.0000 → 4.9236; both spike programs closed (+2.4179, +2.2648 SOL back) |
+
+**Decided:**
+- Keep the PER (TEE) plan as is; **no fallbacks needed** (no commit-reveal, no heartbeats). Rule: every
+  tx with secret input lists `Secrets` or `Peek`. Match has no permission (public); Secrets private
+  with no members; Peek[side] private with that burner as member. Permissions are ephemeral, created on
+  the ER and pre-funded into the PDA (4,096 / 5,152 lamports for 0 / 1 member).
+- ER VRF on the TEE with the `const VRF_IDENTITY` callback pattern; the callback must be infallible and
+  the seed = `H(vrf ‖ private salts)` (a failed callback is public and retried with the same bytes).
+- `advance` catch-up cap: **6 steps in the crank, 2 in player txs** (not 40). M3 cuts the cost: codec into
+  `crates/sim` (opt 3) or zero-copy Match; clash bucketed by column.
+- Settlement shape proven: `settle_action` (`#[action]`, escrow signer pinned) + permissionless `settle`
+  over one payout function; base settle tx is a v1 transaction (web3.js 1.x can't decode it).
+- Main `Cargo.lock`: Anchor macro crates pinned to 1.0.2 (they had drifted to 1.2.2, which breaks
+  `#[account(init)]`); `lil_dudes` allows `clippy::diverging_sub_expression` from Anchor's `#[program]`.
+- Build profile for the real program: `opt-level = "z"`, sim at 3 (592 → 476 KB; rent 2.42 SOL).
+
+**Blocked / risks:**
+- Phone ws rate not measured yet: `spikes/stage0/ws-rate.html` (needs the spike redeployed or the M3
+  Match; `?mode=slot` works with no program).
+- Upgrades need ~2× program rent (buffer + live program): keep ≥ 5 SOL or deploy fresh + close.
+- SDK `#[vrf_callback]` bug not yet reported to MagicBlock.
+
+**Next / handoff:** Kai: **M3** `lil_dudes`: accounts + permissions per above; create/join/delegate on
+base; on the TEE `init_permissions`, `request_seed`/`callback_seed` (const identity), `start` (crank,
+unique task id), `advance` (cap 6/2), `set_aim`, `finish` (cancel crank, commit+undelegate + settle
+action); codec in `crates/sim` + TS decoder in `packages/client` (`LiveSource`); MagicSVM tests; devnet
+deploy. **Suparno:** nothing changes in `MatchSource`; plan for the live feed to render ~3 ticks
+(150 ms) behind the newest snapshot (TECH §5), and run `ws-rate.html` on your phone when Kai has a
+Match on devnet.
