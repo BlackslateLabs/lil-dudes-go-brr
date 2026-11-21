@@ -1,6 +1,8 @@
 //! Shared helpers: program loading, hand-built Anchor instructions, CU log parsing.
 #![allow(dead_code)]
 
+pub mod game;
+
 use magicsvm::{MagicSVM, TransactionTarget};
 use solana_address::Address;
 use solana_instruction::{account_meta::AccountMeta, Instruction};
