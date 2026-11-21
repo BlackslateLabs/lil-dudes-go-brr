@@ -21,6 +21,7 @@
     )
 )]
 
+pub mod bot;
 pub mod constants;
 pub mod deal;
 pub mod events;
@@ -30,6 +31,7 @@ pub mod state;
 pub mod step;
 pub mod types;
 
+pub use bot::Warlord;
 pub use constants::*;
 pub use deal::Deal;
 pub use events::{Event, EventSink, Events, NoEvents, EVENT_CAP};

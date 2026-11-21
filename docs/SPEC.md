@@ -185,9 +185,22 @@ keeps defending. There's no reason to stall or quit.
   4. otherwise drift.
   It moves at the normal `CANNON_STEP` and brakes near the target. It never reads secrets; code
   review must enforce this. It rigs and peeks at random cells.
+  **(M1)** As built in `crates/sim/src/bot.rs`:
+  - Its only inputs are the public state and its own seed (independent of the match seed).
+    The type signature enforces this. It never sees its own peek result.
+  - Defend = the biggest enemy cohort that has grown past a raw volley and is within 3,000 units
+    (~1.5 s) of its cannon; it aims straight at it.
+  - Best gate = the column whose three gates turn a fresh volley into the most units, using revealed
+    values where known and hint colour otherwise (blue/gold ≈ ×2, grey ≈ ×1, red ≈ ÷2). Its own
+    grid only. With nothing known all columns tie, and rule 3 makes it drift between them.
+  - Rig: a random unrevealed non-gold cell, on the first tick of each plant. Peek: a random
+    unrevealed cell of its own on the first tick of play.
 - **Tutorial:** a player's first match is a guided match against the bot. It teaches one mechanic per
   beat (aim → gates → clash → hints → rig → peek). Each beat has a one-line prompt above the cannon and
-  a ✓ when done. In phase 1 the bot holds back, so a newcomer can't be knocked out. A **Skip tutorial**
+  a ✓ when done. In phase 1 the bot holds back, so a newcomer can't be knocked out. **(M1)**
+  Holding back = the bot aims into the gap between two columns, so no gate grows its volleys
+  (at most 93 × 4 = 372 damage in phase 1), and it doesn't rig or peek. It plays normally from
+  phase 2. A **Skip tutorial**
   button is always visible (on the first-visit screen and during the match). Skipping goes straight
   to Home. The tutorial can be replayed from Home ("How to play").
 - Bot matches are free. The bot never takes stakes (that would make us a casino).
