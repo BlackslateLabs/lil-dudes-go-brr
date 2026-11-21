@@ -7,10 +7,11 @@ id.json
 **/keys/
 *.pem
 
-# each person keeps their own private notes
+# private, never pushed
 CLAUDE.md
 CLAUDE.local.md
 .claude/
+pvt-docs/
 
 # rust / anchor
 target/

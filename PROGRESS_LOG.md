@@ -82,3 +82,20 @@ code or UI (it reads as a clone in the submission). Say "crowd-cannon genre" or 
 
 **Next / handoff:** Kai is doing genre research (gameplay recording + game data) outside the repo. Findings
 come back as generic mechanics edits to SPEC/TECH.
+
+## 2026-11-21 · Kai · genre research
+**Did:**
+- Genre research (playtesting + measured gameplay recordings). Notes are private, not in the repo.
+
+**Decided:** none yet. Proposed generic edits, to confirm together:
+- Sim: cannon `x` moves toward the aim at a max speed per tick; cohorts get a short fast "launch" after spawn;
+  a gate row applies once per cohort.
+- Client: new units "pour" out of a gate over ~0.1–0.25 s instead of popping in; fast-then-ease launch
+  animation; relative drag with a catch-up buffer; try a narrow-FOV (~30°) camera pitched ~44°; random
+  culling above the unit cap; quality tiers (60/30 fps, 0.75 res, no shadows); no per-hit damage numbers.
+- Bot: re-pick a target every ~2 ticks, best revealed gate (or hint), alternate between ties, brake near the target.
+- The genre's natural fight length (~15–45 s) supports our 40 s re-deal.
+
+**Blocked / risks:** none.
+
+**Next / handoff:** Kai: turn the agreed points into SPEC/TECH edits. Suparno: the client points above are for the arena feel prototype.
