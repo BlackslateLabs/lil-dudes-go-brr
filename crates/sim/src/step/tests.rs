@@ -807,3 +807,140 @@ fn timer_win_pays_by_margin_and_equal_hp_draws() {
     idle(&mut m);
     assert_eq!(m.public.result.unwrap().winner, None);
 }
+
+// --- M3: clash buckets, apply_input, history ---------------------------------------------------
+
+/// The plain double loop the bucketed `clash` replaced (M1), kept as the reference.
+fn clash_plain(p: &mut PublicState, ev: &mut impl EventSink) {
+    let [s0, s1] = &mut p.sides;
+    let b_side = s1.cohorts_mut();
+    for a in s0.cohorts_mut().iter_mut() {
+        for b in b_side.iter_mut() {
+            if a.count == 0 {
+                break;
+            }
+            if b.count == 0 {
+                continue;
+            }
+            if i32::from(a.y) + i32::from(b.y) < LANE_LENGTH {
+                break;
+            }
+            if i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32 {
+                continue;
+            }
+            let killed = a.count.min(b.count);
+            a.count -= killed;
+            b.count -= killed;
+            let x = (i32::from(a.x) + i32::from(b.x)) / 2;
+            let y = (i32::from(a.y) + LANE_LENGTH - i32::from(b.y)) / 2;
+            ev.push(Event::Clash {
+                x: x as i16,
+                y: y.clamp(0, LANE_LENGTH) as i16,
+                killed: [killed, killed],
+            });
+        }
+    }
+}
+
+#[test]
+fn bucketed_clash_equals_the_plain_loop() {
+    // Random fronts with x clustered near bin edges and CLASH_REACH (the near misses), sorted
+    // front-most first like real streams; some dead cohorts mixed in.
+    let mut rng = crate::rng::SplitMix64::new(11);
+    let near = [
+        0, 1, 249, 250, 251, 499, 500, 501, 749, 750, 999, 1000, 2999,
+    ];
+    for round in 0..4000 {
+        let mut m = quiet_mid_match();
+        for side in 0..2 {
+            let n = rng.below(COHORT_CAP as u64 + 1) as usize;
+            let mut ys: Vec<i32> = (0..n).map(|_| rng.below(12_000) as i32).collect();
+            ys.sort_unstable_by(|a, b| b.cmp(a));
+            for (k, y) in ys.into_iter().enumerate() {
+                let x = if rng.below(2) == 0 {
+                    near[rng.below(near.len() as u64) as usize] + rng.below(3) as i32
+                } else {
+                    rng.below(LANE_WIDTH as u64) as i32
+                };
+                let count = if rng.below(8) == 0 {
+                    0
+                } else {
+                    1 + rng.below(60) as u32
+                };
+                let c = cohort(k as u32 + 1, count, x.min(LANE_WIDTH - 1), y);
+                place(&mut m, side, c);
+            }
+        }
+        let mut fast = m.public;
+        let mut plain = m.public;
+        let (mut ev_fast, mut ev_plain) = (Events::<4096>::new(), Events::<4096>::new());
+        clash(&mut fast, &mut ev_fast);
+        clash_plain(&mut plain, &mut ev_plain);
+        assert_eq!(fast, plain, "round {round}");
+        assert_eq!(ev_fast.as_slice(), ev_plain.as_slice(), "round {round}");
+    }
+}
+
+#[test]
+fn apply_input_between_ticks_equals_passing_it_to_step() {
+    // On-chain, player instructions apply inputs after catching up instead of queueing them.
+    for t in [0u32, 30, 59, 60, 61, 500, 800, 830, 860, 2_399] {
+        let mut a = new_match();
+        run_to(&mut a, t);
+        let mut b = a;
+        let i = SideInput {
+            aim: Some(2_000),
+            rig: Some(3),
+            peek: Some(5),
+        };
+        tick(&mut a, input(1, i));
+        apply_input(&mut b, 1, &i);
+        idle(&mut b);
+        assert_eq!(a, b, "tick {t}");
+    }
+    // Ignored once the match has ended.
+    let mut m = new_match();
+    m.public.result = Some(crate::payout(0, [1, 1]));
+    let before = m;
+    apply_input(
+        &mut m,
+        0,
+        &SideInput {
+            aim: Some(0),
+            rig: Some(1),
+            peek: Some(2),
+        },
+    );
+    assert_eq!(m, before);
+}
+
+#[test]
+fn history_logs_every_phase_rig_and_peek() {
+    let mut m = new_match();
+    // Idle cannons trade hits all match; keep both alive until the planned KO.
+    m.public.sides[0].hp = 1_000_000;
+    m.public.sides[1].hp = 1_000_000;
+    set_deal(&mut m, [M2; CELLS], 8);
+    tick(&mut m, rig(0, 1));
+    run_to(&mut m, PLANT_TICKS + 1);
+    tick(&mut m, peek(1, 2));
+    run_to(&mut m, PLANT_STARTS[1]);
+    let h0 = m.secret.history[0];
+    assert_eq!(h0.rigs, [Some(1), None]);
+    assert_eq!(h0.peeks[0], None);
+    assert_eq!(h0.peeks[1].map(|p| p.cell), Some(2));
+    // Phase 2: side 1 rigs; the match ends on the timer in phase 3 with nothing done there.
+    let gold = m.secret.deal.gold_cell;
+    tick(&mut m, rig(1, (gold + 1) % 9));
+    run_to(&mut m, PLANT_STARTS[2]);
+    assert_eq!(m.public.tick, PLANT_STARTS[2]);
+    assert_eq!(m.secret.history[1].rigs, [None, Some((gold + 1) % 9)]);
+    // KO in phase 3 logs phase 3 too.
+    let gold = m.secret.deal.gold_cell;
+    tick(&mut m, rig(0, (gold + 2) % 9));
+    m.public.sides[1].hp = 1;
+    place(&mut m, 0, cohort(500, 5, 500, 11_990));
+    run_to(&mut m, MATCH_TICKS);
+    assert!(m.public.result.is_some_and(|r| r.ko));
+    assert_eq!(m.secret.history[2].rigs, [Some((gold + 2) % 9), None]);
+}

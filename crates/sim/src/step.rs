@@ -19,8 +19,8 @@ use crate::deal::Deal;
 use crate::events::{Event, EventSink};
 use crate::payout::payout;
 use crate::state::{
-    face_down, other, phase_at, phase_start, play_start, Inputs, MatchState, Peek, PublicGate,
-    PublicSide, PublicState, SecretState,
+    face_down, other, phase_at, phase_start, play_start, Inputs, MatchState, Peek, PhaseLog,
+    PublicGate, PublicSide, PublicState, SecretState, SideInput,
 };
 use crate::types::{Cohort, Hint, Status};
 
@@ -66,16 +66,29 @@ pub fn step(m: &mut MatchState, inputs: &Inputs, ev: &mut impl EventSink) {
 
 fn apply_inputs(m: &mut MatchState, inputs: &Inputs, status: Status) {
     for (s, input) in (0u8..).zip(inputs.sides.iter()) {
-        if let (Some(aim), Some(side)) = (input.aim, m.public.sides.get_mut(usize::from(s))) {
-            // SPEC §2: the aim is any lane x; the cannon chases it.
-            side.aim = aim.clamp(0, LANE_WIDTH.saturating_sub(1)) as i16;
-        }
-        if let (Some(cell), Status::Plant) = (input.rig, status) {
-            try_rig(m, s, cell);
-        }
-        if let (Some(cell), Status::Playing) = (input.peek, status) {
-            try_peek(m, s, cell);
-        }
+        apply_side(m, s, input, status);
+    }
+}
+
+/// Applies one side's input between ticks, exactly as if it were passed to the next `step`
+/// (on-chain, player instructions call this after catching the sim up). Ignored once ended.
+pub fn apply_input(m: &mut MatchState, side: u8, input: &SideInput) {
+    let status = m.public.status();
+    if status != Status::Ended {
+        apply_side(m, side, input, status);
+    }
+}
+
+fn apply_side(m: &mut MatchState, s: u8, input: &SideInput, status: Status) {
+    if let (Some(aim), Some(side)) = (input.aim, m.public.sides.get_mut(usize::from(s))) {
+        // SPEC §2: the aim is any lane x; the cannon chases it.
+        side.aim = aim.clamp(0, LANE_WIDTH.saturating_sub(1)) as i16;
+    }
+    if let (Some(cell), Status::Plant) = (input.rig, status) {
+        try_rig(m, s, cell);
+    }
+    if let (Some(cell), Status::Playing) = (input.peek, status) {
+        try_peek(m, s, cell);
     }
 }
 
@@ -251,37 +264,106 @@ fn pass_gate(
 /// tunnel through) and their x differ by at most CLASH_REACH. This applies wherever they meet;
 /// with both cannons firing it is normally the clash zone. Pairs are resolved front-most first
 /// on both sides (cohorts are stored oldest = front-most first).
+///
+/// Compute (TECH §4): the pair loop is the plain double loop, run over a flat copy of side 1
+/// (no i16 widening or bounds checks per pair), and a side-0 cohort with no side-1 cohort in the
+/// neighbouring x buckets is skipped outright; its scan starts at the first such cohort. Both
+/// shortcuts only skip pairs that are out of reach in x, so the pairs that meet, and their
+/// order, are exactly those of the plain loop (tested against it).
 fn clash(p: &mut PublicState, ev: &mut impl EventSink) {
     let [s0, s1] = &mut p.sides;
     let b_side = s1.cohorts_mut();
+    let mut flat = [FlatCohort::default(); COHORT_CAP];
+    // bins[k + CLASH_SPAN] has bit i set for each side-1 cohort i in x bucket k; the padding lets
+    // every side-0 cohort OR its 2·CLASH_SPAN + 1 neighbourhood with no edge cases.
+    let mut bins = [0u64; CLASH_BINS + 2 * CLASH_SPAN];
+    for ((i, b), f) in b_side.iter().enumerate().zip(flat.iter_mut()) {
+        *f = FlatCohort {
+            count: b.count,
+            // A dead cohort never meets anyone: park it far outside every reach window.
+            x: if b.count == 0 { DEAD_X } else { i32::from(b.x) },
+            y: i32::from(b.y),
+        };
+        if let Some(bin) = bins.get_mut(clash_bin(b.x).saturating_add(CLASH_SPAN)) {
+            *bin |= 1u64.checked_shl(i as u32).unwrap_or(0);
+        }
+    }
+    let flat = flat.get_mut(..b_side.len()).unwrap_or(&mut []);
     for a in s0.cohorts_mut().iter_mut() {
-        for b in b_side.iter_mut() {
-            if a.count == 0 {
-                break;
-            }
-            if b.count == 0 {
-                continue;
-            }
-            if i32::from(a.y).saturating_add(i32::from(b.y)) < LANE_LENGTH {
+        if a.count == 0 {
+            continue;
+        }
+        let k = clash_bin(a.x);
+        let near = bins
+            .get(k..k.saturating_add(2 * CLASH_SPAN + 1))
+            .unwrap_or(&[])
+            .iter()
+            .fold(0u64, |m, &bits| m | bits);
+        if near == 0 {
+            continue;
+        }
+        let (ax, ay) = (i32::from(a.x), i32::from(a.y));
+        // b meets a once b.y >= need, and only if b.x is within CLASH_REACH of a.x (one unsigned
+        // compare: b.x - lo wraps above 2·CLASH_REACH when b.x < lo).
+        let need = LANE_LENGTH.saturating_sub(ay);
+        let lo = ax.wrapping_sub(CLASH_REACH);
+        let first = near.trailing_zeros() as usize;
+        for b in flat.iter_mut().skip(first) {
+            if b.y < need {
                 // b is the front-most remaining; everything behind it is further back too.
                 break;
             }
-            if i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32 {
+            if b.x.wrapping_sub(lo) as u32 > REACH_SPAN {
                 continue;
             }
             let killed = a.count.min(b.count);
             a.count = a.count.saturating_sub(killed);
             b.count = b.count.saturating_sub(killed);
-            let x = i32::from(a.x).saturating_add(i32::from(b.x)) / 2;
-            let b_y = LANE_LENGTH.saturating_sub(i32::from(b.y));
-            let y = i32::from(a.y).saturating_add(b_y) / 2;
+            let x = ax.saturating_add(b.x) / 2;
+            let y = ay.saturating_add(LANE_LENGTH.saturating_sub(b.y)) / 2;
             ev.push(Event::Clash {
                 x: x as i16,
                 y: y.clamp(0, LANE_LENGTH) as i16,
                 killed: [killed, killed],
             });
+            if b.count == 0 {
+                b.x = DEAD_X;
+            }
+            if a.count == 0 {
+                break;
+            }
         }
     }
+    for (b, f) in b_side.iter_mut().zip(flat.iter()) {
+        b.count = f.count;
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct FlatCohort {
+    count: u32,
+    x: i32,
+    y: i32,
+}
+
+/// Bucket width for the clash pre-check. Cohorts within CLASH_REACH in x are at most CLASH_SPAN
+/// buckets apart.
+const CLASH_BIN: i32 = CLASH_REACH / 2;
+const REACH_SPAN: u32 = 2 * CLASH_REACH as u32;
+/// x of a dead cohort in the flat copy: out of every window, and no overflow in `b.x - lo`.
+const DEAD_X: i32 = i32::MIN / 2;
+const CLASH_SPAN: usize = 2;
+const CLASH_BINS: usize = (LANE_WIDTH / CLASH_BIN) as usize;
+const _: () = {
+    assert!(CLASH_REACH <= CLASH_BIN * CLASH_SPAN as i32);
+    assert!(LANE_WIDTH % CLASH_BIN == 0);
+    // One bit per cohort slot.
+    assert!(COHORT_CAP <= 64);
+};
+
+fn clash_bin(x: i16) -> usize {
+    let x = i32::from(x).clamp(0, LANE_WIDTH.saturating_sub(1));
+    x.checked_div(CLASH_BIN).unwrap_or(0) as usize
 }
 
 // --- 5. hits -----------------------------------------------------------------------------------
@@ -404,6 +486,7 @@ fn enter_tick(m: &mut MatchState, tick: u32, ev: &mut impl EventSink) {
 }
 
 fn redeal(m: &mut MatchState, phase: u8) {
+    log_phase(&mut m.secret, phase.saturating_sub(1));
     let deal = Deal::new(m.secret.seed, phase);
     for side in m.public.sides.iter_mut() {
         side.gates = face_down(&deal);
@@ -436,7 +519,18 @@ fn show_hints(m: &mut MatchState) {
     }
 }
 
+/// Records `phase`'s rigs and peeks before they are reset or the match ends.
+fn log_phase(secret: &mut SecretState, phase: u8) {
+    if let Some(log) = secret.history.get_mut(usize::from(phase)) {
+        *log = PhaseLog {
+            rigs: secret.rigs,
+            peeks: secret.peeks,
+        };
+    }
+}
+
 fn finish(m: &mut MatchState, ev: &mut impl EventSink) {
+    log_phase(&mut m.secret, phase_at(m.public.tick.saturating_sub(1)));
     let [a, b] = &m.public.sides;
     let result = payout(m.public.options.stake, [a.hp, b.hp]);
     m.public.result = Some(result);

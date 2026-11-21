@@ -3,7 +3,8 @@
 //! The Warlord bot is handed `&PublicState` only, so it cannot read secrets by construction.
 
 use crate::constants::{
-    CELLS, COHORT_CAP, HP_MAX, LANE_WIDTH, MATCH_TICKS, PLANT_STARTS, PLANT_TICKS, SURGE_TICK,
+    CELLS, COHORT_CAP, HP_MAX, LANE_WIDTH, MATCH_TICKS, PHASES, PLANT_STARTS, PLANT_TICKS,
+    SURGE_TICK,
 };
 use crate::deal::{Deal, RIG_OP};
 use crate::payout::MatchResult;
@@ -145,6 +146,16 @@ pub struct Peek {
     pub gold: bool,
 }
 
+/// What both sides did in one phase: published with the seed at the end (SPEC §10, the result
+/// screen's full reveal). Derived from the rest of the state over time, so `digest` skips it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PhaseLog {
+    /// `rigs[s]` = the opponent cell side `s` rigged in that phase.
+    pub rigs: [Option<u8>; 2],
+    /// `peeks[s]` = side `s`'s peek in that phase.
+    pub peeks: [Option<Peek>; 2],
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SecretState {
     /// The VRF seed. Public only after the match (Verify, SPEC §10).
@@ -155,6 +166,8 @@ pub struct SecretState {
     pub rigs: [Option<u8>; 2],
     /// `peeks[s]` = side `s`'s peek this phase (SPEC §5).
     pub peeks: [Option<Peek>; 2],
+    /// Every finished phase's rigs and peeks, written at each re-deal and at the end.
+    pub history: [PhaseLog; PHASES],
 }
 
 impl SecretState {
@@ -218,6 +231,63 @@ impl MatchState {
                 deal,
                 rigs: [None; 2],
                 peeks: [None; 2],
+                history: [PhaseLog::default(); PHASES],
+            },
+        }
+    }
+
+    /// An all-zero state to decode into (`codec::decode_*` overwrite every field). Unlike `new`,
+    /// it builds no deal, so it is nearly free on-chain.
+    pub const fn zeroed() -> Self {
+        const COHORT: Cohort = Cohort {
+            id: 0,
+            count: 0,
+            x: 0,
+            y: 0,
+            age: 0,
+            last_row: 0,
+        };
+        const GATE: PublicGate = PublicGate {
+            hint: Hint::None,
+            gold: false,
+            revealed: None,
+        };
+        const SIDE: PublicSide = PublicSide {
+            hp: 0,
+            cannon_x: 0,
+            aim: 0,
+            cohorts: [COHORT; COHORT_CAP],
+            cohort_len: 0,
+            gates: [GATE; CELLS],
+            rig_used: false,
+            peek_used: false,
+        };
+        const LOG: PhaseLog = PhaseLog {
+            rigs: [None; 2],
+            peeks: [None; 2],
+        };
+        Self {
+            public: PublicState {
+                tick: 0,
+                options: MatchOptions {
+                    stake: 0,
+                    bot: [false; 2],
+                    tutorial: false,
+                },
+                sides: [SIDE; 2],
+                next_cohort_id: 0,
+                result: None,
+            },
+            secret: SecretState {
+                seed: 0,
+                deal: Deal {
+                    ops: [GateOp::Mul(1); CELLS],
+                    gold_cell: 0,
+                    hints: [[Hint::None; CELLS]; 2],
+                },
+                rigs: [None; 2],
+                peeks: [None; 2],
+                history: [LOG; PHASES],
             },
         }
     }
@@ -231,7 +301,8 @@ impl MatchState {
     }
 
     /// FNV-1a over every field, public and secret, in a fixed order. Equal digests ⇔ equal state
-    /// (up to hash collisions); used by the determinism and golden tests.
+    /// (up to hash collisions); used by the determinism and golden tests. `secret.history` is
+    /// left out: it only records rigs/peeks that were already hashed while they were live.
     pub fn digest(&self) -> u64 {
         let mut h = Fnv::new();
         let p = &self.public;

@@ -22,6 +22,7 @@
 )]
 
 pub mod bot;
+pub mod codec;
 pub mod constants;
 pub mod deal;
 pub mod events;
@@ -32,15 +33,16 @@ pub mod step;
 pub mod types;
 
 pub use bot::Warlord;
+pub use codec::{PUBLIC_LEN, SECRET_LEN};
 pub use constants::*;
 pub use deal::Deal;
 pub use events::{Event, EventSink, Events, NoEvents, EVENT_CAP};
 pub use payout::{payout, MatchResult};
 pub use state::{
-    Inputs, MatchOptions, MatchState, Peek, PrivateView, PublicGate, PublicSide, PublicState,
-    SecretState, SideInput,
+    Inputs, MatchOptions, MatchState, Peek, PhaseLog, PrivateView, PublicGate, PublicSide,
+    PublicState, SecretState, SideInput,
 };
-pub use step::step;
+pub use step::{apply_input, step};
 pub use types::*;
 
 /// Bump when rules change in a way that changes outcomes (Verify must use the same version).
