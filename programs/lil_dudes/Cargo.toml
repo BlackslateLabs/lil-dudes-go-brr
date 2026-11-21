@@ -21,6 +21,8 @@ custom-panic = []
 anchor-debug = []
 # Adds the `bench` instruction (compute measurements in tests-magicsvm). Never deploy with it.
 bench = []
+# Test build for tests-magicsvm: no TEE validator pin, a fixed test treasury. Never deploy with it.
+magicsvm = []
 
 [dependencies]
 anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
@@ -29,6 +31,8 @@ ephemeral-rollups-sdk = { version = "=0.18.0", features = ["anchor", "vrf", "acc
 lil-dudes-sim = { path = "../../crates/sim" }
 # sol_log_compute_units (bench) and Pod arrays (zero-copy accounts).
 solana-define-syscall = "=3.0.0"
+# sha256 syscall (seed = H(vrf ‖ salts)); already in the tree via the ER SDK.
+solana-sha256-hasher = "=3.1.0"
 bytemuck = { version = "1", features = ["min_const_generics"] }
 
 [lints.rust]

@@ -1285,6 +1285,7 @@ dependencies = [
  "ephemeral-rollups-sdk",
  "lil-dudes-sim",
  "solana-define-syscall 3.0.0",
+ "solana-sha256-hasher 3.1.0",
 ]
 
 [[package]]
