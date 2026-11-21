@@ -8,6 +8,11 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 
+# The sim's tests play thousands of full matches; optimise it in dev/test builds too.
+# Overflow checks and debug assertions stay on (they are dev-profile settings, not opt-level).
+[profile.dev.package.lil-dudes-sim]
+opt-level = 2
+
 [profile.release]
 overflow-checks = true
 lto = "fat"
