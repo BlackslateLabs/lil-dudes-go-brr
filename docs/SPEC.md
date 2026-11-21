@@ -1,4 +1,4 @@
-# Game Spec v2 (name not chosen yet)
+# Lil Dudes Go Brr: Game Spec v2
 
 Status: **design locked for the MVP, numbers are starting values to tune in playtests**.
 Updated 2026-11-21. The idea in plain words: [IDEA.md](IDEA.md). Source: the first design doc (v1), revised after the balance sim in
@@ -6,7 +6,7 @@ Updated 2026-11-21. The idea in plain words: [IDEA.md](IDEA.md). Source: the fir
 
 ## 1. The game in one paragraph
 
-It is the game from the fake mobile ads, made real: a 1v1 crowd-cannon duel on Solana.
+**Lil Dudes Go Brr** is the game from the fake mobile ads, made real: a 1v1 crowd-cannon duel on Solana.
 Each player has a cannon at their end of a vertical lane. Your cannon auto-fires a stream of little
 units that pass through gates (×2, ×3, +10, −6, ÷2 …), grow or shrink, collide with the enemy
 stream in the middle, and whatever survives damages the enemy cannon. Every gate shows `?` until a
@@ -177,4 +177,4 @@ The real numbers will be re-tuned with a Rust balance runner built on the actual
 1. Turncoat vs ÷2 rig: decide in the first playtest.
 2. Exact deck values and HP: decide after the Rust sim exists.
 3. Stake currency: devnet SOL for the MVP (proven path); switch to an SPL test-USDC if time allows.
-4. Name: not chosen yet; the team picks it later.
+4. Name: **Lil Dudes Go Brr** (decided 2026-11-21).

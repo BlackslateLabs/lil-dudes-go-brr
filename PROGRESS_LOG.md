@@ -72,3 +72,13 @@ code or UI (it reads as a clone in the submission). Say "crowd-cannon genre" or 
 **Blocked / risks:** none new.
 
 **Next / handoff:** Suparno: read `docs/IDEA.md` first. It's the one-page picture, and the look section is yours to shape.
+
+## 2026-11-21 · Kai · docs · [DECISION]
+**Did:** Put the name in IDEA/SPEC/TECH. Code ids: repo `lil-dudes-go-brr`, Anchor program `lil_dudes`.
+
+**Decided:** The game is called **Lil Dudes Go Brr**.
+
+**Blocked / risks:** none.
+
+**Next / handoff:** Kai is doing genre research (gameplay recording + game data) outside the repo. Findings
+come back as generic mechanics edits to SPEC/TECH.

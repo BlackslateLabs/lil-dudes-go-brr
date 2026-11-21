@@ -1,4 +1,4 @@
-# Technical Design (game name not chosen yet)
+# Lil Dudes Go Brr: Technical Design
 
 Status: **PROPOSED, confirm before scaffolding.** Updated 2026-11-21. Game rules: [SPEC.md](SPEC.md).
 Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo, or live devnet on
@@ -12,7 +12,7 @@ Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo
 | Game client | **TypeScript + Vite + React 19**, arena in **Three.js via @react-three/fiber + drei** | Wallet and MagicBlock SDKs are JS. Crowds = `InstancedMesh` (hundreds of units, cheap). AI agents are strongest here. Low-poly glTF assets drop in. |
 | Not Godot | — | Godot 4 web export is GDScript-only (no C#), every chain call goes through a JS bridge, the download is big, and it is weak on iOS Safari. |
 | Not Unity | — | MagicBlock has a Unity SDK, but WebGL builds are heavy, iteration is slow, and agents are weaker. |
-| Program | **Anchor 1.0.2**, one program `duel` (working id, renamed when we pick the name), `ephemeral-rollups-sdk = 0.18.x` features `anchor, vrf, access-control, crank` | Matches MagicBlock's current examples; 0.20 is the validator-2.0 line (`#[vrf]` broken there). |
+| Program | **Anchor 1.0.2**, one program `lil_dudes`, `ephemeral-rollups-sdk = 0.18.x` features `anchor, vrf, access-control, crank` | Matches MagicBlock's current examples; 0.20 is the validator-2.0 line (`#[vrf]` broken there). |
 | Shared sim | **`crates/sim`**: pure Rust, integer-only, deterministic, no Solana deps | Same code runs in the program, native tests, the balance runner, and later WASM (Verify replay). |
 | Chain client (TS) | **@solana/web3.js 1.x + @coral-xyz/anchor 0.32.1 + @magicblock-labs/ephemeral-rollups-sdk 0.18.0** + wallet-adapter | ✅ The exact stack of MagicBlock's Rock-Paper-Scissors app (PER + burner + bot + stakes), and it works against Anchor 1.0.2 programs. `@solana/kit` 8 + `ephemeral-rollups-kit` 0.18.0 is the later migration, not now. |
 | Rollup | **Private Ephemeral Rollup (TEE)**, `devnet-tee.magicblock.app` | Hidden `?` values, rigs and peeks need private accounts. ✅ TEE ER, VRF oracle and pricing oracle report live; ✅ slots measured at ~10 ms. |
@@ -46,12 +46,12 @@ Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo
 ## 3. Repo layout
 
 ```
-<repo>/
+lil-dudes-go-brr/
 ├─ (private per-person notes file, gitignored)
 ├─ PROGRESS_LOG.md              append-only shared log (git union-merge)
 ├─ docs/  SPEC.md  TECH.md
 ├─ Anchor.toml  Cargo.toml      Cargo workspace: programs/*, crates/*
-├─ programs/duel/               Anchor program (Kai)
+├─ programs/lil_dudes/          Anchor program (Kai)
 ├─ crates/sim/                  deterministic match sim (Kai; Suparno reads)
 ├─ tests-magicsvm/              MagicSVM integration tests (own [workspace], like the examples)
 ├─ packages/client/             TS: IDL, types, decoders, ER/TEE connection, tx builders (Kai)

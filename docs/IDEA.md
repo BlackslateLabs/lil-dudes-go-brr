@@ -1,6 +1,6 @@
-# The Idea
+# Lil Dudes Go Brr
 
-Name: not chosen yet. Rules in detail: [SPEC.md](SPEC.md). How it's built: [TECH.md](TECH.md).
+The idea in plain words. Rules in detail: [SPEC.md](SPEC.md). How it's built: [TECH.md](TECH.md).
 
 ## In one line
 
