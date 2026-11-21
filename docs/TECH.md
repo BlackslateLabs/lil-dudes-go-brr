@@ -49,12 +49,14 @@ Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo
 lil-dudes-go-brr/
 ├─ (private per-person notes file, gitignored)
 ├─ PROGRESS_LOG.md              append-only shared log (git union-merge)
-├─ docs/  SPEC.md  TECH.md
+├─ docs/  IDEA.md  SPEC.md  TECH.md  MVP.md
 ├─ Anchor.toml  Cargo.toml      Cargo workspace: programs/*, crates/*
 ├─ programs/lil_dudes/          Anchor program (Kai)
 ├─ crates/sim/                  deterministic match sim (Kai; Suparno reads)
+├─ crates/sim-wasm/             wasm-bindgen wrapper around crates/sim (Kai)
 ├─ tests-magicsvm/              MagicSVM integration tests (own [workspace], like the examples)
-├─ packages/client/             TS: IDL, types, decoders, ER/TEE connection, tx builders (Kai)
+├─ packages/sim-wasm/           PREBUILT wasm-pack output, committed (no Rust needed to use it)
+├─ packages/client/             TS: MatchView types, MatchSource (mock/offline/live), tx builders (Kai)
 ├─ apps/web/                    game client (Suparno)
 │  └─ public/assets/CREDITS.md  every asset + source + licence
 ├─ apps/server/                 Hono faucet + matchmaking (Kai)
@@ -63,9 +65,20 @@ lil-dudes-go-brr/
 ```
 
 **The contract between back end and front end is `packages/client`**: the `MatchView` TS type
-(decoded Match account), the event list, and functions like `createMatch()`, `setAim()`,
-`subscribeMatch()`. Suparno builds against a **mock** that emits `MatchView` at 20 Hz until the real
-chain feed lands. Any change to `MatchView` needs a PROGRESS_LOG entry tagged `CONTRACT`.
+(decoded Match account), the event list, constants (lane geometry, timings), and one interface,
+`MatchSource`, with three implementations behind it:
+
+| Source | What it is | When it exists |
+|---|---|---|
+| `MockSource` | hand-written TS fake: scripted cohorts, gates, reveals, events at 20 Hz | day 1 of the scaffold |
+| `OfflineSource` | the real rules (`packages/sim-wasm`) + local bot, no chain | end of M1 |
+| `LiveSource` | the chain feed (TEE websocket) + WASM prediction | M3 |
+
+The web app only talks to `MatchSource` (`subscribe(view => …)`, `setAim(x)`, `rig(cell)`,
+`peek(cell)`), so moving from mock → offline → live is a one-line change, with no rendering rewrite.
+**The WASM build is committed prebuilt**, so front-end work needs only Node + pnpm, never Rust. Kai
+rebuilds it whenever the sim changes. Any change to `MatchView`, `MatchSource` or the constants needs a
+PROGRESS_LOG entry tagged `CONTRACT`.
 
 ## 4. On-chain model
 

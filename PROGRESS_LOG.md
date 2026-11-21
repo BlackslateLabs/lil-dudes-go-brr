@@ -134,3 +134,14 @@ and sound, starting numbers, build order M1–M7 with who does what, the cut ord
 `docs/MVP.md`, own the §5 OPEN items (dudes design, arena theme, cannon/gates, logo, font, palette,
 audio), and build the M1 arena prototype.** Private research is shared through a separate private repo
 cloned into `pvt-docs/` (Kai will send the link).
+
+## 2026-11-21 · Kai · planning · [DECISION] [CONTRACT]
+**Did:** `docs/MVP.md` §9 "Working in parallel"; TECH §3: `MatchSource` with Mock → Offline → Live
+implementations; `packages/sim-wasm` committed prebuilt.
+
+**Decided:** Suparno never needs Rust, Solana tools or SOL. The web app talks only to `MatchSource`; Kai
+pushes a scaffold with a working `MockSource` first, and the rest are one-line swaps later.
+
+**Blocked / risks:** none.
+
+**Next / handoff:** Kai: scaffold + `MockSource`, push. Suparno: after pulling, `pnpm install && pnpm --filter web dev --host`, then build the arena on the mock.

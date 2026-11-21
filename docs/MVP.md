@@ -168,3 +168,33 @@ M1 and M2 run in parallel. M2 does not block M1, and M1 does not need SOL.
 - **Server sponsor wallet** (new keypair, made in M5, kept only in the server's env): tops up burners.
   It needs ~5 SOL for testing and the demo week.
 - **Two test burners** for live testing come from the sponsor wallet.
+
+## 9. Working in parallel
+
+**Day 0: Kai scaffolds and pushes the bare minimum, then Suparno pulls and starts.** The scaffold contains:
+- pnpm workspace + Cargo workspace (empty program and sim crates that build).
+- `apps/web`: Vite + React + R3F, running on a phone over Wi-Fi (`pnpm --filter web dev --host`), with a
+  placeholder lane, camera and a draggable cannon.
+- `packages/client`: `MatchView` v0, constants, `MatchSource`, and a working **`MockSource`** (fake
+  match at 20 Hz: volleys, gates revealing, clash, hits, plant windows, Surge, a fake end).
+- Nothing in `apps/web` needs Rust, Solana tools or SOL. Requirements: Node ≥ 24, pnpm 10, a phone on the same Wi-Fi.
+
+**Then the two tracks only meet at `packages/client`:**
+
+| When | Kai delivers | Suparno switches to | Suparno is never blocked because |
+|---|---|---|---|
+| Day 0 | scaffold + `MockSource` | builds the arena, HUD, screens on the mock | the mock already emits every event type |
+| End of M1 | `OfflineSource` (prebuilt WASM sim + bot) | one-line swap; tunes feel on the real rules | the mock keeps working as a fallback |
+| M3 | `LiveSource` + room-code calls | one-line swap; tests on two phones | offline mode stays the demo fallback |
+| M4–M5 | rig/peek/stake/wallet calls in `packages/client` | wires buttons to calls | each screen is built first against mock calls that resolve after a fake delay |
+
+**Rules:** Kai owns `packages/client` and announces each change with a `CONTRACT` log entry. If
+Suparno needs a new field or event, he adds a `HANDOFF` entry ("need X in MatchView") and keeps
+going with a local stand-in value. Screens that need chain calls (wallet, stake, waiting) are built
+against fake functions with the same signatures first.
+
+**Suparno → Kai:** the arena geometry he settles on (lane length, row spacing, gate width), since
+the sim's constants must match; the dude/cannon/gate sizes; what feels wrong in the sim (too
+slow, too fast) during M1.
+**Kai → Suparno:** constants + `MatchView` (day 0), the WASM sim (M1), the live feed (M3), and the chain
+calls (M4–M5).
