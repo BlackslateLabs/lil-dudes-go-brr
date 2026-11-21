@@ -1,9 +1,12 @@
 # Lil Dudes Go Brr: Technical Design
 
-Status: **PROPOSED, confirm before scaffolding.** Updated 2026-11-22. Game rules: [SPEC.md](SPEC.md).
+Status: **BUILT through M3** (live 1v1 on devnet + the TEE). Updated 2026-11-22. Game rules: [SPEC.md](SPEC.md).
 Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo, or live devnet on
 2026-11-21/22; ⚠️ = unverified; ❌ = disproved. **Stage 0 (M2) ran on 2026-11-22: every check passed
 or has a proven workaround. Numbers and rerun commands: [spikes/stage0/RESULTS.md](../spikes/stage0/RESULTS.md).**
+**M3 (2026-11-22): the real `lil_dudes` program is on devnet (`4QFSXrcG…9FDa`) and three headless bot-vs-bot
+matches ran end to end through `LiveSource` (KO, KO, timer win), each paid out exactly by the Magic Action.
+Final accounts, instructions and compute: §4; client: §5; results: `packages/client/scripts/out/`.**
 
 ## 1. Decisions
 
@@ -73,7 +76,7 @@ lil-dudes-go-brr/
 |---|---|---|
 | `MockSource` | hand-written TS fake: scripted cohorts, gates, reveals, events at 20 Hz | day 1 of the scaffold |
 | `OfflineSource` | the real rules (`packages/sim-wasm`) + local bot, no chain | end of M1 |
-| `LiveSource` | the chain feed (TEE websocket) + WASM prediction | M3 |
+| `LiveSource` | the chain feed (TEE websocket), played out ~3 ticks behind, events from state diffs (no prediction needed: p99 gap 51–53 ms) | ✅ M3 |
 
 The web app only talks to `MatchSource` (`subscribe(view => …)`, `setAim(x)`, `rig(cell)`,
 `peek(cell)`), so moving from mock → offline → live is a one-line change, with no rendering rewrite.
@@ -85,19 +88,22 @@ PROGRESS_LOG entry tagged `CONTRACT`.
 
 ### Accounts
 
-| Account | Layer | Visibility | Approx size | Holds |
+| Account | Layer | Visibility | Size (M3, final) | Holds |
 |---|---|---|---|---|
-| `Config` | base | public | ~100 B | admin, treasury, fee bps, toll bps |
-| `Vault` (per match) | base | public | 0 data (SOL) | both stakes until settle |
-| `Match` (per match) | delegated → TEE | **public** | ~1.3 KB (alloc 1,536) | players, burner keys, bot flag, tutorial flag, stake, status, `start_slot`, `last_tick`, phase, HP×2, cannon x×2 + aim×2, cohorts 2×40×10 B (`count u32, x i16, y i16, age u8, last_row u8`), gate view 2×9 (hint, revealed op/val), rig/peek counters, double state, winner |
-| `Secrets` (per match) | delegated → TEE | **private, no readers** until the end | ~128 B | VRF seed, true gate values for the current deal, active rig per side |
-| `Peek` (per player) | delegated → TEE | **private, member = that player's burner** | ~32 B | last peek result |
+| `Match` `["match", id]` | delegated → TEE | **public** (no permission) | 1,376 B (8 + 322 header + 1,046 state) | id, stake S, both picks, create/join times, ready/seed-request/start slots, players (stake wallets), burners (TEE signers), treasury, names, status, flags, bumps, last GOTCHA per grid, seed + rig/peek history (published at `finish`), and the sim's **public state** (codec) |
+| `Secrets` `["secrets", id]` | delegated → TEE | **private, no members** | 200 B | raw VRF output, both players' salts, the sim's **secret state** (codec: seed, true gates, gold cell, hints, rigs, peeks, per-phase history) |
+| `Peek[s]` `["peek", id, s]` | delegated → TEE | **private, member = burner s** | 56 B | that player's own rig and peek, each stamped with its phase (= `PrivateView`) |
+| `Vault` `["vault", id]` | base, never delegated | public | 0 data (SOL) | both stakes (2S) until settled |
+
+No `Config` account (M3): the treasury is a constant (the deploy wallet) and `delegate_match` only
+accepts the TEE validator; the test build (`--features magicsvm`) lifts both for MagicSVM.
+Codec (`crates/sim/src/codec.rs`, TS decoder `packages/client/src/codec.ts`): fixed offsets, little
+endian, only live cohorts copied; public part 1,046 B, secret part 85 B.
 
 All far under the 10,240 B commit limit ✅. Commit **once** at the end (commit + undelegate), so the
 10-commit nonce limit and the per-commit fees don't matter ✅.
 
-✅ Measured in Stage 0: the full sim state (`crates/sim` `MatchState`, public + secret) packs into
-**1,307 B** with an explicit little-endian codec (spike `codec.rs`; public part 1,252 B, secret 55 B).
+(Stage 0 packed the same state into 1,307 B with a spike codec; M3's codec is 1,131 B and ~12× cheaper.)
 
 **Permissions (✅ Stage 0 check 1).** Ephemeral permissions only: created on the ER by the delegated
 PDA itself (`CreateEphemeralPermissionCpi`, PDA-signed, PDA pays), nothing to create or delegate on the
@@ -107,19 +113,30 @@ token-less clients; `getAccountInfo`, `getMultipleAccounts`, `getProgramAccounts
 `programSubscribe` all omit it) while the program reads it. `Peek[side]`: `is_private: true,
 members: [that burner]` (flags TX_LOGS | TX_MESSAGE | TX_BALANCES | ACCOUNT_SIGNATURES) → only that player.
 Size `35 + 33·(1+N)` B, ER rent `32 × (size + 60)` lamports (4,096 for 0 members, 5,152 for 1):
-pre-fund it into the PDA at `create_match`/`join_match`. No need to close them before undelegation.
+pre-fund it into the PDA at `create_match`. No need to close them before undelegation.
+M3: `init_permissions` creates all three in one tx, members taken from the Match (never from the
+caller); no salt can be written before it ran (status gate), because an account without a
+permission is public.
 
-### Instructions
+### Instructions (M3, final)
 
-- **Base:** `init_config`, `create_match(id, stake, burner, vs_bot)`, `join_match(burner)`,
-  `delegate_match` (Match, Secrets, Peek×2 → TEE validator), `cancel_match` (refund if nobody joined),
-  `settle` (`#[action]` target of the Magic Action; **also callable by anyone** after undelegate as the
-  fallback, since a failed action drops every action in the bundle ✅).
-- **ER (TEE):** `init_permissions`, `request_seed` + `callback_seed` (`#[vrf]` / `#[vrf_callback]`,
-  ER queue; **declare `vrf_program_identity` yourself with a `const` address**, see Randomness),
-  `start` (schedules crank), `advance` (crank or anyone), `set_aim(x)` / `plant_rig(cell)` /
-  `peek(cell)` (signed by the registered burner), `respond_double` (stretch), `finish` (flip Secrets
-  public, cancel the crank, commit + undelegate with the `settle` Magic Action).
+- **Base:** `create_match(id, pick, burner, name)` (A: escrows the pick, pays all rent + permission
+  rent), `join_match(id, pick, burner, name)` (B: S = lower pick, A's excess refunded),
+  `delegate_match(id)` (Match + Secrets + Peek×2 → the TEE in one tx, commit frequency `u32::MAX`),
+  `cancel_match(id)` (creator while open; either player 60 s after an undelegated join),
+  `settle_action(id)` (`#[action]`, the Magic Action scheduled by `finish`), `settle(id)`
+  (permissionless fallback, once the Match is back on base), `close_match(id)` (anyone after
+  settlement; rent → creator).
+- **TEE:** `init_permissions`, `request_seed(salt)` (each player's private salt; the second one
+  requests the ER VRF; retry allowed after 300 slots), `callback_seed(randomness)` (`const`
+  VRF identity, infallible, seed = sha256(vrf ‖ salt0 ‖ salt1)[..8], writes the dealt start state),
+  `start` (tick 0 = now, schedules the crank; any player), `advance` (anyone; catch-up ≤ 8),
+  `set_aim(x)` (public, writes the aim byte-wise, ~3.3k CU), `plant_rig(cell)` / `peek_cell(cell)`
+  (catch up ≤ 2, apply, write Secrets + my Peek; refused = error), `finish` (anyone with a result,
+  or a player aborting an unstarted match after ~60 s: publishes seed + history in the Match,
+  commit + undelegate all four, post-commit action `settle_action`).
+- Tested in MagicSVM (15 tests, `tests-magicsvm/`, every instruction + refused cases) and on
+  devnet (three full live matches).
 
 ### Time and the tick
 
@@ -127,7 +144,9 @@ pre-fund it into the PDA at `create_match`/`join_match`. No need to close them b
   `target_tick = (Clock.slot − start_slot) / 5`.
 - `advance()` is **idempotent catch-up**: it steps from `last_tick` to `target_tick` (capped per tx,
   see the compute budget below) and returns OK if already current. **Every** player instruction calls it first.
-- The crank calls `advance` every 50 ms (≈2,600 iterations per match, cancelled at the end). ✅ The docs
+- The crank calls `advance` every 50 ms. M3: **3,600 runs** (1.5 × 2,400: the interval is wall time
+  but ticks follow slots, so this covers slots up to 15 ms), not cancelled (the legacy
+  `CancelTask` needs an undocumented task-context account); `advance` is a no-op after the end. ✅ The docs
   say cranks don't guarantee exact timing, so correctness never depends on the crank firing on time.
   ✅ **Stage 0 check 3:** a 50 ms crank (legacy `ScheduleTask`, which the TEE's validator 1.1.1 runs) on the
   TEE drove a real bot-vs-bot match: 3,000/3,000 and 2,600/2,600 calls, 0 missed, 0 failed; after the
@@ -139,26 +158,26 @@ pre-fund it into the PDA at `create_match`/`join_match`. No need to close them b
   state (late updates arrive bunched). Render ~3 ticks (150 ms) behind the newest snapshot. ⚠️ Phone
   not measured yet: `spikes/stage0/ws-rate.html`.
 
-### Compute budget (✅ measured, Stage 0 extra b)
+### Compute budget (✅ measured: Stage 0 on the TEE, M3 in MagicSVM)
 
-| | CU |
-|---|---|
-| decode + encode the 1.3 KB state (codec in the program crate, opt-level "z") | 68,378 |
-| Anchor + account load | ~5,600 |
-| one tick at worst case (40 v 40 cohorts, all 1,600 clash pairs in reach) | 49,000–50,000 |
-| one real crank call over a bot match (p50 / max) | 44,700 / 92,500 |
-| CU limit of a cranked tx | 399,700 |
+| | M2 spike | **M3** |
+|---|---|---|
+| decode + encode the state | 68,388 CU | **5,870 CU** (codec in `crates/sim` at opt-level 3, live cohorts only, `MatchState::zeroed`) |
+| one tick, M2's worst case (40v40 crossed, far apart) | 50,493 | **13,483** (clash: flat copy + x-bucket pre-check, same pairs, same order) |
+| one tick, new worst case (40v40 crossed, dx 700, in the bucket window) | 50,493 | **38,443** (physically unreachable: ≤ ~27 live per side) |
+| one tick, Surge peak of a real bot match | 5,715 | 6,022 |
+| real `advance`, 8-tick catch-up (Anchor included) | – | 15,410 |
+| real crank calls over a match (p50 / max) | 44,700 / 92,500 | 3,161 / 15,704 (MagicSVM, 4 of 5 calls are no-ops there) |
+| `set_aim` | – | 3,319 |
+| ticks per 400k crank tx at the worst case | 6 | **10** (cap set to 8) |
 
-❌ **40 ticks per `advance` does not fit** (~2.05M CU at worst case). Max ticks per tx at worst case:
-**26 at 1.4M CU, 6 in a crank tx, 2 at the default 200k.** So: cap catch-up at **6 steps** in the crank
-and **2** in player txs (or have them request 1.4M CU), and in M3 cut the fixed cost (codec into
-`crates/sim` at opt-level 3, or a zero-copy Match layout) and the clash loop (bucket by column).
-- ✅ Precedent: 20 ticks/s game physics inside an ER has already shipped in a past Blitz entry.
+Caps: **8 ticks per `advance` (crank), 2 in player txs** (`plant_rig`, `peek_cell`). Rerun:
+`tests-magicsvm/tests/bench.rs` (program feature `bench`) and `tests/tee.rs`.
 
 ### Randomness
 
 One VRF seed per match (✅ ER VRF is free and <50 ms) arrives in `callback_seed` → stored in
-`Secrets`. Each deal = `hash(seed, phase)` → shuffle + gold cell + gold value + hint coin-flips. The
+`Secrets` (M3: seed = sha256(vrf ‖ salt0 ‖ salt1)[..8], each salt sent privately by its player). Each deal = `hash(seed, phase)` → shuffle + gold cell + gold value + hint coin-flips. The
 seed is public only after the match, for Verify.
 
 ✅ **Stage 0 check 4:** requested from the TEE on `DEFAULT_EPHEMERAL_QUEUE` (by a 0-SOL burner), the
@@ -190,8 +209,11 @@ Two rules learned the hard way:
 ### Settlement
 
 `finish` on the ER → `MagicIntentBundleBuilder.commit_and_undelegate(Match, Secrets, Peek×2)` +
-post-commit action `settle` on base → pays winner/loser/treasury from the Vault per SPEC §7, refunds
-unused escrow. If the action fails, anyone calls `settle` directly.
+post-commit action `settle_action` on base → pays winner/loser/treasury from the Vault per SPEC §7
+(`moved`/`fee` from `crates/sim` `payout`; a draw or abort refunds S each). If the action fails,
+anyone calls `settle` directly. ✅ **M3 on devnet:** the finisher is a 0-SOL burner (it is the
+action's escrow authority) and the action paid out exactly in all three runs, ~0.4 s after `finish`
+was confirmed (KO 0.05 and 0.1 SOL, timer win 0.05 SOL with lead 649‰ → moved 82.45% of S).
 
 ✅ **Stage 0 check 6:** one base-layer tx (fee paid by the TEE validator) commits, undelegates and runs
 the action; the vault PDA (system-owned, never delegated) was drained to the recipient 5.3 s after
@@ -215,7 +237,12 @@ idempotency guard), or use `add_post_undelegate_actions`. The base tx is a **v1 
   phase pips (centre). HP labels sit on the cannons in world space (`2.2K` style, ticking smoothly).
   Your cannon sits at ~75–80% of screen height; the bottom ~20% is empty drag area. Prompts appear
   just above your cannon. No per-hit numbers anywhere.
-- **Render loop:** subscribe to `Match` over the TEE websocket. The client also runs **the same
+- **Render loop (M3, `LiveSource`):** raw-websocket `accountSubscribe` on Match + my Peek with the
+  burner's TEE token; snapshots are played out at 20 Hz ~3 ticks behind the newest (measured on
+  devnet: render gaps p50 50 / p99 51–53 ms, max 101 ms in a 2,049-tick match); events are derived
+  from state diffs (tested against the sim's own events tick by tick); the TEE setup and `finish`
+  are auto-driven by both players' sources (idempotent on-chain). Original plan:
+  subscribe to `Match` over the TEE websocket. The client also runs **the same
   `crates/sim` compiled to WASM**: between 20 Hz chain snapshots it steps the sim locally (cohort motion
   is deterministic), and each snapshot corrects it. Only hidden gate values and the opponent's aim are
   unknown locally, and the snapshot that reveals them arrives within ~1 tick. Render ~3 ticks (150 ms)
@@ -264,6 +291,14 @@ idempotency guard), or use `add_post_undelegate_actions`. The base tx is a **v1 
 - ✅ TEE auth: `GET /auth/challenge?pubkey=` → sign the challenge → `POST /auth/login` → token; CORS is
   `*`, so a browser on any origin can do it. `getVersion`/`getIdentity`/`getSlot` need no token.
 - Toolchain: Agave 3.1.10, Anchor 1.0.2 (avm), rustup stable (host), Node ≥ 22.12, pnpm 10.34 (pinned in `packageManager`). Front-end work needs only Node + pnpm.
+  SBF builds outside `anchor build` need `cargo build-sbf --tools-version v1.52` (v1.51's cargo
+  can't parse an edition-2024 dependency).
+- ✅ **Deployed (M3):** `lil_dudes` = `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` on devnet,
+  457,672 B, 2.3259 SOL rent, upgrade authority = the deploy wallet.
+- Client deps (M3): `@solana/web3.js` 1.98.4, `buffer`, `tweetnacl`, `bs58` only. The TEE auth
+  (challenge → sign → login) and every instruction (from the committed IDL
+  `packages/client/src/idl/lil_dudes.json`) are built in `packages/client/src/live/chain.ts`; no Anchor
+  TS or MagicBlock TS SDK in the bundle.
 - Rust: `anchor-lang = "1.0.2"`, `ephemeral-rollups-sdk = "0.18"` (never unpinned), `magicsvm = "0.3.0"` (dev).
   ✅ `anchor-lang =1.0.2` pulls its macro crates with `^1.0.2`, which resolved to 1.2.2 and breaks
   `#[account(init)]` (its codegen calls a 1.2.2-only function). `Cargo.lock` now pins `anchor-syn`,
@@ -314,7 +349,9 @@ Also: ✅ a burner with 0 SOL can send ER transactions; ❌ `advance` with 40 st
 | Magic Action fails | ✅ Permissionless `settle`, proven on devnet |
 | VRF callback fails (SDK macro, check 4) | ✅ Declare `vrf_program_identity` with a `const` address; keep the callback infallible |
 | A failed VRF callback leaks the randomness | Seed = `H(vrf ‖ private salts)`; the callback never fails |
-| `advance` over the CU limit (extra b) | Cap catch-up at 6 steps (crank) / 2 (player tx); codec into `crates/sim` or zero-copy; clash by column |
+| `advance` over the CU limit (extra b) | ✅ M3: codec 68k → 6k CU, worst tick 38k; caps 8 (crank) / 2 (player tx) |
+| Crank ends before the match (slow ER slots) | ✅ M3: 3,600 runs (covers 15 ms slots); LiveSource sends a heartbeat `advance` after 1 s without a tick |
+| 0-SOL burner can't schedule the crank / escrow the action | ✅ Did not fail (M3 devnet, three runs) |
 | Program upgrade needs ~2× rent in SOL | Small .so (`opt-level = "z"`, sim at 3); keep ≥ 5 SOL; or deploy fresh + close the old program |
 | Anchor macro crates drift to 1.2.2 | Keep them pinned to 1.0.2 in `Cargo.lock` |
 | Phone perf in 3D | Lower instance cap, flat shading, then a 2D sprite fallback in the same R3F scene |
