@@ -1,0 +1,9 @@
+# Both people append to the log at the same time; union keeps both sides instead of conflicting.
+PROGRESS_LOG.md merge=union
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.glb binary
+*.ogg binary
+*.mp3 binary
+*.wav binary
