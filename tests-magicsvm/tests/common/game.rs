@@ -450,6 +450,21 @@ impl Game {
         self.svm.get_balance(a).unwrap_or(0)
     }
 
+    /// MagicSVM 0.3.0's commit + undelegate leaves the DLP's delegation record and metadata on the
+    /// base layer, and its write hook then re-delegates any account that still has metadata. The
+    /// real DLP closes both when it undelegates (on devnet a Match written after undelegation
+    /// stays program-owned, Stage 0 check 6), so do the same before writing the Match on base.
+    pub fn clear_delegation_leftovers(&mut self) {
+        for a in [self.game, self.secrets, self.peeks[0], self.peeks[1]] {
+            for tag in [&b"delegation"[..], &b"delegation-metadata"[..]] {
+                let key = pda(&[tag, a.as_ref()], &DLP);
+                self.svm
+                    .set_account(key, solana_account::Account::default())
+                    .unwrap();
+            }
+        }
+    }
+
     // --- whole steps -------------------------------------------------------------------------
 
     /// create → join → delegate → init_permissions.

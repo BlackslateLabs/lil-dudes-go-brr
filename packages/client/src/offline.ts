@@ -5,6 +5,7 @@ import { constants_json, initSync, layout_version, rules_version, SimMatch } fro
 import { wasmBase64 } from '@lil-dudes/sim-wasm/inline';
 import * as C from './constants';
 import type { MatchListener, MatchSource } from './source';
+import { revealOf, type MatchReveal } from './verify';
 import type {
   CohortView,
   GateOp,
@@ -160,6 +161,12 @@ export class OfflineSource implements MatchSource {
   /** Digest of the full sim state (public + secret); equal across Rust, WASM and replays. */
   digest(): bigint {
     return this.sim.digest();
+  }
+
+  /** Every deal and every phase's rigs and peeks: the result screen's full reveal (offline the
+   *  seed is no secret, so this works mid-match too). */
+  reveal(): MatchReveal {
+    return revealOf(this.seed, this.sim.history());
   }
 
   /** The public state in the on-chain Match account layout (decode with `decodePublic`). */

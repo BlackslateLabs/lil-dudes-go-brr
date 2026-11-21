@@ -178,12 +178,55 @@ impl SimMatch {
         self.state.digest()
     }
 
+    /// Every phase's rigs and peeks so far (codec history layout, 3 × 2 × [rig, peek cell, kind,
+    /// value, gold], 255 = none); the live result screen reads the same bytes from the Match.
+    pub fn history(&self) -> Vec<u8> {
+        let mut out = [0u8; SECRET_LEN];
+        codec::encode_secret(&self.state.secret, &mut out);
+        codec::history_bytes(&out).to_vec()
+    }
+
     /// The public state in the on-chain codec layout (crates/sim/src/codec.rs), exactly the
     /// bytes the Match account holds; packages/client/src/codec.ts decodes it.
     pub fn public_bytes(&self) -> Vec<u8> {
         let mut out = [0u8; PUBLIC_LEN];
         codec::encode_public(&self.state.public, &mut out);
         out.to_vec()
+    }
+}
+
+/// The Warlord bot on its own, deciding from the on-chain public state (codec bytes). Used by
+/// headless live matches (packages/client/scripts); the UI never needs it.
+#[wasm_bindgen]
+pub struct Bot {
+    inner: Warlord,
+    view: PublicState,
+}
+
+#[wasm_bindgen]
+impl Bot {
+    /// `seed` must be independent of the match seed (it only drives tie-breaks and rig/peek cells).
+    #[wasm_bindgen(constructor)]
+    pub fn new(side: u8, seed: u64) -> Bot {
+        Bot {
+            inner: Warlord::new(side, seed),
+            view: MatchState::zeroed().public,
+        }
+    }
+
+    /// The bot's input for the tick the given public state is about to process:
+    /// `[aim, rig, peek]`, each -1 for none. Garbage or short input gives `[-1, -1, -1]`.
+    pub fn decide(&mut self, public_bytes: &[u8]) -> Vec<i32> {
+        let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
+            return vec![-1, -1, -1];
+        };
+        codec::decode_public(bytes, &mut self.view);
+        let i = self.inner.decide(&self.view);
+        vec![
+            i.aim.unwrap_or(-1),
+            i.rig.map_or(-1, i32::from),
+            i.peek.map_or(-1, i32::from),
+        ]
     }
 }
 
@@ -282,6 +325,26 @@ pub fn rules_version() -> u16 {
 pub fn layout_version() -> u32 {
     LAYOUT_VERSION
 }
+
+/// DEALS LAYOUT (`deals_for(seed)`): for each phase 0, 1, 2 (DEAL_LEN bytes each):
+///   gold cell, 9 × [kind, value] (true ops, gold included), 2 × 9 hints (side 0, then side 1).
+/// The deals of a finished match, from its published seed (Verify and the result screen).
+#[wasm_bindgen]
+pub fn deals_for(seed: u64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(PHASES * DEAL_LEN);
+    for phase in 0..PHASES as u8 {
+        let d = Deal::new(seed, phase);
+        out.push(d.gold_cell);
+        for op in d.ops {
+            let (k, v) = op.code();
+            out.extend([k, v]);
+        }
+        out.extend(d.hints.iter().flatten().map(|h| h.code()));
+    }
+    out
+}
+
+pub const DEAL_LEN: usize = 1 + 2 * CELLS + 2 * CELLS;
 
 /// crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
 #[wasm_bindgen]
@@ -413,6 +476,44 @@ mod tests {
         let mut p = MatchState::zeroed().public;
         codec::decode_public(bytes.as_slice().try_into().unwrap(), &mut p);
         assert_eq!(p, h.state.public);
+    }
+
+    #[test]
+    fn bot_handle_decides_like_the_sim_bot() {
+        let m = MatchState::new(4, MatchOptions::default());
+        let mut bytes = [0u8; PUBLIC_LEN];
+        codec::encode_public(&m.public, &mut bytes);
+        let mut handle = Bot::new(1, 77);
+        let mut direct = Warlord::new(1, 77);
+        let i = direct.decide(&m.public);
+        assert_eq!(
+            handle.decide(&bytes),
+            vec![
+                i.aim.unwrap_or(-1),
+                i.rig.map_or(-1, i32::from),
+                i.peek.map_or(-1, i32::from)
+            ]
+        );
+        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1, -1]);
+    }
+
+    #[test]
+    fn deals_for_matches_the_sim() {
+        let v = deals_for(99);
+        assert_eq!(v.len(), 3 * DEAL_LEN);
+        for p in 0..3u8 {
+            let d = Deal::new(99, p);
+            let at = usize::from(p) * DEAL_LEN;
+            assert_eq!(v[at], d.gold_cell);
+            assert_eq!((v[at + 1], v[at + 2]), d.ops[0].code());
+            assert_eq!(v[at + 19], d.hints[0][0].code());
+        }
+        // History of a played match: phase 1 has the bots' rigs.
+        let mut h = SimMatch::new(5, 6, 0, 0b11, false);
+        while h.step() {}
+        let hist = h.history();
+        assert_eq!(hist.len(), 30);
+        assert_ne!(hist[0], 255);
     }
 
     #[test]

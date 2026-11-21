@@ -43,3 +43,21 @@ test('decodePublic refuses short buffers and other codec versions', () => {
   assert.deepEqual(decodePublic(padded, 40), decodePublic(bytes));
   src.dispose();
 });
+
+test('dealsFor + history: the full reveal of a match', async () => {
+  const { dealsFor } = await import('../src/verify');
+  const src = new OfflineSource({ seed: 1234n, botSeed: 9n });
+  while (!src.view.result) src.step();
+  const r = src.reveal();
+  assert.equal(r.seed, 1234n);
+  assert.equal(r.deals.length, 3);
+  assert.deepEqual(dealsFor(1234n), r.deals);
+  for (const d of r.deals) {
+    assert.equal(d.ops.length, 9);
+    assert.equal(d.hints[0][d.goldCell], 'gold');
+    assert.ok(['mul', 'div'].includes(d.ops[d.goldCell]!.kind));
+  }
+  // The bot rigs every phase it reaches (on the first plant tick).
+  assert.ok(r.history[0]!.rigs[1] !== null);
+  src.dispose();
+});

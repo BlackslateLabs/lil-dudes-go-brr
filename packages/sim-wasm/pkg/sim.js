@@ -1,5 +1,48 @@
 /* @ts-self-types="./sim.d.ts" */
 
+/**
+ * The Warlord bot on its own, deciding from the on-chain public state (codec bytes). Used by
+ * headless live matches (packages/client/scripts); the UI never needs it.
+ */
+export class Bot {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        BotFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_bot_free(ptr, 0);
+    }
+    /**
+     * The bot's input for the tick the given public state is about to process:
+     * `[aim, rig, peek]`, each -1 for none. Garbage or short input gives `[-1, -1, -1]`.
+     * @param {Uint8Array | number[]} public_bytes
+     * @returns {Int32Array}
+     */
+    decide(public_bytes) {
+        const ptr0 = passArray8ToWasm0(public_bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.bot_decide(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayI32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v2;
+    }
+    /**
+     * `seed` must be independent of the match seed (it only drives tie-breaks and rig/peek cells).
+     * @param {number} side
+     * @param {bigint} seed
+     */
+    constructor(side, seed) {
+        const ret = wasm.bot_new(side, seed);
+        this.__wbg_ptr = ret;
+        BotFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) Bot.prototype[Symbol.dispose] = Bot.prototype.free;
+
 export class SimMatch {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -34,6 +77,17 @@ export class SimMatch {
         const ret = wasm.simmatch_events(this.__wbg_ptr);
         var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * Every phase's rigs and peeks so far (codec history layout, 3 × 2 × [rig, peek cell, kind,
+     * value, gold], 255 = none); the live result screen reads the same bytes from the Match.
+     * @returns {Uint8Array}
+     */
+    history() {
+        const ret = wasm.simmatch_history(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
     }
     /**
@@ -140,6 +194,20 @@ export function constants_json() {
 }
 
 /**
+ * DEALS LAYOUT (`deals_for(seed)`): for each phase 0, 1, 2 (DEAL_LEN bytes each):
+ *   gold cell, 9 × [kind, value] (true ops, gold included), 2 × 9 hints (side 0, then side 1).
+ * The deals of a finished match, from its published seed (Verify and the result screen).
+ * @param {bigint} seed
+ * @returns {Uint8Array}
+ */
+export function deals_for(seed) {
+    const ret = wasm.deals_for(seed);
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
  * @returns {number}
  */
 export function layout_version() {
@@ -175,6 +243,9 @@ function __wbg_get_imports() {
     };
 }
 
+const BotFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_bot_free(ptr, 1));
 const SimMatchFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_simmatch_free(ptr, 1));
@@ -182,6 +253,11 @@ const SimMatchFinalization = (typeof FinalizationRegistry === 'undefined')
 function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 
 function getArrayU8FromWasm0(ptr, len) {
@@ -195,6 +271,14 @@ function getFloat64ArrayMemory0() {
         cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
     }
     return cachedFloat64ArrayMemory0;
+}
+
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.byteLength === 0) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -214,6 +298,13 @@ function isLikeNone(x) {
     return x === undefined || x === null;
 }
 
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
@@ -228,12 +319,15 @@ function decodeText(bytes) {
     return cachedTextDecoder.decode(bytes);
 }
 
+let WASM_VECTOR_LEN = 0;
+
 let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
     cachedFloat64ArrayMemory0 = null;
+    cachedInt32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;

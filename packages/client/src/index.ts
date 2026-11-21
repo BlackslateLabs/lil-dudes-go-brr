@@ -7,3 +7,5 @@ export { OfflineSource, initSim, simConstants, simRulesVersion } from './offline
 export type { OfflineOptions } from './offline';
 export { decodePublic, toMatchView, phaseAt, statusOf, inPlant, playStart, opOf, PUBLIC_LEN, CODEC_VERSION } from './codec';
 export type { PublicState, SideState, CohortState } from './codec';
+export { dealsFor, decodeHistory, revealOf } from './verify';
+export type { Deal, PhaseLog, MatchReveal } from './verify';
