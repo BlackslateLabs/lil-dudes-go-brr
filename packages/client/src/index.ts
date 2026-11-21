@@ -9,3 +9,10 @@ export { decodePublic, toMatchView, phaseAt, statusOf, inPlant, playStart, opOf,
 export type { PublicState, SideState, CohortState } from './codec';
 export { dealsFor, decodeHistory, revealOf } from './verify';
 export type { Deal, PhaseLog, MatchReveal } from './verify';
+export { LiveSource } from './live/source';
+export type { LiveOptions, LiveStage } from './live/source';
+export * as chain from './live/chain';
+export {
+  baseConnection, createMatch, joinMatch, delegateMatch, cancelMatch, settleMatch, closeMatch, fetchMatch, isOnBase, isSettled,
+} from './live/lobby';
+export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from './live/chain';

@@ -1,0 +1,2173 @@
+{
+  "address": "4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa",
+  "metadata": {
+    "name": "lil_dudes",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Lil Dudes Go Brr: on-chain 1v1 crowd-cannon duel (MagicBlock Private ER)"
+  },
+  "instructions": [
+    {
+      "name": "advance",
+      "discriminator": [
+        7,
+        56,
+        108,
+        201,
+        36,
+        20,
+        57,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "callback_seed",
+      "discriminator": [
+        179,
+        172,
+        236,
+        94,
+        46,
+        130,
+        64,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "vrf_program_identity",
+          "signer": true,
+          "address": "AnyS3aPUqX3FjgCckXuY8F5xHwraHREGDUp1J5eqXpsC"
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel_match",
+      "discriminator": [
+        142,
+        136,
+        247,
+        45,
+        92,
+        112,
+        180,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true
+        },
+        {
+          "name": "opponent",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "close_match",
+      "discriminator": [
+        79,
+        174,
+        36,
+        80,
+        233,
+        185,
+        176,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_match",
+      "discriminator": [
+        107,
+        2,
+        184,
+        145,
+        70,
+        142,
+        17,
+        165
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        },
+        {
+          "name": "pick",
+          "type": "u64"
+        },
+        {
+          "name": "burner",
+          "type": "pubkey"
+        },
+        {
+          "name": "name",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "delegate_match",
+      "discriminator": [
+        30,
+        116,
+        9,
+        69,
+        147,
+        61,
+        133,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "validator"
+        },
+        {
+          "name": "buffer_game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                50,
+                135,
+                191,
+                58,
+                46,
+                176,
+                209,
+                180,
+                22,
+                200,
+                182,
+                190,
+                129,
+                124,
+                91,
+                203,
+                36,
+                45,
+                53,
+                67,
+                192,
+                244,
+                155,
+                105,
+                37,
+                19,
+                173,
+                159,
+                146,
+                62,
+                16,
+                161
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer_secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secrets"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                50,
+                135,
+                191,
+                58,
+                46,
+                176,
+                209,
+                180,
+                22,
+                200,
+                182,
+                190,
+                129,
+                124,
+                91,
+                203,
+                36,
+                45,
+                53,
+                67,
+                192,
+                244,
+                155,
+                105,
+                37,
+                19,
+                173,
+                159,
+                146,
+                62,
+                16,
+                161
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secrets"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secrets"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "secrets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer_peek0",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek0"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                50,
+                135,
+                191,
+                58,
+                46,
+                176,
+                209,
+                180,
+                22,
+                200,
+                182,
+                190,
+                129,
+                124,
+                91,
+                203,
+                36,
+                45,
+                53,
+                67,
+                192,
+                244,
+                155,
+                105,
+                37,
+                19,
+                173,
+                159,
+                146,
+                62,
+                16,
+                161
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_peek0",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek0"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_peek0",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek0"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "buffer_peek1",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek1"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                50,
+                135,
+                191,
+                58,
+                46,
+                176,
+                209,
+                180,
+                22,
+                200,
+                182,
+                190,
+                129,
+                124,
+                91,
+                203,
+                36,
+                45,
+                53,
+                67,
+                192,
+                244,
+                155,
+                105,
+                37,
+                19,
+                173,
+                159,
+                146,
+                62,
+                16,
+                161
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_peek1",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek1"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_peek1",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "peek1"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "owner_program",
+          "address": "4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finish",
+      "discriminator": [
+        67,
+        74,
+        170,
+        132,
+        125,
+        233,
+        182,
+        37
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_permissions",
+      "discriminator": [
+        247,
+        240,
+        133,
+        29,
+        26,
+        176,
+        185,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "peek0",
+          "writable": true
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "secrets_permission",
+          "writable": true
+        },
+        {
+          "name": "peek0_permission",
+          "writable": true
+        },
+        {
+          "name": "peek1_permission",
+          "writable": true
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "join_match",
+      "discriminator": [
+        244,
+        8,
+        47,
+        130,
+        192,
+        59,
+        179,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "peek1",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        },
+        {
+          "name": "pick",
+          "type": "u64"
+        },
+        {
+          "name": "burner",
+          "type": "pubkey"
+        },
+        {
+          "name": "name",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "peek_cell",
+      "discriminator": [
+        143,
+        239,
+        88,
+        51,
+        247,
+        126,
+        13,
+        58
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "peek",
+          "docs": [
+            "The signer's own Peek (private to them)."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "cell",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "plant_rig",
+      "discriminator": [
+        226,
+        31,
+        56,
+        210,
+        127,
+        176,
+        103,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "peek",
+          "docs": [
+            "The signer's own Peek (private to them)."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "cell",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  110,
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  101,
+                  45,
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "base_account"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "request_seed",
+      "discriminator": [
+        162,
+        96,
+        174,
+        50,
+        178,
+        77,
+        115,
+        152
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "A player's burner (needs no SOL: the ER queue is free)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true,
+          "address": "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc"
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_aim",
+      "discriminator": [
+        121,
+        66,
+        227,
+        30,
+        248,
+        253,
+        39,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "x",
+          "type": "i16"
+        }
+      ]
+    },
+    {
+      "name": "settle",
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "docs": [
+            "Owner check: only an undelegated (final, committed) Match loads."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player0",
+          "writable": true
+        },
+        {
+          "name": "player1",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_action",
+      "discriminator": [
+        10,
+        58,
+        136,
+        98,
+        207,
+        113,
+        239,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "docs": [
+            "progress; pinned by seeds, read raw (discriminator checked), never written."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player0",
+          "writable": true
+        },
+        {
+          "name": "player1",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "source_program",
+          "address": "4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa"
+        },
+        {
+          "name": "escrow_auth"
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "through the real post-commit path."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "start",
+      "discriminator": [
+        62,
+        15,
+        117,
+        236,
+        47,
+        1,
+        89,
+        139
+      ],
+      "accounts": [
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "A player's burner: the crank's authority."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game",
+          "docs": [
+            "typed (Anchor would write it back after the CPI)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "writable": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Match",
+      "discriminator": [
+        236,
+        63,
+        169,
+        38,
+        15,
+        56,
+        196,
+        162
+      ]
+    },
+    {
+      "name": "Peek",
+      "discriminator": [
+        129,
+        57,
+        165,
+        130,
+        41,
+        243,
+        254,
+        104
+      ]
+    },
+    {
+      "name": "Secrets",
+      "discriminator": [
+        163,
+        209,
+        193,
+        146,
+        123,
+        145,
+        70,
+        90
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadStake",
+      "msg": "stake must be one of the tiers: 0, 0.05, 0.1 or 0.25 SOL"
+    },
+    {
+      "code": 6001,
+      "name": "WrongStatus",
+      "msg": "the match is not in the right state for this"
+    },
+    {
+      "code": 6002,
+      "name": "NotAPlayer",
+      "msg": "signer is not a player of this match"
+    },
+    {
+      "code": 6003,
+      "name": "BadBurner",
+      "msg": "burner key is missing or already used by the other side"
+    },
+    {
+      "code": 6004,
+      "name": "WrongAccount",
+      "msg": "account does not belong to this match"
+    },
+    {
+      "code": 6005,
+      "name": "TooEarly",
+      "msg": "too early to cancel or abort"
+    },
+    {
+      "code": 6006,
+      "name": "RigRefused",
+      "msg": "the rig was refused (not the plant window, used, gold, revealed or a bad cell)"
+    },
+    {
+      "code": 6007,
+      "name": "PeekRefused",
+      "msg": "the peek was refused (not during play, used, revealed or a bad cell)"
+    },
+    {
+      "code": 6008,
+      "name": "NotOver",
+      "msg": "the match has no result yet"
+    },
+    {
+      "code": 6009,
+      "name": "AlreadySettled",
+      "msg": "already settled"
+    },
+    {
+      "code": 6010,
+      "name": "WrongRecipient",
+      "msg": "wrong payout recipient"
+    },
+    {
+      "code": 6011,
+      "name": "WrongValidator",
+      "msg": "only the TEE validator may host a match"
+    },
+    {
+      "code": 6012,
+      "name": "BadData",
+      "msg": "bad account data"
+    }
+  ],
+  "types": [
+    {
+      "name": "Match",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "stake",
+            "docs": [
+              "Matched stake S in lamports (0 = free). Each player escrows S."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "picks",
+            "docs": [
+              "What each player picked before matching (A's excess is refunded at join)."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                2
+              ]
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Base-layer unix time of create / join (cancel timeouts)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "joined_at",
+            "type": "i64"
+          },
+          {
+            "name": "ready_slot",
+            "docs": [
+              "TEE slot when the permissions were made (abort timeout), when the VRF was last requested,",
+              "and of tick 0 (0 = not started)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "seed_req_slot",
+            "type": "u64"
+          },
+          {
+            "name": "start_slot",
+            "type": "u64"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "The VRF seed, published at `finish` (0 until then)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "players",
+            "docs": [
+              "Wallets that paid the stakes and receive the payout."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                2
+              ]
+            }
+          },
+          {
+            "name": "burners",
+            "docs": [
+              "Per-device burner keys that sign on the TEE (they need no SOL there)."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                2
+              ]
+            }
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "names",
+            "docs": [
+              "Display names, UTF-8, zero-padded."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    16
+                  ]
+                },
+                2
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          },
+          {
+            "name": "rules_version",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "bumps",
+            "docs": [
+              "Bumps of Match, Secrets, Peek[0], Peek[1]."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          },
+          {
+            "name": "gotcha",
+            "docs": [
+              "Last rig sprung on each side's grid: [tick lo, tick hi, cell, rigged by]; tick NO_TICK = none."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    4
+                  ]
+                },
+                2
+              ]
+            }
+          },
+          {
+            "name": "history",
+            "docs": [
+              "Published at `finish`: every phase's rigs and peeks (codec history layout)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                30
+              ]
+            }
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "docs": [
+              "The sim's public state (crates/sim codec, PUBLIC part)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                1046
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Peek",
+      "docs": [
+        "One player's private view (MatchView's PrivateView): what they rigged and peeked. Entries",
+        "carry their phase; one from an earlier phase is stale."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "That side's burner (the permission member)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "rig_phase",
+            "type": "u8"
+          },
+          {
+            "name": "rig_cell",
+            "type": "u8"
+          },
+          {
+            "name": "peek_phase",
+            "type": "u8"
+          },
+          {
+            "name": "peek_cell",
+            "type": "u8"
+          },
+          {
+            "name": "peek_kind",
+            "type": "u8"
+          },
+          {
+            "name": "peek_value",
+            "type": "u8"
+          },
+          {
+            "name": "peek_gold",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Secrets",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "vrf",
+            "docs": [
+              "Raw VRF output (the seed is H(vrf ‖ salt0 ‖ salt1), TECH §4 Randomness)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "salts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                2
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "docs": [
+              "The sim's secret state (crates/sim codec, SECRET part)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                85
+              ]
+            }
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

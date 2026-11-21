@@ -1,0 +1,160 @@
+{
+  "stake": 50000000,
+  "started": "2026-11-21T23:02:05.609Z",
+  "match": {
+    "id": "15657699309438737690",
+    "account": "e4ganqgNC9GKkZienuoEKs3JEKbcVnpK9akqUjRWZFP",
+    "createSig": "2Yj6hiqWvZRh5Tmq7NNrGcZfehxHp3z8AJeF7c1AAu3AwiqC1FBWq1wbsELNsGYKQnxJ6PNzrfnywEs9U3bXDQbQ",
+    "joinSig": "3GUtLUa7eD5SWGZXVYddYuF9fq46n4hZ5YLJayxi1jqFaf9anG3cmit432J5vyvYsk1z7QXKnJQNGWQpVeDvx6fJ",
+    "delegateSig": "3Ai3sy1fqCF8L3xk5RzTB575D2eaPNiXu2BdHitySyrVexBDJ2ZgVWKgSC6LxGmJL3oUxvCjpvKhUZNQTDyYm35D"
+  },
+  "result": {
+    "winner": 1,
+    "ko": true,
+    "moved": 50000000,
+    "fee": 2500000
+  },
+  "finalTick": 593,
+  "hp": [
+    0,
+    2200
+  ],
+  "settledBy": "action",
+  "payoutDeltas": [
+    0,
+    97500000
+  ],
+  "payoutExpected": [
+    0,
+    97500000
+  ],
+  "payoutOk": true,
+  "seed": "17594551599144074356",
+  "history": [
+    {
+      "phase": 0,
+      "rigs": [
+        3,
+        2
+      ],
+      "peeks": [
+        {
+          "cell": 8,
+          "op": {
+            "kind": "mul",
+            "value": 3
+          },
+          "gold": false
+        },
+        {
+          "cell": 3,
+          "op": {
+            "kind": "div",
+            "value": 2
+          },
+          "gold": false
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "rigs": [
+        null,
+        null
+      ],
+      "peeks": [
+        null,
+        null
+      ]
+    },
+    {
+      "phase": 2,
+      "rigs": [
+        null,
+        null
+      ],
+      "peeks": [
+        null,
+        null
+      ]
+    }
+  ],
+  "verify": {
+    "ok": true,
+    "revealedGatesChecked": 12,
+    "mismatches": 0
+  },
+  "status": 5,
+  "txs": {
+    "init_permissions": 1,
+    "request_seed": 2,
+    "start": 1,
+    "plant_rig": 2,
+    "set_aim": 5,
+    "advance": 1,
+    "peek_cell": 2,
+    "finish": 1
+  },
+  "events": {
+    "plant": 1,
+    "volley": 133,
+    "reveal": 12,
+    "gate": 232,
+    "gotcha": 1,
+    "clash": 66,
+    "hit": 51,
+    "end": 1
+  },
+  "renderedFrames": 589,
+  "feed": [
+    {
+      "snapshots": 617,
+      "emitted": 602,
+      "maxQueue": 8,
+      "txs": 8,
+      "txFailures": 2
+    },
+    {
+      "snapshots": 617,
+      "emitted": 602,
+      "maxQueue": 8,
+      "txs": 7,
+      "txFailures": 2
+    }
+  ],
+  "frameGapMs": {
+    "p50": 50,
+    "p90": 51,
+    "p99": 53,
+    "max": 2355
+  },
+  "stages": [
+    "9.4s side 0: setup (permissions)",
+    "9.5s side 1: setup (permissions)",
+    "10.5s side 0: setup (seed)",
+    "10.5s side 1: setup (seed)",
+    "11.5s side 0: setup (start)",
+    "11.5s side 1: setup (start)",
+    "11.7s side 1: playing",
+    "12.1s side 0: playing",
+    "41.3s side 1: finishing",
+    "41.3s side 0: finishing",
+    "42.0s side 1: finished",
+    "42.6s side 0: finished"
+  ],
+  "timingsMs": {
+    "created": 5161,
+    "joined": 6736,
+    "delegated": 8111,
+    "connected": 9445,
+    "playing": 11960,
+    "finished_on_tee": 42722,
+    "settled": 43102,
+    "done": 48064
+  },
+  "sol": {
+    "before": 7.594650761,
+    "after": 7.582666921,
+    "spent": 0.01198384
+  }
+}

@@ -1,0 +1,190 @@
+{
+  "stake": 100000000,
+  "started": "2026-11-21T23:03:32.698Z",
+  "match": {
+    "id": "6919342947161030422",
+    "account": "5tn8eBR4RyL8s48SkS856BAS8AkptAaX8Q6dCGNc9jZe",
+    "createSig": "46Lg3d9WGTW8QT7S1bmMABrZRxhhBbUtdm5aKLCuocCsqnZcmbWdLYxUQ3gjN6CeVvKuWcdLCndc7aLqcT3aV4Nb",
+    "joinSig": "5dU6VtoHTy87sjMhVzNNVR1YhwmBfvCHYY8vduE6SzaabQBNNNphDTNxH28KpSoseb9pkQpGes2w1xbRZvPv7b5S",
+    "delegateSig": "3iHsDZummSn3tKcy8HuwkZZ5RuPhS2EXJsU4XfYJs2eCSxhojFN2GM9snraUWAmnM3t84Ruo8eP97EsKoByWt5Ka"
+  },
+  "result": {
+    "winner": 0,
+    "ko": true,
+    "moved": 100000000,
+    "fee": 5000000
+  },
+  "finalTick": 2049,
+  "hp": [
+    1918,
+    0
+  ],
+  "settledBy": "action",
+  "payoutDeltas": [
+    195000000,
+    0
+  ],
+  "payoutExpected": [
+    195000000,
+    0
+  ],
+  "payoutOk": true,
+  "seed": "1900820428611831608",
+  "history": [
+    {
+      "phase": 0,
+      "rigs": [
+        0,
+        6
+      ],
+      "peeks": [
+        {
+          "cell": 2,
+          "op": {
+            "kind": "add",
+            "value": 10
+          },
+          "gold": false
+        },
+        {
+          "cell": 1,
+          "op": {
+            "kind": "sub",
+            "value": 6
+          },
+          "gold": false
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "rigs": [
+        8,
+        8
+      ],
+      "peeks": [
+        {
+          "cell": 3,
+          "op": {
+            "kind": "add",
+            "value": 10
+          },
+          "gold": false
+        },
+        {
+          "cell": 2,
+          "op": {
+            "kind": "add",
+            "value": 6
+          },
+          "gold": false
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "rigs": [
+        8,
+        4
+      ],
+      "peeks": [
+        {
+          "cell": 3,
+          "op": {
+            "kind": "add",
+            "value": 6
+          },
+          "gold": false
+        },
+        {
+          "cell": 1,
+          "op": {
+            "kind": "sub",
+            "value": 6
+          },
+          "gold": false
+        }
+      ]
+    }
+  ],
+  "verify": {
+    "ok": true,
+    "revealedGatesChecked": 11,
+    "mismatches": 0
+  },
+  "status": 5,
+  "txs": {
+    "init_permissions": 1,
+    "request_seed": 2,
+    "start": 1,
+    "set_aim": 19,
+    "plant_rig": 6,
+    "advance": 1,
+    "peek_cell": 6,
+    "finish": 1
+  },
+  "events": {
+    "plant": 3,
+    "volley": 469,
+    "reveal": 34,
+    "gate": 1002,
+    "gotcha": 5,
+    "clash": 302,
+    "redeal": 2,
+    "hit": 139,
+    "end": 1
+  },
+  "renderedFrames": 2036,
+  "feed": [
+    {
+      "snapshots": 2092,
+      "emitted": 2046,
+      "maxQueue": 10,
+      "txs": 21,
+      "txFailures": 4
+    },
+    {
+      "snapshots": 2092,
+      "emitted": 2044,
+      "maxQueue": 9,
+      "txs": 16,
+      "txFailures": 1
+    }
+  ],
+  "frameGapMs": {
+    "p50": 50,
+    "p90": 51,
+    "p99": 51,
+    "max": 101
+  },
+  "stages": [
+    "9.6s side 0: setup (permissions)",
+    "9.6s side 1: setup (permissions)",
+    "10.6s side 0: setup (seed)",
+    "10.6s side 1: setup (seed)",
+    "11.7s side 0: setup (start)",
+    "11.7s side 1: setup (start)",
+    "11.8s side 1: playing",
+    "12.2s side 0: playing",
+    "114.3s side 1: finishing",
+    "114.3s side 0: finishing",
+    "114.9s side 1: finished",
+    "115.5s side 0: finished"
+  ],
+  "timingsMs": {
+    "created": 4922,
+    "joined": 6562,
+    "delegated": 7789,
+    "connected": 9621,
+    "playing": 12140,
+    "finished_on_tee": 115734,
+    "settled": 116140,
+    "done": 157936
+  },
+  "sol": {
+    "before": 7.582666921,
+    "after": 7.347646921,
+    "spent": 0.23502,
+    "note": "wallet A sweep failed in this run (confirmation timeout; sweep now retries) and was swept afterwards: true cost 0.01198 SOL (7.582666921 -> 7.570683081 after the sweep)"
+  }
+}
