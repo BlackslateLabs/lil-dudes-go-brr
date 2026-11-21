@@ -333,3 +333,28 @@ Crank cancel: the SDK's legacy `CancelCrankCpi` needs an undocumented task-conte
 `start` schedules exactly the iterations a match needs and `advance` is a no-op after the end.
 
 **Blocked / risks:** none.
+
+## 2026-11-22 03:35 IST · Kai · M3 steps 2–3 (accounts, base layer) · [DECISION]
+**Did:** M3 steps 2 and 3 done; next: step 4 (TEE instructions; the code is in, tests next).
+- `programs/lil_dudes`: `Match` (zero-copy, 1,376 B: header + the codec's public state), `Secrets`
+  (192 B: VRF output, both salts, the codec's secret state), `Peek[side]` (56 B: that player's own
+  rig + peek, each stamped with its phase), vault PDA (system-owned, base only). `create_match`
+  (stake tiers 0/0.05/0.1/0.25 SOL, pre-funds the ephemeral permission rent), `join_match` (S =
+  lower pick, A's excess refunded), `delegate_match` (all four accounts in one tx, TEE pinned,
+  never commits on a timer), `cancel_match` (creator while open; either player 60 s after an
+  undelegated join), `init_permissions` (Secrets private/no members, Peek[s] private/member burner s).
+- `tests-magicsvm/tests/flow.rs` (MagicSVM 0.3.0, IDL-driven instruction builders): create → join
+  → delegate → permissions with the viewer filter (Secrets hidden from both burners and anyone,
+  each Peek visible only to its burner), VRF seed + start + crank (40 ticks in 200 slots, 0
+  failures), cancel/refund paths and refused cases.
+
+**Decided:** no `Config` account: the treasury is a constant (the deploy wallet; a fixed test key
+in the `magicsvm` feature build) and `delegate_match` only accepts the TEE validator
+(`MTEWGuqx…xzo`); the test build (`--features magicsvm`) lifts the pin because MagicSVM's validator
+differs. `set_aim` writes the aim straight into the public state (no catch-up, no Secrets): it is
+public anyway and costs ~3k CU. Instruction names: `peek_cell` (not `peek`, the account type).
+Rent: A pays all four accounts (~0.013 SOL), refunded by `close_match`.
+
+**Blocked / risks:** a crank scheduled by a 0-SOL burner and the Magic Action escrowed by a burner
+are unproven on devnet (MagicSVM accepts both); fallback = the funded server/test wallet sends
+`start`/`finish`, and `settle` stays permissionless.
