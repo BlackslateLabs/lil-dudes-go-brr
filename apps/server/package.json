@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Faucet/top-up for burners + quick-match queue. Never decides game outcomes.",
+  "description": "Matchmaking (room codes, quick-match queue) for live matches; later the burner faucet. Never decides game outcomes.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.11",

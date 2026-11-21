@@ -2,7 +2,8 @@
 // create → join → delegate (base) → both LiveSources auto-drive permissions, salts + VRF seed,
 // start (crank) → the WASM Warlord plays both sides through setAim / rig / peek → finish (commit
 // + undelegate + Magic Action) → payout check → close → sweep. Burners have 0 SOL.
-//   pnpm --filter @lil-dudes/client live [-- --stake 50000000]
+//   pnpm --filter @lil-dudes/client live [-- --stake 50000000] [--server http://localhost:8787 --mode queue|room]
+// With --server, matchmaking goes through apps/server (quick-match queue or a room code).
 // Funds come from the Solana CLI wallet (~/.config/solana/id.json; loaded to sign, never printed).
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, type Connection } from '@solana/web3.js';
 import { Bot } from '@lil-dudes/sim-wasm';
@@ -15,6 +16,10 @@ import {
   chain,
   closeMatch,
   createMatch,
+  createRoom,
+  findRoom,
+  quickMatch,
+  waitForStatus,
   delegateMatch,
   fetchMatch,
   initSim,
@@ -96,16 +101,52 @@ async function main() {
   const timings: Record<string, number> = {};
   const lap = (k: string) => (timings[k] = Date.now() - t0);
 
-  // 1. Base layer.
-  const { id, signature: createSig } = await createMatch(base, wallets[0]!, { stake: STAKE, burner: burners[0]!.publicKey, name: 'Bot A' });
-  lap('created');
+  // 1. Matchmaking (optional, apps/server) + base layer.
+  const server = arg('server', '');
+  const mode = arg('mode', 'queue');
+  let id: bigint;
+  let createSig: string;
+  let joinSig: string;
+  let matchmaking: Record<string, unknown> = { via: 'direct' };
+  if (server && mode === 'queue') {
+    // Both players queue on the same tier; the server pairs them and assigns roles.
+    const [q0, q1] = await Promise.all(wallets.map((w) => quickMatch(server, w.publicKey, STAKE, { pollMs: 300 })));
+    lap('queued');
+    if (q0!.id !== q1!.id || q0!.role === q1!.role) throw new Error(`bad pairing ${JSON.stringify([q0, q1], (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
+    const creator = q0!.role === 'create' ? 0 : 1;
+    if (creator !== 0) wallets.reverse(), burners.reverse();
+    id = q0!.id;
+    matchmaking = { via: 'queue', id: id.toString() };
+    // The creator creates; the joiner waits for the OPEN match, then joins.
+    const joining = (async () => {
+      await waitForStatus(base, id, chain.Status.OPEN);
+      return joinMatch(base, wallets[1]!, { id, stake: STAKE, burner: burners[1]!.publicKey, name: 'Bot B' });
+    })();
+    createSig = (await createMatch(base, wallets[0]!, { id, stake: STAKE, burner: burners[0]!.publicKey, name: 'Bot A' })).signature;
+    lap('created');
+    joinSig = await joining;
+  } else {
+    const created = await createMatch(base, wallets[0]!, { stake: STAKE, burner: burners[0]!.publicKey, name: 'Bot A' });
+    id = created.id;
+    createSig = created.signature;
+    lap('created');
+    if (server && mode === 'room') {
+      // Room code: the creator registers the match, the joiner finds it by the code.
+      const room = await createRoom(server, id, STAKE);
+      const found = await findRoom(server, room.code);
+      if (found.id !== id) throw new Error('room code lookup returned another match');
+      matchmaking = { via: 'room', code: room.code };
+      log('room code', room.code);
+    }
+    joinSig = await joinMatch(base, wallets[1]!, { id, stake: STAKE, burner: burners[1]!.publicKey, name: 'Bot B' });
+  }
   log('match', id.toString(), 'created', createSig);
-  const joinSig = await joinMatch(base, wallets[1]!, { id, stake: STAKE, burner: burners[1]!.publicKey, name: 'Bot B' });
   lap('joined');
+  await waitForStatus(base, id, chain.Status.JOINED);
   const delegateSig = await delegateMatch(base, wallets[0]!, id);
   lap('delegated');
   log('joined', joinSig, 'delegated', delegateSig);
-  result.match = { id: id.toString(), account: chain.matchAccounts(id).game.toBase58(), createSig, joinSig, delegateSig };
+  result.match = { id: id.toString(), account: chain.matchAccounts(id).game.toBase58(), createSig, joinSig, delegateSig, matchmaking };
   // The wallets send nothing more until close, so balance changes from here on are the payout.
   const before = await Promise.all(wallets.map((w) => base.getBalance(w.publicKey, 'confirmed')));
 

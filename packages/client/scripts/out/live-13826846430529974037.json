@@ -1,0 +1,194 @@
+{
+  "stake": 50000000,
+  "started": "2026-11-21T23:10:34.345Z",
+  "match": {
+    "id": "13826846430529974037",
+    "account": "Bh9svfANH3xztjdacdF2Auwr8pRqGFYfWx1KhHfJhZqc",
+    "createSig": "5fnUPqQi173ddDrPB2jV27e6fNVod2CCknw8Xc4cHcsFoGXy3TvT11qYm55kaeirtBTkGYZj6SGyr27fF6bNEZjk",
+    "joinSig": "vTmJhjkAZrQkoMH4cpquZtGACxKidAqCoKfyBshE2SHb7EReGf3F2t6pyxBqdBHMTum8AfLE5h1e39JD3gwWC4E",
+    "delegateSig": "47EycWEmX2JmRRt71WcpyHniA84PpAUH6PdvpbU4BZXpdDCP9SMncq3SFcyYtbTdKxawqvhBMvaGSQknVyn3FUSi",
+    "matchmaking": {
+      "via": "queue",
+      "id": "13826846430529974037"
+    }
+  },
+  "result": {
+    "winner": 0,
+    "ko": false,
+    "moved": 41225000,
+    "fee": 2061250
+  },
+  "finalTick": 2400,
+  "hp": [
+    1704,
+    276
+  ],
+  "settledBy": "action",
+  "payoutDeltas": [
+    89163750,
+    8775000
+  ],
+  "payoutExpected": [
+    89163750,
+    8775000
+  ],
+  "payoutOk": true,
+  "seed": "10428214070179889583",
+  "history": [
+    {
+      "phase": 0,
+      "rigs": [
+        5,
+        3
+      ],
+      "peeks": [
+        {
+          "cell": 1,
+          "op": {
+            "kind": "mul",
+            "value": 3
+          },
+          "gold": true
+        },
+        {
+          "cell": 5,
+          "op": {
+            "kind": "div",
+            "value": 2
+          },
+          "gold": false
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "rigs": [
+        5,
+        7
+      ],
+      "peeks": [
+        {
+          "cell": 7,
+          "op": {
+            "kind": "div",
+            "value": 2
+          },
+          "gold": false
+        },
+        {
+          "cell": 7,
+          "op": {
+            "kind": "add",
+            "value": 6
+          },
+          "gold": false
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "rigs": [
+        3,
+        4
+      ],
+      "peeks": [
+        {
+          "cell": 8,
+          "op": {
+            "kind": "add",
+            "value": 10
+          },
+          "gold": false
+        },
+        {
+          "cell": 1,
+          "op": {
+            "kind": "mul",
+            "value": 2
+          },
+          "gold": false
+        }
+      ]
+    }
+  ],
+  "verify": {
+    "ok": true,
+    "revealedGatesChecked": 15,
+    "mismatches": 0
+  },
+  "status": 5,
+  "txs": {
+    "init_permissions": 1,
+    "request_seed": 2,
+    "start": 1,
+    "advance": 1,
+    "set_aim": 19,
+    "plant_rig": 6,
+    "peek_cell": 6,
+    "finish": 1
+  },
+  "events": {
+    "plant": 3,
+    "volley": 629,
+    "reveal": 42,
+    "gate": 1246,
+    "gotcha": 4,
+    "clash": 297,
+    "hit": 208,
+    "redeal": 2,
+    "surge": 1,
+    "end": 1
+  },
+  "renderedFrames": 2388,
+  "feed": [
+    {
+      "snapshots": 2446,
+      "emitted": 2402,
+      "maxQueue": 8,
+      "txs": 18,
+      "txFailures": 4
+    },
+    {
+      "snapshots": 2446,
+      "emitted": 2401,
+      "maxQueue": 8,
+      "txs": 19,
+      "txFailures": 3
+    }
+  ],
+  "frameGapMs": {
+    "p50": 50,
+    "p90": 51,
+    "p99": 51,
+    "max": 74
+  },
+  "stages": [
+    "10.8s side 0: setup (permissions)",
+    "10.8s side 1: setup (permissions)",
+    "11.8s side 0: setup (seed)",
+    "11.8s side 1: setup (seed)",
+    "12.3s side 0: setup (start)",
+    "12.5s side 1: playing",
+    "12.6s side 0: playing",
+    "132.5s side 1: finishing",
+    "132.5s side 0: finishing",
+    "133.2s side 1: finished",
+    "133.8s side 0: finished"
+  ],
+  "timingsMs": {
+    "queued": 4013,
+    "created": 5249,
+    "joined": 7722,
+    "delegated": 9296,
+    "connected": 10789,
+    "playing": 12819,
+    "finished_on_tee": 133918,
+    "settled": 134282,
+    "done": 138718
+  },
+  "sol": {
+    "before": 7.570683081,
+    "after": 7.558699241,
+    "spent": 0.01198384
+  }
+}

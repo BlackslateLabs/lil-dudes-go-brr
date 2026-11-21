@@ -14,5 +14,8 @@ export type { LiveOptions, LiveStage } from './live/source';
 export * as chain from './live/chain';
 export {
   baseConnection, createMatch, joinMatch, delegateMatch, cancelMatch, settleMatch, closeMatch, fetchMatch, isOnBase, isSettled,
+  waitForStatus,
 } from './live/lobby';
+export { createRoom, findRoom, quickMatch } from './live/server';
+export type { Room, QuickMatch } from './live/server';
 export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from './live/chain';

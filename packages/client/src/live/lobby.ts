@@ -83,3 +83,15 @@ export async function isSettled(base: Connection, id: bigint): Promise<boolean> 
   if (m.header.status !== Status.FINISHED) return false;
   return m.header.stake === 0 || (await base.getBalance(matchAccounts(id).vault, 'confirmed')) === 0;
 }
+
+/** Polls the base layer until the match exists with at least `status` (e.g. OPEN for a joiner,
+ *  JOINED for the creator before delegating). Throws after `timeoutMs`. */
+export async function waitForStatus(base: Connection, id: bigint, status: number, timeoutMs = 60_000): Promise<MatchAccount> {
+  const t0 = Date.now();
+  for (;;) {
+    const m = await fetchMatch(base, id).catch(() => null);
+    if (m && m.header.status >= status) return m;
+    if (Date.now() - t0 > timeoutMs) throw new Error(`match ${id} did not reach status ${status} in ${timeoutMs} ms`);
+    await new Promise((r) => setTimeout(r, 750));
+  }
+}

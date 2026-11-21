@@ -1,11 +1,8 @@
-// Scaffold. Faucet top-up (POST /topup) and quick-match (POST /queue) arrive in M5 (docs/MVP.md §7).
+// lil-dudes-server: matchmaking (room codes + quick-match queue) for live matches. See app.ts.
+// The faucet / burner top-up (POST /topup) arrives in M5 (docs/MVP.md §7).
 import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-
-const app = new Hono();
-
-app.get('/health', (c) => c.json({ ok: true, service: 'lil-dudes-server' }));
+import { createApp } from './app';
 
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port });
+serve({ fetch: createApp().fetch, port });
 console.log(`server listening on :${port}`);
