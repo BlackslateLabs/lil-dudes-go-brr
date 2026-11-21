@@ -3,6 +3,8 @@ name = "lil-dudes-sim"
 version = "0.1.0"
 description = "Deterministic, integer-only match rules shared by the program, WASM client and balance runner"
 edition.workspace = true
+# Also built by Solana platform-tools (rustc 1.84.1) inside `anchor build`.
+rust-version = "1.84"
 license.workspace = true
 
 [dependencies]

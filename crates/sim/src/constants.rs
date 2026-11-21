@@ -60,3 +60,20 @@ pub const HINT_PCT: u64 = 60;
 /// FEE_BPS of the money moved.
 pub const FLOOR_PM: u64 = 500;
 pub const FEE_BPS: u64 = 500;
+
+// Compile-time checks of the timeline and geometry the rules rely on.
+const _: () = {
+    assert!(MATCH_TICKS == 2_400);
+    assert!(PLANT_STARTS[2] + PLANT_TICKS < SURGE_TICK && SURGE_TICK < MATCH_TICKS);
+    assert!(FIRE_TICKS_SURGE * 2 == FIRE_TICKS);
+    // Surge keeps the volley cadence: phase 3's play start → Surge is a whole number of volleys.
+    assert!((SURGE_TICK - PLANT_STARTS[2] - PLANT_TICKS) % FIRE_TICKS == 0);
+    // Gate rows sit before the clash zone; gates fit their columns.
+    assert!(ROW_Y[2] < CLASH_START_Y && CLASH_END_Y < LANE_LENGTH);
+    assert!(GATE_WIDTH <= COL_WIDTH);
+    // A cohort crosses at most one row per tick, so rows apply in order.
+    assert!(LAUNCH_SPEED < ROW_Y[1] - ROW_Y[0] && LAUNCH_SPEED < ROW_Y[2] - ROW_Y[1]);
+    // Positions fit the i16 cohort fields.
+    assert!(LANE_LENGTH + LAUNCH_SPEED < i16::MAX as i32);
+    assert!(LANE_WIDTH < i16::MAX as i32);
+};

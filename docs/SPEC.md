@@ -1,7 +1,8 @@
 # Lil Dudes Go Brr: Game Spec v2.1
 
 Status: **design locked for the MVP, numbers are starting values to tune in playtests**.
-Updated 2026-11-21 (v2.1: genre research on pacing, launch, cannon speed, crowd numbers, tutorial). The idea in plain words: [IDEA.md](IDEA.md). Source: the first design doc (v1), revised after the balance sim in
+Updated 2026-11-21 (v2.1: genre research on pacing, launch, cannon speed, crowd numbers, tutorial;
+M1: details the spec was silent on, settled while building `crates/sim`, marked **(M1)**). The idea in plain words: [IDEA.md](IDEA.md). Source: the first design doc (v1), revised after the balance sim in
 [`tools/balance/`](../tools/balance/). The technical design is in [TECH.md](TECH.md).
 
 ## 1. The game in one paragraph
@@ -63,7 +64,17 @@ Re-dealing is what keeps `?` alive: the cannon never stops, so a fixed layout is
 within seconds and rigs would have nowhere to go.
 
 Each plant window is an animated beat: the board flips face-down, both cannons hold fire, and a
-one-line prompt says what to do ("Rig one of their gates!"). Something visible should happen at
+one-line prompt says what to do ("Rig one of their gates!").
+
+**(M1)** Details of the plant window and the tick:
+- During a plant window every gate is face-down and **inactive**: cohorts still in flight from the
+  last phase pass the fresh deal's rows unchanged. Nothing can be revealed before the rigs are in.
+- Hints appear when play starts (0:03, 0:43, 1:23). During the plant only the gold gate shows, so
+  the rigger knows which cell can't be rigged. Cannons can still move.
+- The first volley of a phase fires on the first tick of play, then every `FIRE_TICKS`.
+- One tick, in order: inputs (aim, rig, peek) → cannons step → cohorts move and cross rows →
+  clash → cannon hits → KO check → fire. Invalid inputs (wrong window, used up, bad cell) are
+  ignored and use nothing. Something visible should happen at
 least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
 
 ## 4. Gates
@@ -78,6 +89,9 @@ least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
   cohort passed, so a tick boundary can never apply a row twice).
 - **Hints:** each unrevealed gate shows its true colour (blue = good, red = bad) with probability
   60%, otherwise gray. Gold always shows gold. A rigged gate shows a fake blue.
+  **(M1)** The coin flips are made **per side** (values are mirrored, hints are not). With mirrored
+  hints, a fake blue would be exposed whenever the same cell on the other grid shows grey or red.
+  Hints go public only when play starts, after rigs are locked, so no hint ever visibly changes.
 - **Op semantics on a cohort of `c` units:** `×k → c·k`, `+n → c+n`, `−n → max(0, c−n)`,
   `÷k → floor(c/k)`. Integer only.
 
@@ -86,12 +100,15 @@ least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
 - **Rig:** during the 3-second plant window, choose one cell in the opponent's grid (not the gold
   gate). It becomes a trap with a fake blue hint. When their stream first passes it: both screens
   flash **GOTCHA** with the rigger's emote, and the trap fires.
-  - MVP trap: `÷2`.
+  - MVP trap: `÷2`. **(M1)** The trap replaces the gate's value for the rest of the phase: it
+    reveals as `÷2`, and every later cohort through it is halved too.
   - Test in playtest: **Turncoat**, where the first cohort through switches sides and runs at its
     own cannon. The sim showed a ÷2 trap barely changes win rates (it costs about one volley), so
     Turncoat is the candidate to make rigs matter. Keep whichever plays better.
 - **Peek:** privately see the true value of one unrevealed cell on your own side (this also exposes
-  a rig). Only you can see the result.
+  a rig). Only you can see the result. **(M1)** Peeks work during play only, not in the plant
+  window, so a rig planted later in the same window can't make a peek stale. The gold gate can be
+  peeked (it shows ×3 or ÷3). Peeking a revealed cell is refused and keeps the peek.
 - Rigs and peeks reset every phase. Unused ones are lost. No power-up meter in the MVP.
 
 ## 6. Mobs and combat
@@ -106,6 +123,12 @@ least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
   "pours" out of good gates. The `+n`/`−n` deck values are relative to `B` and get retuned with it.
 - A cohort crossing a gate row is affected by the gate whose span contains its `x` (none if it's in a gap).
 - In the clash zone, opposing cohorts that meet subtract counts. 120 blue vs 80 red leaves 40 blue.
+  **(M1)** Two opposing cohorts **meet** once they have reached each other along the lane (their
+  distances from their own cannons add up to the lane length, so nothing can tunnel through) and
+  their `x` differ by at most `CLASH_REACH` = half a column. Streams in the same column collide;
+  streams a column apart pass each other. They subtract wherever they meet: normally in the clash
+  zone, but a fresh volley can also block a cohort right at its cannon (defending). When one cohort
+  meets several, pairs resolve front-most first, and the survivor carries on.
 - A cohort reaching the enemy cannon deals damage equal to its count and is removed.
 - The client draws a cohort as a swarm of instances (capped); jitter is cosmetic. Counts are shown
   sparingly: one number at each clash front (the winning side's surplus) and per-side totals in the
@@ -118,6 +141,7 @@ least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
   and Surge irrelevant. The real value comes from playtesting the real sim. HP depends on
   `FIRE_TICKS`, `B` and the deck, so re-tune it with the Rust balance runner whenever any of them changes.
 - **KO** (HP 0) ends the match instantly. At the timer, higher HP wins; exactly equal = draw.
+  **(M1)** Both cannons reaching 0 on the same tick is a draw (equal HP).
 - **Stakes:** fixed tiers in devnet SOL: Free, 0.05, 0.1, 0.25. The matched stake **S** is the lower
   of the two picks; the excess is refunded at match start. Each player escrows **2S** (to cover the
   Double, §8; if Double is cut, escrow S).
