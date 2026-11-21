@@ -358,3 +358,24 @@ Rent: A pays all four accounts (~0.013 SOL), refunded by `close_match`.
 **Blocked / risks:** a crank scheduled by a 0-SOL burner and the Magic Action escrowed by a burner
 are unproven on devnet (MagicSVM accepts both); fallback = the funded server/test wallet sends
 `start`/`finish`, and `settle` stays permissionless.
+
+## 2026-11-22 04:15 IST · Kai · M3 step 4 (TEE instructions) · [DECISION]
+**Did:** M3 step 4 done; next: step 5 (rig/peek/finish/settle tests; the code is in).
+- `tests-magicsvm/tests/tee.rs`: salts refused before the permissions exist and from strangers;
+  one salt → no VRF; salts set once; seed == sha256(vrf ‖ salt0 ‖ salt1)[..8] and the deal comes
+  from it; the public Match never holds the seed; a forged VRF callback is refused; `start` only
+  once, only by a player, only when seeded; crank catch-up cap 8 per `advance`; `set_aim` clamps,
+  refuses strangers and stops after the end; a full match on the crank + manual `advance`.
+- Measured in MagicSVM (real `advance`, Anchor included): 8-tick catch-up 15.4k CU, `set_aim`
+  3.3k CU, crank calls p50 3.2k / max 15.7k over 2,150 runs (0 failures).
+
+**Decided:** `CRANK_ITERATIONS` = 1.5 × MATCH_TICKS (3,600): the crank interval is wall time but
+ticks follow ER slots, so slots slower than ~11.7 ms would end a 2,400-run crank before the match;
+1.5× covers slots up to 15 ms, extra runs are cheap no-ops, and `advance` stays permissionless
+(LiveSource sends a heartbeat `advance` if no new tick for 1 s).
+MagicSVM tests build their dependencies at opt-level 2 without debug info (`tests-magicsvm`):
+the first build is ~25 min, then a full suite runs in about a minute.
+
+**Blocked / risks:** the disk filled up (100%) during the first optimised test build; I cleared
+`target/debug` and the spike's intermediate build dirs (all regenerable; every `deploy/` dir and
+keypair kept). ~8 GB free now: watch it.
