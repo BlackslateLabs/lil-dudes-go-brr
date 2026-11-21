@@ -25,3 +25,6 @@ anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
 # Pinned to 0.18.x: 0.20 is the validator-2.0 line and breaks #[vrf] on the public ERs.
 ephemeral-rollups-sdk = { version = "=0.18.0", features = ["anchor", "vrf", "access-control", "crank"] }
 lil-dudes-sim = { path = "../../crates/sim" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
