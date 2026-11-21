@@ -379,3 +379,30 @@ the first build is ~25 min, then a full suite runs in about a minute.
 **Blocked / risks:** the disk filled up (100%) during the first optimised test build; I cleared
 `target/debug` and the spike's intermediate build dirs (all regenerable; every `deploy/` dir and
 keypair kept). ~8 GB free now: watch it.
+
+## 2026-11-22 04:35 IST · Kai · M3 step 5 (rig, peek, finish, settle) · [STAGE] [CONTRACT]
+**Did:** M3 step 5 done; next: step 6 (the remaining refused-case tests + autofixer; most are in).
+- Program: `plant_rig` / `peek_cell` (catch up ≤ 2 ticks, apply, write Secrets + the player's own
+  Peek only; refused = error), `finish` (anyone with a result; a player may abort an unstarted
+  match after ~60 s; publishes the seed + all 3 phases' rigs and peeks in the Match, then commit +
+  undelegate Match/Secrets/Peek×2 with the `settle_action` Magic Action), `settle` (permissionless
+  fallback), `close_match` (rent back to the creator).
+- `tests-magicsvm/tests/endgame.rs`, all pass: rig refused on gold / cell 9 / stranger / the
+  opponent's Peek / twice / during play; peek refused in the plant / on a revealed cell (and
+  that keeps the peek) / twice; each Peek readable only by its burner; a 0.1 SOL KO match paid
+  out by the Magic Action exactly (winner +0.195, loser 0, treasury +0.005), seed + history
+  published, second settle and second finish refused; fallback settle pays once; abort refunds
+  both; a free match settles and closes.
+- `@lil-dudes/sim-wasm`: `deals_for(seed)`, `SimMatch.history()`, `Bot` (Warlord deciding from
+  the on-chain public bytes, for headless live matches).
+
+**Decided / CONTRACT (additions only, nothing renamed):** in `@lil-dudes/client`:
+`dealsFor(seed)` → the 3 deals (`{ phase, goldCell, ops[9], hints: [side0[9], side1[9]] }`),
+`decodeHistory(bytes)`, `revealOf(seed, history)` → `MatchReveal { seed, deals, history }` where
+`history[phase] = { rigs: [cell|null, cell|null], peeks: [{cell, op, gold}|null, …] }`
+(`rigs[s]` = the opponent cell side s rigged). `OfflineSource.reveal()` returns it (LiveSource will
+too, after the match). Also exported: `decodePublic` / `toMatchView` (the on-chain state decoder).
+**Suparno:** the result screen's "all 3 deals + rigs + peeks" can use `src.reveal()` now (offline).
+
+**Blocked / risks:** MagicSVM leaves the DLP's delegation metadata on base after undelegation and
+re-delegates on the next write; tests clear it (the real DLP does). Not a program issue.
