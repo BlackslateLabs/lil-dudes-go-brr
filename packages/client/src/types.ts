@@ -23,7 +23,10 @@ export type Hint = 'none' | 'good' | 'bad' | 'gold';
 export interface GateView {
   /** 0..8 = row * 3 + col; row 0 is nearest the owner's cannon. */
   cell: number;
-  /** Public hint while unrevealed ('none' = grey). A rigged gate shows a fake 'good'. */
+  /**
+   * Public hint while unrevealed ('none' = grey; always 'none' once revealed). During a plant
+   * window every gate shows 'none' except gold. A rigged gate shows a fake 'good'.
+   */
   hint: Hint;
   /** Set once the first cohort passes. Same for both players. */
   revealed: GateOp | null;
@@ -91,8 +94,11 @@ export type MatchEvent =
   | { type: 'volley'; side: Side; cohortId: number; x: number; count: number }
   | { type: 'reveal'; side: Side; cell: number; op: GateOp; gold: boolean }
   | { type: 'gate'; side: Side; cell: number; cohortId: number; before: number; after: number }
+  /** `side`'s stream sprang the trap `riggedBy` planted on `side`'s cell. */
   | { type: 'gotcha'; side: Side; cell: number; riggedBy: Side }
+  /** y is measured from side 0's cannon (unlike cohort y). killedA/B = units side 0/1 lost. */
   | { type: 'clash'; x: number; y: number; killedA: number; killedB: number }
+  /** `side` is the cannon that was hit. */
   | { type: 'hit'; side: Side; damage: number; hp: number }
   | { type: 'plant'; phase: number }
   | { type: 'redeal'; phase: number }

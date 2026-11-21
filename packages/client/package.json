@@ -8,9 +8,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "tsx --test test/*.test.ts",
+    "smoke": "tsx scripts/smoke-offline.ts"
+  },
+  "dependencies": {
+    "@lil-dudes/sim-wasm": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
     "typescript": "5.9.3"
   }
 }

@@ -315,6 +315,10 @@ pub fn constants_json() -> String {
     format!("{{{}}}", body.join(","))
 }
 
+/// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
+#[cfg(test)]
+const PARITY_DIGEST: u64 = 10_953_466_201_141_477_252;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,6 +377,15 @@ mod tests {
         assert_eq!(h.state.public.sides[0].aim, 0);
         assert_eq!(h.private_view(0)[0], 3.0);
         assert_ne!(h.state.public.sides[1].aim, 2999);
+    }
+
+    /// packages/client/test/offline.test.ts plays the same match through the bundled WASM and
+    /// expects this digest, so a stale packages/sim-wasm/pkg fails the TS tests.
+    #[test]
+    fn parity_match_digest() {
+        let mut h = SimMatch::new(42, 7, 100_000_000, 0b10, false);
+        while h.step() {}
+        assert_eq!(h.digest(), PARITY_DIGEST);
     }
 
     #[test]

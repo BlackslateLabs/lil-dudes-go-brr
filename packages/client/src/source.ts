@@ -18,8 +18,8 @@ export interface MatchSource {
   stop(): void;
   /** Target cannon x, 0..LANE_WIDTH. Call freely on drag; sources throttle as needed. */
   setAim(x: number): void;
-  /** Rig one opponent cell (0..8) during a plant window. */
+  /** Rig one opponent cell (0..8, not gold) during a plant window, once per phase. */
   rig(cell: number): void;
-  /** Peek one of my own unrevealed cells (0..8) once per phase. */
+  /** Peek one of my own unrevealed cells (0..8) once per phase, during play (not the plant). */
   peek(cell: number): void;
 }

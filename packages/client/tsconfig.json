@@ -1,5 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true },
+  // src/ runs in the browser: no Node types (tests and scripts use tsconfig.node.json).
+  "compilerOptions": { "noEmit": true, "types": [] },
   "include": ["src"]
 }

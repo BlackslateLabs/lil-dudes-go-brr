@@ -28,7 +28,17 @@ importers:
         version: 5.9.3
 
   packages/client:
+    dependencies:
+      '@lil-dudes/sim-wasm':
+        specifier: workspace:*
+        version: link:../sim-wasm
     devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       typescript:
         specifier: 5.9.3
         version: 5.9.3

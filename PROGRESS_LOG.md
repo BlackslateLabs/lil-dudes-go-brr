@@ -170,3 +170,29 @@ main's `pnpm-lock.yaml` and run `pnpm install`, keep your `dev-dist/` gitignore 
 `"@lil-dudes/client": "workspace:*"` to `apps/web/package.json`, drive the arena from `MockSource`, and
 tell me if the lane geometry (MVP §6 / `constants.ts`) doesn't match your arena. Merge into `main`
 once it builds. Kai next: `crates/sim` step function → WASM → `OfflineSource` (M1), then M2 spikes.
+
+## 2026-11-21 22:40 IST · Kai · M1 OfflineSource · [CONTRACT] [HANDOFF]
+**Did:**
+- `crates/sim`: the real rules (SPEC v2.1) + Warlord bot, compiled to WASM in `packages/sim-wasm/pkg`
+  (committed, ~60 KB, loads synchronously; no Rust needed).
+- `packages/client`: **`OfflineSource`** (real rules + the bot on the other side, 20 Hz, same
+  `MatchSource` contract as `MockSource`). `MockSource` still works. Tests: `pnpm --filter
+  @lil-dudes/client test` (TS constants == Rust constants, bundled WASM == current Rust source).
+
+**Decided:** `MatchView`, `PrivateView`, `MatchEvent` and `MatchSource` are **unchanged** (no renamed
+or removed fields). Additions and clarified meanings:
+- New constants: `PHASES` (3), `CELLS` (9), `CLASH_REACH` (500 = half a column), `HINT_PCT` (60).
+- During a plant window every gate's `hint` is `'none'` except gold (hints appear when play starts).
+- `clash` event `y` is measured from side 0's cannon. `hit.side` = the cannon that was hit.
+  `gotcha.side` = whose stream sprang the trap.
+- `rig`/`peek` calls that aren't allowed are silently ignored; peek only works during play (not
+  in the plant). Watch `PrivateView.myRig` / `myPeek` and `rigUsed` / `peekUsed`.
+- Cohorts clash wherever they meet within `CLASH_REACH` in x (normally the clash zone).
+
+**Blocked / risks:** none for the front end.
+
+**Next / handoff:** **Suparno:** after pulling, run `pnpm install` (new workspace dep
+`@lil-dudes/sim-wasm`). Then the one-line swap: `new MockSource(opts)` → `new OfflineSource(opts)`
+(import from `@lil-dudes/client`). Options are the same (`mySide`, `myName`, `opponentName`,
+`stake`, `speed`) plus `seed`, `botSeed`, `tutorial`; `startTick` is mock-only. No Vite config needed.
+Extras: `src.step()`, `src.view`, `src.dispose()`. Details: `packages/client/README.md`.
