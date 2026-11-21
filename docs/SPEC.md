@@ -1,7 +1,7 @@
-# Lil Dudes Go Brr: Game Spec v2
+# Lil Dudes Go Brr: Game Spec v2.1
 
 Status: **design locked for the MVP, numbers are starting values to tune in playtests**.
-Updated 2026-11-21. The idea in plain words: [IDEA.md](IDEA.md). Source: the first design doc (v1), revised after the balance sim in
+Updated 2026-11-21 (v2.1: genre research on pacing, launch, cannon speed, crowd numbers, tutorial). The idea in plain words: [IDEA.md](IDEA.md). Source: the first design doc (v1), revised after the balance sim in
 [`tools/balance/`](../tools/balance/). The technical design is in [TECH.md](TECH.md).
 
 ## 1. The game in one paragraph
@@ -39,6 +39,14 @@ automatically.
 - **Layout is mirrored:** your 9 gates and theirs are the same values in the same cells, so luck is
   equal. (The sim showed mirrored is fairer than shuffling each side: with shuffled layouts, the
   better player's win rate dropped from 78% to 63%.)
+- **Lane proportions (feel target):** each side's 3 gate rows sit close to its own cannon. A fresh
+  volley reaches row 1 in ~0.3 s and has passed all 3 rows within ~1.2 s. The clash zone is the middle
+  ~40% of the lane. On an empty lane a cohort needs ~3 s from its cannon to the midline and ~6 s to
+  the enemy cannon. The gates act at once; the walk is the fight.
+- **Cannon speed:** the cannon's `x` moves toward the player's aim by at most `CANNON_STEP` per tick
+  (it crosses the full lane in ~5 ticks). Volleys always spawn at the sim's `x`, never at the raw aim.
+- **Gate width:** start with each gate ~75% of its column, so there are small gaps and aiming matters.
+  A cohort in a gap passes the row unchanged. Confirm in the first prototype (full width is the fallback).
 
 ## 3. Match timeline (2:00)
 
@@ -48,11 +56,15 @@ automatically.
 | 0:03–0:40 | Phase 1: fire, reveal, peek. Hints appear at 0:03. |
 | 0:40 | **Re-deal**: all 18 gates replaced with a fresh mirrored deal. Plant 2 (3 s), new Rig and Peek. |
 | 1:20 | Re-deal + Plant 3. (Stretch: Double-or-Toll window opens, §8.) |
-| 1:45–2:00 | **Surge**: fire rate ×2 for both players. |
+| 1:45–2:00 | **Surge**: fire rate ×2 for both players (a volley every 4 ticks instead of 8). |
 | 2:00 | Timer. Higher cannon HP wins. |
 
 Re-dealing is what keeps `?` alive: the cannon never stops, so a fixed layout is fully revealed
 within seconds and rigs would have nowhere to go.
+
+Each plant window is an animated beat: the board flips face-down, both cannons hold fire, and a
+one-line prompt says what to do ("Rig one of their gates!"). Something visible should happen at
+least every ~5–10 s of play (reveals, clashes, cannon hits, GOTCHA, re-deal).
 
 ## 4. Gates
 
@@ -62,7 +74,8 @@ within seconds and rigs would have nowhere to go.
   about equal to a normal good gate (×1.71), so taking it is a real risk call. (The v1 value ×10/÷10
   averaged ×5, so you'd always take it, and it doubled the KO rate from 22% to 48%, making luck decide.)
 - **Reveal:** a gate reveals when the first cohort passes through it, and stays revealed for both
-  players until the next deal.
+  players until the next deal. A row applies once per cohort (the sim tracks the last row each
+  cohort passed, so a tick boundary can never apply a row twice).
 - **Hints:** each unrevealed gate shows its true colour (blue = good, red = bad) with probability
   60%, otherwise gray. Gold always shows gold. A rigged gate shows a fake blue.
 - **Op semantics on a cohort of `c` units:** `×k → c·k`, `+n → c+n`, `−n → max(0, c−n)`,
@@ -83,18 +96,27 @@ within seconds and rigs would have nowhere to go.
 
 ## 6. Mobs and combat
 
-- A cohort is a group of units moving together: `{count, x, y}`. The cannon spawns a cohort of
-  `B = 6` units every 100 ms at its current `x`. Max 32 live cohorts per side.
-- A cohort crossing a gate row is affected by the gate whose column span contains its `x`.
+- A cohort is a group of units moving together: `{count, x, y, age, last_row}`. The cannon fires a
+  **volley** every `FIRE_TICKS = 8` ticks (0.4 s): one cohort of `B = 4` units at its current `x`.
+  Surge halves `FIRE_TICKS` to 4. Max **40** live cohorts per side (≈15 live normally, ≈30 in Surge
+  with a ~6 s lane).
+- **Launch:** for its first `LAUNCH_TICKS = 6` ticks a cohort moves at 3× cruise speed, then at
+  cruise. Both sides use identical speeds.
+- **Growth comes from the gates, not the fire rate.** The cannon's raw output is small, and the crowd
+  "pours" out of good gates. The `+n`/`−n` deck values are relative to `B` and get retuned with it.
+- A cohort crossing a gate row is affected by the gate whose span contains its `x` (none if it's in a gap).
 - In the clash zone, opposing cohorts that meet subtract counts. 120 blue vs 80 red leaves 40 blue.
 - A cohort reaching the enemy cannon deals damage equal to its count and is removed.
-- The client draws a cohort as a swarm of sprites (capped) with a number badge; jitter is cosmetic.
+- The client draws a cohort as a swarm of instances (capped); jitter is cosmetic. Counts are shown
+  sparingly: one number at each clash front (the winning side's surplus) and per-side totals in the
+  HUD. There is **no badge on every cohort** and no per-hit damage numbers.
 
 ## 7. HP, ending, payout
 
 - **Cannon HP:** a config constant. Tune it so about **25% of matches end in KO**: the model hit 22% at
   2,200 HP in its own units, while v1's 1,000 HP gave 60–95% KOs and made the timer, payout margin
-  and Surge irrelevant. The real value comes from playtesting the real sim.
+  and Surge irrelevant. The real value comes from playtesting the real sim. HP depends on
+  `FIRE_TICKS`, `B` and the deck, so re-tune it with the Rust balance runner whenever any of them changes.
 - **KO** (HP 0) ends the match instantly. At the timer, higher HP wins; exactly equal = draw.
 - **Stakes:** fixed tiers in devnet SOL: Free, 0.05, 0.1, 0.25. The matched stake **S** is the lower
   of the two picks; the excess is refunded at match start. Each player escrows **2S** (to cover the
@@ -132,7 +154,18 @@ keeps defending. There's no reason to stall or quit.
 ## 9. Bot
 
 - The **Warlord bot** runs inside the program: when one side is a bot, the tick moves its cannon using
-  **public fields only** (revealed gates, hints). It never reads secrets. Code review must enforce this.
+  **public fields only** (revealed gates, hints). Every 2 ticks it picks a target column:
+  1. defend if an enemy cohort is close to its cannon;
+  2. otherwise the best revealed gate, else the best hint colour;
+  3. alternate between equal options every 20–60 ticks;
+  4. otherwise drift.
+  It moves at the normal `CANNON_STEP` and brakes near the target. It never reads secrets; code
+  review must enforce this. It rigs and peeks at random cells.
+- **Tutorial:** a player's first match is a guided match against the bot. It teaches one mechanic per
+  beat (aim → gates → clash → hints → rig → peek). Each beat has a one-line prompt above the cannon and
+  a ✓ when done. In phase 1 the bot holds back, so a newcomer can't be knocked out. A **Skip tutorial**
+  button is always visible (on the first-visit screen and during the match). Skipping goes straight
+  to Home. The tutorial can be replayed from Home ("How to play").
 - Bot matches are free. The bot never takes stakes (that would make us a casino).
 
 ## 10. Fairness and anti-cheat
@@ -156,7 +189,8 @@ keeps defending. There's no reason to stall or quit.
 | Fixed SOL stakes, escrow, settlement | Test-USDC (SPL) stakes | Real-money anything |
 | Burner key + on-chain bot + room codes | Emotes, auto clips, rank ladder | |
 | Result screen + Verify + explorer link | Spectator view | |
-| Juice: popups, shake, sound, GOTCHA | | |
+| Guided first match (skippable, replayable) | | |
+| Juice: reveal punch + pour, clash front, hit flash, KO + payout count-up, danger stripes, sound, GOTCHA | | |
 
 ## 12. Balance evidence (rough model)
 
@@ -170,11 +204,14 @@ skill value equal to the probability of not misplaying. It's directional, not ex
 | v2 (mirrored, re-deal 40 s, gold ×3, Surge ×1.5, HP 2200) | 22% | 74% | 73% of S | 112 s |
 | v2 with gold ×10 | 48% | 77% | 81% of S | 95 s |
 
-The real numbers will be re-tuned with a Rust balance runner built on the actual sim crate (TECH.md, Stage 6).
+These runs predate the v2.1 changes (volley every 0.4 s, `B = 4`, launch boost, gate gaps, Surge ×2),
+so treat them as directional. The real numbers will be re-tuned with a Rust balance runner built on
+the actual sim crate (TECH.md, Stage 6).
 
 ## 13. Open questions
 
 1. Turncoat vs ÷2 rig: decide in the first playtest.
-2. Exact deck values and HP: decide after the Rust sim exists.
-3. Stake currency: devnet SOL for the MVP (proven path); switch to an SPL test-USDC if time allows.
-4. Name: **Lil Dudes Go Brr** (decided 2026-11-21).
+2. Exact deck values, `B` and HP: decide after the Rust sim exists.
+3. Gate width (~75% with gaps vs full width): decide in the first arena prototype.
+4. Stake currency: devnet SOL for the MVP (proven path); switch to an SPL test-USDC if time allows.
+5. Name: **Lil Dudes Go Brr** (decided 2026-11-21).

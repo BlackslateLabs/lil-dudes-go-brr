@@ -54,9 +54,11 @@ Here, the chain replaces that server:
 
 ## The player's journey
 
-1. **Open the link.** The home screen shows a crowd stream on a loop. A burner wallet is created
-   silently in the browser.
-2. **Play vs Bot** (free), **Quick Match**, or **Room Code**. Pick a stake (Free, 0.05, 0.1, 0.25
+1. **Open the link.** A burner wallet is created silently in the browser. A first-time visitor goes
+   straight into a short **guided match against the bot** that teaches one thing at a time: aim,
+   gates, clash, hints, rig, peek. A **Skip** button is always there for anyone who already knows
+   the genre, and "How to play" replays it later.
+2. **Home:** a big **Play vs Bot** (free), **Quick Match**, or **Room Code** (free), **Quick Match**, or **Room Code**. Pick a stake (Free, 0.05, 0.1, 0.25
    devnet SOL). A first-timer gets topped up with devnet SOL automatically.
 3. **The match** (2:00, details below).
 4. **Result screen:** win or lose, the payout and why ("you won by 22% → you take 61% of the stake"),

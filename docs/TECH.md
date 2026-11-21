@@ -75,7 +75,7 @@ chain feed lands. Any change to `MatchView` needs a PROGRESS_LOG entry tagged `C
 |---|---|---|---|---|
 | `Config` | base | public | ~100 B | admin, treasury, fee bps, toll bps |
 | `Vault` (per match) | base | public | 0 data (SOL) | both stakes until settle |
-| `Match` (per match) | delegated → TEE | **public** | ~1 KB (alloc 1,024) | players, burner keys, bot flag, stake, status, `start_slot`, `last_tick`, phase, HP×2, cannon x×2, cohorts 2×32×8 B, gate view 2×9 (hint, revealed op/val), rig/peek counters, double state, winner |
+| `Match` (per match) | delegated → TEE | **public** | ~1.3 KB (alloc 1,536) | players, burner keys, bot flag, tutorial flag, stake, status, `start_slot`, `last_tick`, phase, HP×2, cannon x×2 + aim×2, cohorts 2×40×10 B (`count u32, x i16, y i16, age u8, last_row u8`), gate view 2×9 (hint, revealed op/val), rig/peek counters, double state, winner |
 | `Secrets` (per match) | delegated → TEE | **private, no readers** until the end | ~128 B | VRF seed, true gate values for the current deal, active rig per side |
 | `Peek` (per player) | delegated → TEE | **private, member = that player's burner** | ~32 B | last peek result |
 
@@ -128,8 +128,15 @@ unused escrow. If the action fails, anyone calls `settle` directly.
 
 ## 5. Client
 
-- **Screens:** Home (Play vs Bot, Quick Match, Room Code, Top up) → Match → Result (payout, full
-  reveal, Verify, explorer links, "under the hood" tx log like the RPS app).
+- **Screens:** a first visit goes straight into the guided tutorial match vs the bot (SPEC §9), with
+  **Skip tutorial** always visible. Home = one big **Play vs Bot** button, plus Quick Match, Room Code,
+  Top up and How to play. → Match → Result (payout count-up, full reveal, Verify, explorer links,
+  "under the hood" tx log like the RPS app). Rematch and Verify appear ~1.5–2 s after the result lands.
+  Screen changes use one short branded wipe (≤ 1.5 s).
+- **HUD (portrait):** the top ≤ 8% holds you (left), the opponent (right), and the timer + stake +
+  phase pips (centre). HP labels sit on the cannons in world space (`2.2K` style, ticking smoothly).
+  Your cannon sits at ~75–80% of screen height; the bottom ~20% is empty drag area. Prompts appear
+  just above your cannon. No per-hit numbers anywhere.
 - **Render loop:** subscribe to `Match` over the TEE websocket. The client also runs **the same
   `crates/sim` compiled to WASM**: between 20 Hz chain snapshots it steps the sim locally (cohort motion
   is deterministic), and each snapshot corrects it. Only hidden gate values and the opponent's aim are
@@ -138,14 +145,34 @@ unused escrow. If the action fails, anyone calls `settle` directly.
 - **Offline mode:** the same WASM sim + a local bot runs the whole game with no chain. It is the dev
   mock for the front end, and the fallback demo if devnet is down.
 - **Crowds:** one `InstancedMesh` per side, one instance per visible unit (cap ~1,500 per side on a
-  phone; above that, units scale up and the badge carries the count). Units are visual particles that
-  follow their cohort with simple flocking (separation + follow); walk cycle is a vertex-shader bob,
-  not skeletal animation. Gate pass = burst of new instances behind the gate. A number badge per crowd.
-- **Look:** portrait, perspective camera tilted ~55° looking up the lane, low-poly + toon/flat
-  shading, one palette texture, blob shadows (no shadow maps), fake glow sprites instead of bloom,
-  bold outlined numbers (SDF text, OFL font). Budget: 60 fps on a mid-range Android, < 100 draw calls.
-- **Feel:** gate number popups, shake on cannon hits, slow-mo on KO, haptics (`navigator.vibrate`,
-  Android), WebAudio sfx, GOTCHA overlay.
+  phone; above that, cull instances **at random**, not from the back, so the crowd shape doesn't pop).
+  Units are visual particles that follow their cohort with simple flocking (separation + follow); the
+  walk cycle is a vertex-shader bob, not skeletal animation. Volleys ease out of the muzzle (fast for
+  ~0.3 s, then cruise). When a cohort's count jumps at a gate, new instances **pour** out behind the
+  gate over 0.05–0.25 s (~40/s) with a brighter tint that fades in ~0.15 s. In the clash, units die
+  along the contact front over ~0.2–0.5 s with star particles, so the crowds visibly grind.
+  Counts: one number per clash front + per-side totals in the HUD (no badge per cohort).
+- **Look:** portrait, **static** perspective camera showing the whole lane cannon to cannon (start at
+  pitch ~44°, FOV ~30°, a telephoto look that packs crowds into a mass). It moves only for re-deals
+  (slight pull-back) and KO (push-in). Low-poly + toon/flat shading, one palette texture, blob shadows
+  (no shadow maps), fake glow sprites instead of bloom, bold outlined numbers (SDF text, OFL font).
+  Gate text is colour-coded by side and by hint.
+- **Feel:**
+  - **Drag:** relative, with a catch-up buffer. The cannon chases the finger at a capped speed, with
+    a bump at the lane edges.
+  - **Gate reveal:** the panel flips, the label punches (~1.4×, ~0.1 s), a white star flashes, the
+    crowd pours out, and the colour flips to blue/red/gold.
+  - **Danger and hits:** danger stripes on your cannon line when an enemy cohort is ≤ ~1.5 s away.
+    A cannon hit flashes and throws sparks; shake is rate-limited (≤ 1 per 0.5 s).
+  - **KO:** explosion, payout fountain flying to the winner's balance, count-up.
+  - **Also:** GOTCHA overlay, haptics (`navigator.vibrate`, Android).
+  - **Sound:** one distinct cue per event (shot pop, reveal tick, clash crackle, cannon hit, KO
+    burst, payout chirps, GOTCHA sting). Events sit ~8–10 dB over the music; the music ducks on results.
+- **Performance:** 60 fps in the arena, with the render loop capped or idle on menus and results.
+  Budget < 100 draw calls on a mid-range Android. Quality tiers: drop to 30 fps,
+  `setPixelRatio(0.75)` and no shadows when frame time stays high. Test with the peak scene (Surge +
+  max crowds + KO), not an average one. Pre-allocate instance buffers and particle pools at match
+  start, so nothing is allocated in the frame loop.
 - **State:** zustand. **PWA:** vite-plugin-pwa.
 - **Assets:** CC0 or properly licensed only (e.g. Kenney, Quaternius), logged in `CREDITS.md`.
   **Nothing copied from any existing game** (art, audio, code, names, characters).
@@ -184,7 +211,7 @@ Each stage has an exit test. B = back end (Kai by default), F = front end (Supar
 4. `request_randomness` on the ER queue from the TEE calls back, and we can measure the latency.
 5. A browser websocket `accountSubscribe` with a TEE token delivers ~20 updates/s on a phone.
 6. commit + undelegate + post-commit action moves SOL out of a base-layer vault.
-Also: whether a burner with 0 SOL can send ER transactions, and the per-tx compute of `advance` with 40 steps × 64 cohorts.
+Also: whether a burner with 0 SOL can send ER transactions, and the per-tx compute of `advance` with 40 steps × 80 cohorts (40 per side).
 
 ## 8. Risks and fallbacks
 

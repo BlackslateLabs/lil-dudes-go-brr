@@ -99,3 +99,21 @@ come back as generic mechanics edits to SPEC/TECH.
 **Blocked / risks:** none.
 
 **Next / handoff:** Kai: turn the agreed points into SPEC/TECH edits. Suparno: the client points above are for the arena feel prototype.
+
+## 2026-11-21 · Kai · docs · [DECISION]
+**Did:** Folded the genre research into the docs: SPEC v2.1 (§2, §3, §4, §6, §7, §9, §11–13), TECH §4 Match
+account + §5 client (screens, HUD, crowds, look, feel, performance), IDEA player journey.
+
+**Decided:**
+- Volley every 8 ticks (0.4 s) of `B = 4` units; Surge = every 4 ticks; cohort cap **40/side**. This fixes
+  a real bug in the old §6 (32 cohorts at 10/s would vanish after 3.2 s, before reaching the clash).
+- Launch boost (3× cruise for 6 ticks), max cannon step per tick, each row applies once per cohort.
+- Gates ~75% of their column (gaps make aim matter); confirm in the first prototype.
+- No number badge per crowd: one number per clash front + per-side totals. Static camera ~44°/FOV 30°.
+- First match = guided bot tutorial, **skippable**, and replayable from Home.
+
+**Blocked / risks:** HP, `B` and the ± deck values need re-tuning on the real sim. Deploy wallet still 0 SOL.
+
+**Next / handoff:** Kai: scaffold the monorepo + `crates/sim` (v2.1 rules) + Stage 0 spikes on devnet-tee.
+Suparno: arena feel prototype in `apps/web` (TECH §5 is the brief: drag, volleys, gate pour, clash
+front, camera, 75% gates).
