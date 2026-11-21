@@ -419,3 +419,14 @@ re-delegates on the next write; tests clear it (the real DLP does). Not a progra
   signature, odd stakes, a default burner, delegating an open match, closing an open match, and
   the deployed build refusing any validator but the TEE.
 - `solana-mcp program_autofixer` on base.rs, tee.rs and game.rs + state.rs: no issues.
+
+## 2026-11-22 04:30 IST · Kai · M3 step 7 (devnet deploy) · [STAGE]
+**Did:** M3 step 7 done; next: step 8 (LiveSource + a headless bot-vs-bot live match on devnet).
+- `lil_dudes` deployed to devnet at `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` (fresh deploy,
+  slot 524,869,490, sig `4NTNUdwn…WXSzX`), 457,672 B (`opt-level = "z"`, sim at 3; the M2 spike
+  was 475,784 B), upgrade authority = the deploy wallet `FdZL…rfbB`, built with `anchor build
+  --ignore-keys` (sha256 `aa2f5ccf83cde27f…`). Default features: TEE pinned, treasury = deploy wallet.
+- SOL: 9.923621481 → 7.594650761 (−2.328970720: 2.3258526 locked as program rent, ~0.003 fees).
+
+**Blocked / risks:** an upgrade needs a full-size buffer (~2.33 SOL) next to the live program;
+7.59 SOL covers one at a time (the buffer is refunded after each upgrade).
