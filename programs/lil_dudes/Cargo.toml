@@ -1,0 +1,27 @@
+[package]
+name = "lil_dudes"
+version = "0.1.0"
+description = "Lil Dudes Go Brr: on-chain 1v1 crowd-cannon duel (MagicBlock Private ER)"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "lil_dudes"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+
+[dependencies]
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+# Pinned to 0.18.x: 0.20 is the validator-2.0 line and breaks #[vrf] on the public ERs.
+ephemeral-rollups-sdk = { version = "=0.18.0", features = ["anchor", "vrf", "access-control", "crank"] }
+lil-dudes-sim = { path = "../../crates/sim" }

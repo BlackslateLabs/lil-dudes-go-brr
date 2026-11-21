@@ -1,0 +1,21 @@
+{
+  "name": "lil-dudes-go-brr",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter web dev --host",
+    "dev:server": "pnpm --filter server dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test:sim": "cargo test -p lil-dudes-sim",
+    "build:program": "anchor build --ignore-keys"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

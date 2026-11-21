@@ -1,0 +1,16 @@
+[toolchain]
+anchor_version = "1.0.2"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+lil_dudes = "4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa"
+
+[programs.localnet]
+lil_dudes = "4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"

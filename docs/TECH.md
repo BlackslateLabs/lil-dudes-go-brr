@@ -195,7 +195,7 @@ unused escrow. If the action fails, anyone calls `settle` directly.
 - Base RPC `https://rpc.magicblock.app/devnet` · TEE `https://devnet-tee.magicblock.app` (+ `?token=`)
   · TEE validator identity `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo` (from the RPS example; ⚠️
   re-check) · status `https://status.magicblock.app/api/services`.
-- Toolchain: Agave 3.1.10, Anchor 1.0.2 (avm), rustup stable (host), Node ≥ 24, pnpm 10.
+- Toolchain: Agave 3.1.10, Anchor 1.0.2 (avm), rustup stable (host), Node ≥ 22.12, pnpm 10.34 (pinned in `packageManager`). Front-end work needs only Node + pnpm.
 - Rust: `anchor-lang = "1.0.2"`, `ephemeral-rollups-sdk = "0.18"` (never unpinned), `magicsvm = "0.3.0"` (dev).
 - TS: `@coral-xyz/anchor@0.32.1`, `@solana/web3.js@^1.98`, `@magicblock-labs/ephemeral-rollups-sdk@0.18.0`,
   `@solana/wallet-adapter-*`, `react@19`, `three@0.187`, `@react-three/fiber@9`, `@react-three/drei@10`, `vite`, `hono@4`.

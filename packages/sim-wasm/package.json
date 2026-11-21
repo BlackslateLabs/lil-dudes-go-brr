@@ -1,0 +1,8 @@
+{
+  "name": "@lil-dudes/sim-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PREBUILT wasm-pack output of crates/sim-wasm. Committed so front-end work never needs Rust.",
+  "files": ["pkg"]
+}

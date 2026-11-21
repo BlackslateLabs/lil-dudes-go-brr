@@ -1,0 +1,9 @@
+[package]
+name = "lil-dudes-sim"
+version = "0.1.0"
+description = "Deterministic, integer-only match rules shared by the program, WASM client and balance runner"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Keep this crate dependency-free and no_std-friendly: it runs on-chain, in WASM and natively.

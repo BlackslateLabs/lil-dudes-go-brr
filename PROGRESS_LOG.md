@@ -145,3 +145,28 @@ pushes a scaffold with a working `MockSource` first, and the rest are one-line s
 **Blocked / risks:** none.
 
 **Next / handoff:** Kai: scaffold + `MockSource`, push. Suparno: after pulling, `pnpm install && pnpm --filter web dev --host`, then build the arena on the mock.
+
+## 2026-11-21 · Kai · scaffold · [CONTRACT] [HANDOFF]
+**Did:** Scaffolded the monorepo on `main` (foundation only, no game logic yet):
+- Root: `package.json` (pnpm 10.34.9, Node ≥ 22.12, scripts), `pnpm-workspace.yaml` (`apps/*`, `packages/*`),
+  `tsconfig.base.json`, `README.md`, Cargo workspace (`programs/*`, `crates/*`), `Anchor.toml`.
+- `programs/lil_dudes`: Anchor 1.0.2 + ER SDK =0.18.0 (`anchor, vrf, access-control, crank`), a `ping`
+  placeholder. Program id `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` (keypair kept by Kai, not in git).
+- `crates/sim`: constants (MVP §6) + core types + tests. `crates/sim-wasm`: wasm-bindgen stub.
+- **`packages/client` (`@lil-dudes/client`): `MatchView` v0, `PrivateView`, `MatchEvent`, constants,
+  `MatchSource`, and a working `MockSource`** (full 2:00 fake match: volleys, reveals, gate counts,
+  GOTCHA, clash, hits, plant/re-deal/Surge, KO/timer end with payout). See `packages/client/README.md`.
+- `packages/sim-wasm` (empty until M1), `apps/server` (Hono `/health`), `tests-magicsvm/`, `spikes/`.
+- **`apps/web` is NOT on main.** It lives on Suparno's branch.
+
+**Decided:** All `x` are absolute lane coordinates from side 0's view; side 1 mirrors when drawing.
+`y` is measured from each cohort's own cannon. Lane: 3000 wide × 12000 long sim units (MVP §6).
+
+**Blocked / risks:** none.
+
+**Next / handoff:** **Suparno:** merge `main` into `web/arena-prototype` and rearrange your side to fit
+it: keep main's root `package.json` / `pnpm-workspace.yaml` / `tsconfig.base.json` (add any root scripts you need), take
+main's `pnpm-lock.yaml` and run `pnpm install`, keep your `dev-dist/` gitignore line. Then add
+`"@lil-dudes/client": "workspace:*"` to `apps/web/package.json`, drive the arena from `MockSource`, and
+tell me if the lane geometry (MVP §6 / `constants.ts`) doesn't match your arena. Merge into `main`
+once it builds. Kai next: `crates/sim` step function → WASM → `OfflineSource` (M1), then M2 spikes.

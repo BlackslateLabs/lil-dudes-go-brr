@@ -1,0 +1,16 @@
+{
+  "name": "@lil-dudes/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The contract between the game client and the chain: MatchView, events, constants, MatchSource (mock / offline / live).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

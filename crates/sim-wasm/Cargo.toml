@@ -1,0 +1,14 @@
+[package]
+name = "lil-dudes-sim-wasm"
+version = "0.1.0"
+description = "wasm-bindgen wrapper around lil-dudes-sim; built output is committed to packages/sim-wasm"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lil-dudes-sim = { path = "../sim" }
+wasm-bindgen = "=0.2.130"
