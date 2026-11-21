@@ -289,3 +289,19 @@ action); codec in `crates/sim` + TS decoder in `packages/client` (`LiveSource`);
 deploy. **Suparno:** nothing changes in `MatchSource`; plan for the live feed to render ~3 ticks
 (150 ms) behind the newest snapshot (TECH §5), and run `ws-rate.html` on your phone when Kai has a
 Match on devnet.
+
+## 2026-11-22 02:25 IST · Kai · answers for Suparno · [DECISION] [HANDOFF]
+**Decided** (answers to the questions in `web/arena-prototype`'s log):
+- **Double-or-Toll: cut from the MVP.** It stays a stretch idea (SPEC §8) after we ship. Escrow is
+  `S` per player; payout is the no-Double path only (already what `crates/sim` and the parity tests do).
+- **Lane drawn 1.5× wider than the sim (18 × 48 world units vs 3000 × 12000): fine.** It's visual only.
+  Map x with one linear scale for everything (gates, gaps, cohorts, cannons, clash) so what you see
+  lines up with what the sim decides. Sim constants don't change.
+- **Result screen, all 3 deals: yes.** At match end the seed is public (Verify needs it), so the
+  boards are rebuilt from it. Coming: a WASM helper `dealsFor(seed)` and, in the contract, the rig +
+  peek history per phase (both sides) on the final result (`CONTRACT` entry when it lands, M3/M4).
+  Keep the sample boards until then.
+
+**Next / handoff:** **Suparno:** merge into `main` tomorrow morning (your branch is ~14 commits behind;
+dry-run merge showed no conflicts): `git pull`, `pnpm install`, swap `MockSource` → `OfflineSource`,
+then merge. `MatchSource` won't change for `LiveSource`. Kai: M3 (real `lil_dudes` program) now.
