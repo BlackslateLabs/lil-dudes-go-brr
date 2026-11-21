@@ -406,3 +406,16 @@ too, after the match). Also exported: `decodePublic` / `toMatchView` (the on-cha
 
 **Blocked / risks:** MagicSVM leaves the DLP's delegation metadata on base after undelegation and
 re-delegates on the next write; tests clear it (the real DLP does). Not a program issue.
+
+## 2026-11-22 04:45 IST · Kai · M3 step 6 (tests) · [STAGE]
+**Did:** M3 step 6 done; next: step 7 (devnet deploy).
+- MagicSVM suite: **15 tests in 5 files, all pass** (`cargo +stable test --manifest-path
+  tests-magicsvm/Cargo.toml`, ~3 min after the one-time build; needs `anchor build --ignore-keys`
+  for the IDL and the `magicsvm`/`bench` feature builds, see `tests-magicsvm/tests/common/game.rs`):
+  every instruction, plus refused cases: wrong signer (salt, start, set_aim, rig, peek, abort),
+  double settle (after the action and after the fallback), double finish, double join, rig twice
+  / on gold / during play / through the opponent's Peek, peek in the plant / on a revealed cell /
+  twice, salts before the permissions, a forged VRF callback, `settle_action` without the escrow
+  signature, odd stakes, a default burner, delegating an open match, closing an open match, and
+  the deployed build refusing any validator but the TEE.
+- `solana-mcp program_autofixer` on base.rs, tee.rs and game.rs + state.rs: no issues.
