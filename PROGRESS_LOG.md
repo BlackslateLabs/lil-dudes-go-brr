@@ -117,3 +117,20 @@ account + §5 client (screens, HUD, crowds, look, feel, performance), IDEA playe
 **Next / handoff:** Kai: scaffold the monorepo + `crates/sim` (v2.1 rules) + Stage 0 spikes on devnet-tee.
 Suparno: arena feel prototype in `apps/web` (TECH §5 is the brief: drag, volleys, gate pour, clash
 front, camera, 75% gates).
+
+## 2026-11-21 · Kai · planning · [DECISION]
+**Did:** Wrote `docs/MVP.md`: the full MVP (features in/stretch/out), every screen, edge cases, look
+and sound, starting numbers, build order M1–M7 with who does what, the cut order, wallets.
+
+**Decided:**
+- Build order: **M1 playable offline** (sim + WASM + arena) and **M2 chain proven** (Stage 0) in parallel,
+  then M3 live 1v1 → M4 hidden info → M5 money + onboarding → M6 feel + tutorial → M7 ship.
+- The tutorial runs on the local sim (instant, no SOL), and a Skip is always visible.
+- Deploy wallet (5 SOL) is for program deploys only; a separate server sponsor wallet (~5 SOL) comes in M5.
+
+**Blocked / risks:** none. Deploy wallet funded (5 SOL).
+
+**Next / handoff:** Kai: M1 (scaffold, sim, WASM, local bot) then M2 spikes. **Suparno: read
+`docs/MVP.md`, own the §5 OPEN items (dudes design, arena theme, cannon/gates, logo, font, palette,
+audio), and build the M1 arena prototype.** Private research is shared through a separate private repo
+cloned into `pvt-docs/` (Kai will send the link).
