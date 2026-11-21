@@ -1,0 +1,36 @@
+{
+  "id": 795289855,
+  "program": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+  "created": "2026-11-21T19:37:40.310Z",
+  "vaultLamports": 0,
+  "authority": "FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB",
+  "A": "F2hQtgwHoYQ3yqBXe89fhXh9cgwH3N5kidM1ypDokjR4",
+  "B": "8TLbLrdgtHLzjM5LE5uaepTT6Y9NQ9Gm35vyijDAiUiS",
+  "recipient": "35z123FSMMGRTwCq3ocQN8bcgYS3r91GLcZzB4dvtw3q",
+  "accounts": {
+    "board": "95RT9gNwvn61H4KYVwTzLE8AHsfaJy6HxXWVxSizUxmW",
+    "secret": "31NYZbbUSG5nGREMh8aMpisqhxApQ49rZmYX31MDekZY",
+    "peek": "ByrGZx15j2q6wdtoUcpZuPFDk9Y2FT2w9ATa3bHtW1VB",
+    "log": "AFLj4FuY7SB9z1EyN322criHDKaJ7NjNajhbxfPEDCV3",
+    "bench": "BRyNfUysjP53QF1ekwCxnc3uocxkskxbZWBXuHYZE3nJ",
+    "vault": "E3B4z8W39sVJqVf4hHAvV6BZH1mATZawRfhWtZSCEy8m"
+  },
+  "permissions": {
+    "secret": "44hrUq2FQo6xQEBnczbf91viWM6NpC9zgJEk98Q1PMqe",
+    "peek": "8fvy8bDXkRJ6DB9Ecaz4v8XTDrYJvFbHFK1WtsUnfMUx"
+  },
+  "sigs": {
+    "init": "2cM6rZPBTuy6yL9BZLRGFB9ot676QvRfbbjRV6CZVYRQL6rbnAMcPukN3Si9uqFY3FtL6nfEJTH2vvrnu6NF6ZeQ",
+    "delegate": {
+      "board": "3dUB6DcYzT8yMXmgpcbWVvDbESJGSLLyPYhM2fDYQ1FjjVmJpvCuSnsHt4nJuWwN4tLYxpUqSjT2Y2zCB4AePjP2",
+      "secret": "kWE3JvspFMrYKgzq1evjiEgGxmBj2XsnymrBm4CBDSSioE3aT3LpBvEYd3zPn6e15ha7tpYhQTK9pA2g4N5k6TV"
+    },
+    "permissions": null
+  },
+  "timingsMs": {
+    "init": 1801,
+    "delegate": 4029,
+    "visible_on_tee": 4931,
+    "permissions": 4931
+  }
+}

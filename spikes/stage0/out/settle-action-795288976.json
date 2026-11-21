@@ -1,0 +1,48 @@
+{
+  "id": 795288976,
+  "mode": "action",
+  "er": "tee",
+  "finishSig": "(resumed)",
+  "before": {
+    "vault": 10000000,
+    "recipient": 0,
+    "boardOwner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh (recorded before the crash)"
+  },
+  "finishConfirmMs": 0,
+  "finishToUndelegatedMs": 561,
+  "drainedByAction": true,
+  "finishToDrainedMs": 750,
+  "after": {
+    "vault": 0,
+    "recipient": 10000000
+  },
+  "recipientGain": 10000000,
+  "actionTx": "3YsEaKxove7kW336SKjPSVYQAnSZezs9WGcoG8xStQhE19S8FkLdBayBQ48FS25S6Hy57JNpBQQTkXsXKtQjLreG",
+  "actionTxVersion": 1,
+  "actionLogs": [
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program log: settled by magic action",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [1]",
+    "Program noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV invoke [1]"
+  ],
+  "actionFeePayer": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+  "boardOnBase": {
+    "owner": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+    "finished": 1,
+    "settled": 0,
+    "len": 1488
+  },
+  "secretOnBaseOwner": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+  "close": {
+    "closeSig": "noAdMUiusdsvLE5Y7ay7AEwoL1LLNWQzELzVG4Tt8hNfxRycoJV8EYDRtUvMS16VbSTioLPjgeR1qRpPQ1WeBZ1",
+    "reclaimedLamports": 52734576
+  },
+  "recipientRefund": 9995000
+}

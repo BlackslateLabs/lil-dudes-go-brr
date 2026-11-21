@@ -1,0 +1,36 @@
+{
+  "id": 795290523,
+  "mode": "fallback",
+  "er": "tee",
+  "finishSig": "4AhWgsdPNmyEgcSEbFDB1NL8W42FsoxZJNnoXTpAXzUFJJTdW6y7z1dbqKsbxWGbyAM6TmhdWxdAzM3jXao9PjUG",
+  "before": {
+    "vault": 10000000,
+    "recipient": 0,
+    "boardOwner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+  },
+  "finishConfirmMs": 631,
+  "finishToUndelegatedMs": 767,
+  "vaultAfterUndelegate": 10000000,
+  "actionSkipped": true,
+  "settleSig": "66p9DmJFT6i5HQQTAnQ5WoGeWjcmBtLENoUowfQxHHKc7cVo9R7zS28sU699sQRobRmUaaRZneVfFtLaY7hkx1bA",
+  "settledBy": "e4Qroh2gMdm4YupemMYRaA4RbDUBZx1a6fYySZGAcbg",
+  "after": {
+    "vault": 0,
+    "recipient": 10000000
+  },
+  "recipientGain": 10000000,
+  "secondSettle": "Error: Simulation failed. ",
+  "directSettleActionWithoutEscrow": "Error: Signature verification failed.",
+  "boardOnBase": {
+    "owner": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+    "finished": 1,
+    "settled": 1,
+    "len": 1488
+  },
+  "secretOnBaseOwner": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+  "close": {
+    "closeSig": "3kz9Nefa9DhYncXLAtpfHqcuMdB9ZnkUUuep5cdioi4G2WtJqTScfxPTYQHfDT7NGxopqbdecK1rUL7fyQsAbv8U",
+    "reclaimedLamports": 52734576
+  },
+  "recipientRefund": 9995000
+}

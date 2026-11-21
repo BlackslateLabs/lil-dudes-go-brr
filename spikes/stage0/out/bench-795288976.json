@@ -1,0 +1,277 @@
+{
+  "id": 795288976,
+  "rows": [
+    {
+      "n": 0,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 73951,
+      "decode": 35440,
+      "steps": 106,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=0 bot=false tick=100 live=40/40"
+      ]
+    },
+    {
+      "n": 1,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 123185,
+      "decode": 35440,
+      "steps": 49339,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=1 bot=false tick=101 live=40/40"
+      ]
+    },
+    {
+      "n": 2,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 172343,
+      "decode": 35440,
+      "steps": 98497,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=2 bot=false tick=102 live=40/40"
+      ]
+    },
+    {
+      "n": 5,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 319817,
+      "decode": 35440,
+      "steps": 245971,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=5 bot=false tick=105 live=40/40"
+      ]
+    },
+    {
+      "n": 10,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 565687,
+      "decode": 35440,
+      "steps": 491836,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=10 bot=false tick=110 live=40/40"
+      ]
+    },
+    {
+      "n": 20,
+      "withBot": false,
+      "ok": true,
+      "err": null,
+      "total": 1057342,
+      "decode": 35440,
+      "steps": 983491,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=20 bot=false tick=120 live=40/40"
+      ]
+    },
+    {
+      "n": 40,
+      "withBot": false,
+      "ok": false,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "total": 1400000,
+      "decode": null,
+      "steps": null,
+      "encode": null,
+      "tail": [
+        "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G failed: exceeded CUs meter at BPF instruction"
+      ]
+    },
+    {
+      "n": 56,
+      "withBot": false,
+      "ok": false,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "total": 1400000,
+      "decode": null,
+      "steps": null,
+      "encode": null,
+      "tail": [
+        "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G failed: exceeded CUs meter at BPF instruction"
+      ]
+    },
+    {
+      "n": 0,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 73950,
+      "decode": 35440,
+      "steps": 106,
+      "encode": 32938,
+      "tail": [
+        "Program log: bench n=0 bot=true tick=100 live=40/40"
+      ]
+    },
+    {
+      "n": 1,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 125513,
+      "decode": 35440,
+      "steps": 51658,
+      "encode": 32948,
+      "tail": [
+        "Program log: bench n=1 bot=true tick=101 live=40/40"
+      ]
+    },
+    {
+      "n": 2,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 174844,
+      "decode": 35440,
+      "steps": 100989,
+      "encode": 32948,
+      "tail": [
+        "Program log: bench n=2 bot=true tick=102 live=40/40"
+      ]
+    },
+    {
+      "n": 5,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 326471,
+      "decode": 35440,
+      "steps": 252616,
+      "encode": 32948,
+      "tail": [
+        "Program log: bench n=5 bot=true tick=105 live=40/40"
+      ]
+    },
+    {
+      "n": 10,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 576759,
+      "decode": 35440,
+      "steps": 502899,
+      "encode": 32948,
+      "tail": [
+        "Program log: bench n=10 bot=true tick=110 live=40/40"
+      ]
+    },
+    {
+      "n": 20,
+      "withBot": true,
+      "ok": true,
+      "err": null,
+      "total": 1078984,
+      "decode": 35440,
+      "steps": 1005124,
+      "encode": 32948,
+      "tail": [
+        "Program log: bench n=20 bot=true tick=120 live=40/40"
+      ]
+    },
+    {
+      "n": 40,
+      "withBot": true,
+      "ok": false,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "total": 1400000,
+      "decode": null,
+      "steps": null,
+      "encode": null,
+      "tail": [
+        "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G failed: exceeded CUs meter at BPF instruction"
+      ]
+    },
+    {
+      "n": 56,
+      "withBot": true,
+      "ok": false,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "total": 1400000,
+      "decode": null,
+      "steps": null,
+      "encode": null,
+      "tail": [
+        "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G failed: exceeded CUs meter at BPF instruction"
+      ]
+    }
+  ],
+  "summary": {
+    "noBot": {
+      "perTickWorstCU": 49166,
+      "overheadCU_n0": 73951,
+      "decodeCU": 35440,
+      "encodeCU": 32938,
+      "anchorEtcCU": 5573,
+      "ticksUnder200k": 2,
+      "ticksUnder1_4M": 26,
+      "projected40TicksCU": 2040587
+    },
+    "withBot": {
+      "perTickWorstCU": 50182,
+      "overheadCU_n0": 73950,
+      "decodeCU": 35440,
+      "encodeCU": 32938,
+      "anchorEtcCU": 5572,
+      "ticksUnder200k": 2,
+      "ticksUnder1_4M": 26,
+      "projected40TicksCU": 2081247
+    }
+  },
+  "at200k": [
+    {
+      "n": 5,
+      "ok": false,
+      "total": 200000
+    },
+    {
+      "n": 10,
+      "ok": false,
+      "total": 200000
+    },
+    {
+      "n": 15,
+      "ok": false,
+      "total": 200000
+    },
+    {
+      "n": 20,
+      "ok": false,
+      "total": 200000
+    }
+  ]
+}

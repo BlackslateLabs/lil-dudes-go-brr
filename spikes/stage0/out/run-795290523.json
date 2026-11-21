@@ -1,0 +1,38 @@
+{
+  "id": 795290523,
+  "program": "9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G",
+  "created": "2026-11-21T19:48:52.864Z",
+  "vaultLamports": 10000000,
+  "authority": "FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB",
+  "A": "F2hQtgwHoYQ3yqBXe89fhXh9cgwH3N5kidM1ypDokjR4",
+  "B": "8TLbLrdgtHLzjM5LE5uaepTT6Y9NQ9Gm35vyijDAiUiS",
+  "recipient": "ucZDTFVvYo2C5jQzwnfxypQ9KhHBt93SGvo1durZT7t",
+  "accounts": {
+    "board": "5EyVz9mweMX9zmGm7LVM6c2jcbaSxZ6uzRyvyFCYXqZM",
+    "secret": "8Gm6grt2sxZ2Nc9AHNsPLTSedaMdFB7E226j8PBi7pUF",
+    "peek": "8FniUHKQwNvtFV9NqbbRC82cBnQv6E3ZbRSmL4kUNYdY",
+    "log": "9Vkg1SSL6frW5gqiAKP7CAj2oBC89PfNG4D3ZtiauEH5",
+    "bench": "Gv9PQ34X5QL2EwLBFqHKRC5WfCdCRcBQbAr8WKWyPJoV",
+    "vault": "4Cp4YSwZSKwocG8tXE5mrZUJkScGFuNuZ7iZ7Npk3KUa"
+  },
+  "permissions": {
+    "secret": "BYxQq93zKhf78zw1BBGkwsnLJ51ahSVa2U4fFhh8927J",
+    "peek": "CkDwpW1q6QJjNrSD2bquLzJaT5XE1Xs1gPionjPrwycN"
+  },
+  "sigs": {
+    "init": "4urnnVEfVPQrcMbckGeToMGbFoaZ1cBZPcGt7uQY1twuf3mUAfCyxCj89aTmByqx59QcE6ibf5WgNp8zuHKGKXkC",
+    "delegate": {
+      "board": "4rMZ8CR6C482K6xASqE5DJ67jgBwCZ7jjyNxGZXBwt8rTRR5QJ7uwFJGoS4ViUPRHMt3G1oW8pPa8LyjVpXvtF6Z",
+      "secret": "5HBSJoeHCxEpeiKucGUCVcLGeFuAe9M2zwZe5LSdUkvJHHau2BG8JJrQKjyqxXShDyYUcJRbfFiNohQLgvp74TFw",
+      "peek": "3TvdaQ5Y2n4bRN2q2oKD6Y94Q3HGJLx84gFZB2Syynkjfsp6dvJFf4xXQ6QD65HtuD71fP8uET8D84erSLLCGUEi",
+      "log": "4NVLjYbaSB9cps6yLNR5S2fmxb2TjKY2JXmVPhzXKR6tt72Z8JdED7UWnigHh8CgQWZQfWQhM4V8PBiFjqhj9QgS"
+    },
+    "permissions": "LdESzgjWU5JANX2eQnvoq4fCbSzcYRcMGia3YVdNTXAd6uucnuQcwRSwGPtu9j3NYiQ4JE5QvYqkEPyBSqgocUW"
+  },
+  "timingsMs": {
+    "init": 2124,
+    "delegate": 6988,
+    "visible_on_tee": 8243,
+    "permissions": 8825
+  }
+}

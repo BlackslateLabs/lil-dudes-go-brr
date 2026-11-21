@@ -1,0 +1,99 @@
+{
+  "id": 795290806,
+  "sigs": {
+    "sigCu": "3RZpua3PZhDrF96JeHZuqcUyXT8DC5Z2ryE1mjHMubZpdfm5WK1qGRF7geqsR3Gjh3UXMyHA4hz36vCo7RMCteak",
+    "sigSeeds": "3KZHNhcJZSRrtQarCWyHcrAWejZkkHmFs9YHP79p5prmXdxbjPZ9GEBmfa3mS8KkLVq94As14q84NAVYo8gn6t1k"
+  },
+  "cuFail": {
+    "A": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    },
+    "B": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    },
+    "noToken": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          1,
+          "ProgramFailedToComplete"
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    }
+  },
+  "constraintFail": {
+    "A": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          0,
+          {
+            "Custom": 2006
+          }
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    },
+    "B": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          0,
+          {
+            "Custom": 2006
+          }
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    },
+    "noToken": {
+      "found": true,
+      "err": {
+        "InstructionError": [
+          0,
+          {
+            "Custom": 2006
+          }
+        ]
+      },
+      "keys": 0,
+      "logs": 0,
+      "leaks": 0,
+      "ixDataSeen": false
+    }
+  },
+  "bOnLogs": {
+    "notifications": 0,
+    "leaks": 0
+  }
+}

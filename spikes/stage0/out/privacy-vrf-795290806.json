@@ -1,0 +1,36 @@
+{
+  "id": 795290806,
+  "B": {
+    "signaturesListed": 1,
+    "kinds": {
+      "(other)": 1
+    },
+    "callbacksVisible": 0,
+    "callbacksWithIxData": 0,
+    "redacted": 0,
+    "sampleIxDataLen": [],
+    "errs": 0
+  },
+  "authority": {
+    "signaturesListed": 1,
+    "kinds": {
+      "(other)": 1
+    },
+    "callbacksVisible": 0,
+    "callbacksWithIxData": 0,
+    "redacted": 0,
+    "sampleIxDataLen": [],
+    "errs": 0
+  },
+  "noToken": {
+    "signaturesListed": 1,
+    "kinds": {
+      "(other)": 1
+    },
+    "callbacksVisible": 0,
+    "callbacksWithIxData": 0,
+    "redacted": 0,
+    "sampleIxDataLen": [],
+    "errs": 0
+  }
+}

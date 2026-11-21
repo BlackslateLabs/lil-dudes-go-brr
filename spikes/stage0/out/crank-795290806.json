@@ -1,0 +1,118 @@
+{
+  "id": 795290806,
+  "interval": 50,
+  "iterations": 2600,
+  "taskId": "43267117208407",
+  "sigs": {
+    "startSig": "4PdoUG659PJDJRqEv8XKd7kFUywvSzvff5QnNQ6bRpekttqXKciXbYtHaX8EER6xRy47DtNFVSkLT3G9XW7SC6zY",
+    "scheduleSig": "2mNU93mMWkosSELu43LyvtA7n1c2eTi9wzuvm2JEHu2W6gPtNifiA8BeKrwHRXvGc6ufpPJAQySiyWuHzEBY6TCb"
+  },
+  "slotMs": 10,
+  "check3": {
+    "crankCalls": 2600,
+    "expectedCalls": 2600,
+    "missed": 0,
+    "failedTxsOnBoard": 0,
+    "okTxsOnBoard": 2602,
+    "slotDelta": {
+      "n": 2599,
+      "min": 4,
+      "p50": 5,
+      "p90": 5,
+      "p99": 5,
+      "max": 6,
+      "mean": 5,
+      "sd": 0.05
+    },
+    "intervalMs": {
+      "n": 2599,
+      "min": 40,
+      "p50": 50,
+      "p90": 50,
+      "p99": 50,
+      "max": 60,
+      "mean": 50,
+      "sd": 0.48
+    },
+    "gapsOver2xInterval": 0,
+    "histogramSlots": {
+      "4": 3,
+      "5": 2593,
+      "6": 3
+    },
+    "durationS": 129.9,
+    "sim": {
+      "stepsTotal": 1217,
+      "maxStepsPerCall": 11,
+      "finalTick": 1217,
+      "hp": [
+        1828,
+        0
+      ],
+      "ended": true,
+      "lagTicks": {
+        "n": 2602,
+        "min": 0,
+        "p50": 92,
+        "p90": 1132,
+        "p99": 1366,
+        "max": 1393,
+        "mean": 373.14,
+        "sd": 455.43
+      }
+    }
+  },
+  "check5": {
+    "processed": {
+      "distinctCrankStatesSeen": 2601,
+      "notifications": 2602,
+      "perSecond": {
+        "n": 126,
+        "min": 18,
+        "p50": 20,
+        "p90": 20,
+        "p99": 21,
+        "max": 21,
+        "mean": 20.01,
+        "sd": 0.39
+      },
+      "interArrivalMs": {
+        "n": 2601,
+        "min": 0.06,
+        "p50": 49.9,
+        "p90": 52.55,
+        "p99": 160.26,
+        "max": 550.38,
+        "mean": 50.18,
+        "sd": 25.1
+      },
+      "over100ms": 98
+    },
+    "confirmed": {
+      "distinctCrankStatesSeen": 2601,
+      "notifications": 2602,
+      "perSecond": {
+        "n": 126,
+        "min": 18,
+        "p50": 20,
+        "p90": 20,
+        "p99": 21,
+        "max": 21,
+        "mean": 20.01,
+        "sd": 0.32
+      },
+      "interArrivalMs": {
+        "n": 2601,
+        "min": 0.07,
+        "p50": 49.89,
+        "p90": 52.67,
+        "p99": 159.16,
+        "max": 550.11,
+        "mean": 50.18,
+        "sd": 24.99
+      },
+      "over100ms": 98
+    }
+  },
+  "wallS": 158
+}

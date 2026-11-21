@@ -1,0 +1,46 @@
+{
+ "visibleFailedCallbacksToB": 17,
+ "rows": [
+  {
+   "sig": "338mhJ8UBgGs",
+   "err": true,
+   "ixDataLens": [
+    5,
+    168
+   ],
+   "randomnessVisible": true,
+   "sample": "0400000000000000c20f78a1"
+  },
+  {
+   "sig": "27ePMGC3obFe",
+   "err": true,
+   "ixDataLens": [
+    5,
+    168
+   ],
+   "randomnessVisible": true,
+   "sample": "0400000000000000c20f78a1"
+  },
+  {
+   "sig": "3ipyJen1bvbb",
+   "err": true,
+   "ixDataLens": [
+    5,
+    168
+   ],
+   "randomnessVisible": true,
+   "sample": "0400000000000000c20f78a1"
+  },
+  {
+   "sig": "3wUxxoZPqdzz",
+   "err": true,
+   "ixDataLens": [
+    5,
+    168
+   ],
+   "randomnessVisible": true,
+   "sample": "0400000000000000c20f78a1"
+  }
+ ],
+ "distinctPayloadsInLast20": 3
+}

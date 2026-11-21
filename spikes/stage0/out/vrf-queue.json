@@ -1,0 +1,47 @@
+{
+  "queue": "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc",
+  "delegatedTo": "11111111111111111111111111111111",
+  "ownerProgram": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz",
+  "teeQueueLen": 9500,
+  "teeQueueNonZeroBytes": 2859,
+  "teeRecentQueueTxs": 7,
+  "teeQueueTxErrs": 7,
+  "elsewhere": {
+    "devnet-as": {
+      "len": 9500,
+      "recentSigs": 5,
+      "newestSlotAgo": 254,
+      "errs": [
+        "err",
+        "ok",
+        "err",
+        "ok",
+        "err"
+      ]
+    },
+    "devnet-eu": {
+      "len": 9500,
+      "recentSigs": 5,
+      "newestSlotAgo": 441474,
+      "errs": [
+        "err",
+        "ok",
+        "ok",
+        "ok",
+        "err"
+      ]
+    },
+    "devnet-us": {
+      "len": 9500,
+      "recentSigs": 5,
+      "newestSlotAgo": 12744164,
+      "errs": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ]
+    }
+  }
+}

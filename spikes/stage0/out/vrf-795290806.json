@@ -1,0 +1,119 @@
+{
+  "id": 795290806,
+  "payer": "F2hQtgwHoYQ3yqBXe89fhXh9cgwH3N5kidM1ypDokjR4",
+  "payerIsZeroSolBurner": true,
+  "requested": 10,
+  "callbacks": 10,
+  "sendToCallbackMs": {
+    "n": 10,
+    "min": 198,
+    "p50": 206,
+    "p90": 210,
+    "p99": 210,
+    "max": 362,
+    "mean": 220.4,
+    "sd": 47.34
+  },
+  "confirmToCallbackMs": {
+    "n": 10,
+    "min": -354,
+    "p50": -324,
+    "p90": -311,
+    "p99": -311,
+    "max": -310,
+    "mean": -324.7,
+    "sd": 11.69
+  },
+  "callbackSlotsAfterRequest": {
+    "n": 10,
+    "min": 2,
+    "p50": 2,
+    "p90": 2,
+    "p99": 2,
+    "max": 7,
+    "mean": 2.5,
+    "sd": 1.5
+  },
+  "rows": [
+    {
+      "i": 0,
+      "sig": "4QbdA34j3gveuQdBRVa8mm9GLm3SouuEs6uEn4ziRigvhJGSncxMefTTMLR1QqBh2D8Jmh9fD4Rz17k4TwQ4RrZM",
+      "sendToConfirmMs": 685,
+      "sendToCallbackMs": 362,
+      "confirmToCallbackMs": -323,
+      "slots": 7
+    },
+    {
+      "i": 1,
+      "sig": "3WQEbSGm7ATN6WLvUnvhsvcqFrTHPP1PJBkv7TFjJTHJGpAJMAWUbW3zdaVbS2hySbrmVmenkDwtv2RRTWHHw2N",
+      "sendToConfirmMs": 521,
+      "sendToCallbackMs": 210,
+      "confirmToCallbackMs": -311,
+      "slots": 2
+    },
+    {
+      "i": 2,
+      "sig": "3HTKwWtkLJpA3Licco8dRULAbNpmPxpmbUKzwCnubeGogyBB8ZpXyiKdwVPWkvPbMzjmVzHFrBzNAwxne4ihPSS8",
+      "sendToConfirmMs": 539,
+      "sendToCallbackMs": 206,
+      "confirmToCallbackMs": -332,
+      "slots": 2
+    },
+    {
+      "i": 3,
+      "sig": "QMSHKVmxpyB7mkLAqrqevmmUQuKqCZ26LjX2QB8Ks7r2AxGgDV6SiEGY6HRMzeo9z7cogzwa92rQWAbTMSN95i2",
+      "sendToConfirmMs": 533,
+      "sendToCallbackMs": 205,
+      "confirmToCallbackMs": -328,
+      "slots": 2
+    },
+    {
+      "i": 4,
+      "sig": "fEZk83pBAKKwdNC4KCbgthRNvrxTmjWwCPkRARNV3wrS7i9tyXmyoUmBkqnQYULdpA963iu769bT9J9Qwit7Byu",
+      "sendToConfirmMs": 530,
+      "sendToCallbackMs": 209,
+      "confirmToCallbackMs": -321,
+      "slots": 2
+    },
+    {
+      "i": 5,
+      "sig": "3oeivhjjCie9Zk9ETcGKE6mmWjKome6XCU2CUizoo1LccMRGumsozeYkZJRgetEs7VKkJXyCn3MC159uC3LHiJQY",
+      "sendToConfirmMs": 516,
+      "sendToCallbackMs": 206,
+      "confirmToCallbackMs": -310,
+      "slots": 2
+    },
+    {
+      "i": 6,
+      "sig": "TmC6DA1KU4hv7qm2kWyyiR6VXG79x18AxvvYF9Fd3h7Fzk9TGNsojHMYCn9SUVXWoWhTrybj5efZkfUruffXUgV",
+      "sendToConfirmMs": 519,
+      "sendToCallbackMs": 199,
+      "confirmToCallbackMs": -320,
+      "slots": 2
+    },
+    {
+      "i": 7,
+      "sig": "3vVsS5B1q2nJvqhkbxsTG9unKYf67NeV14v73GRQG3jWNpyuLj1BR6HgRnKrdp3sPVeb7phFWdrrW9ozxw6vjD2Z",
+      "sendToConfirmMs": 551,
+      "sendToCallbackMs": 198,
+      "confirmToCallbackMs": -354,
+      "slots": 2
+    },
+    {
+      "i": 8,
+      "sig": "3fQ6p62NbPg8FE3uU4XKZmMRU7dPVyKobEQY6P8dzX9BcQhvpVtPbadfBm5NCfzNGNzUKwMNApL5D5cKz5TV3K8Q",
+      "sendToConfirmMs": 530,
+      "sendToCallbackMs": 206,
+      "confirmToCallbackMs": -324,
+      "slots": 2
+    },
+    {
+      "i": 9,
+      "sig": "3j1KX797kx9Y4KVQCAwhpkueArY4jNzhbEvrFjrdTsFxhz7ik2WPE9ZY5DxqVbMN9Wos1hMk5NpiVaDL4DYtk9KG",
+      "sendToConfirmMs": 528,
+      "sendToCallbackMs": 203,
+      "confirmToCallbackMs": -324,
+      "slots": 2
+    }
+  ]
+}

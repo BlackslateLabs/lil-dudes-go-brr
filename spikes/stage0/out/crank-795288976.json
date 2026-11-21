@@ -1,0 +1,129 @@
+{
+ "id": 795288976,
+ "interval": 50,
+ "iterations": 3000,
+ "taskId": "38027974565746",
+ "sigs": {
+  "startSig": "2bp6V1Yg2FR8GKrgWCfdAwL6kDPcdv5mpxvcLV6vVaRGqyBVCCWk7v7VadVkKYfnu14tGi7poSqj3NLinSErbmW1",
+  "scheduleSig": "ivusqwh8wdmUWyZQqorGNCaaiRttKMTYcvUU29xLrrjFaTm1SY9GdGPZ8AptdY6DaMhmdYJD14gD4UrH7WHPefd"
+ },
+ "slotMs": 10,
+ "check3": {
+  "crankCalls": 3000,
+  "expectedCalls": 3000,
+  "missed": 0,
+  "failedTxsOnBoard": 0,
+  "okTxsOnBoard": 3002,
+  "slotDelta": {
+   "n": 3000,
+   "min": 4,
+   "p50": 5,
+   "p90": 5,
+   "p99": 6,
+   "max": 57,
+   "mean": 5.02,
+   "sd": 0.99
+  },
+  "intervalMs": {
+   "n": 3000,
+   "min": 40,
+   "p50": 50,
+   "p90": 50,
+   "p99": 60,
+   "max": 569.96,
+   "mean": 50.17,
+   "sd": 9.87
+  },
+  "gapsOver2xInterval": 1,
+  "histogramSlots": {
+   "4": 111,
+   "5": 2777,
+   "6": 111,
+   "57": 1
+  },
+  "durationS": 150.5,
+  "sim": {
+   "stepsTotal": 2025,
+   "maxStepsPerCall": 12,
+   "finalTick": 2025,
+   "hp": [
+    0,
+    136
+   ],
+   "ended": true,
+   "lagTicks": {
+    "n": 2016,
+    "p50": 0,
+    "p90": 0,
+    "p99": 0,
+    "max": 0,
+    "mean": 0
+   },
+   "lagNote": "live part only (before the KO froze the sim); target=(slot-start)/5"
+  }
+ },
+ "check5": {
+  "processed": {
+   "distinctCrankStatesSeen": 3001,
+   "notifications": 3002,
+   "perSecond": {
+    "n": 146,
+    "min": 18,
+    "p50": 20,
+    "p90": 20,
+    "p99": 21,
+    "max": 21,
+    "mean": 20,
+    "sd": 0.42
+   },
+   "interArrivalMs": {
+    "n": 3001,
+    "min": 0.07,
+    "p50": 49.93,
+    "p90": 51.48,
+    "p99": 157.31,
+    "max": 553.58,
+    "mean": 50.15,
+    "sd": 23.79
+   },
+   "over100ms": 102
+  },
+  "confirmed": {
+   "distinctCrankStatesSeen": 3001,
+   "notifications": 3002,
+   "perSecond": {
+    "n": 146,
+    "min": 18,
+    "p50": 20,
+    "p90": 20,
+    "p99": 21,
+    "max": 21,
+    "mean": 20,
+    "sd": 0.42
+   },
+   "interArrivalMs": {
+    "n": 3001,
+    "min": 0.08,
+    "p50": 49.94,
+    "p90": 51.58,
+    "p99": 157.09,
+    "max": 553.8,
+    "mean": 50.15,
+    "sd": 23.91
+   },
+   "over100ms": 103
+  },
+  "analysis": {
+   "crankStatesSkippedInFeed": 0,
+   "gapsOver100": 102,
+   "fastFollowersAfterGap": 169,
+   "relativeDeliveryDelayMs": {
+    "p50": 10.0,
+    "p90": 12.4,
+    "p99": 117.8,
+    "max": 577.1
+   }
+  }
+ },
+ "wallS": 180
+}

@@ -1,0 +1,59 @@
+{
+  "heartbeatPublicOnly": {
+    "B": {
+      "keys": 4,
+      "ixs": 1,
+      "ixDataLen": [
+        17
+      ],
+      "logs": 4,
+      "firstLog": "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G invoke [1]"
+    },
+    "A": {
+      "keys": 4,
+      "ixs": 1,
+      "ixDataLen": [
+        17
+      ],
+      "logs": 4,
+      "firstLog": "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G invoke [1]"
+    },
+    "noToken": {
+      "keys": 4,
+      "ixs": 1,
+      "ixDataLen": [
+        17
+      ],
+      "logs": 4,
+      "firstLog": "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G invoke [1]"
+    }
+  },
+  "peekMemberA": {
+    "A": {
+      "keys": 3,
+      "ixs": 1,
+      "ixDataLen": [
+        24
+      ],
+      "logs": 4,
+      "firstLog": "Program 9oXqBpV3cv2kkYgbq3VbQu5KgQjbTGuFJfGeLMqkZC7G invoke [1]"
+    },
+    "B": {
+      "keys": 0,
+      "ixs": 0,
+      "ixDataLen": [],
+      "logs": 0
+    },
+    "noToken": {
+      "keys": 0,
+      "ixs": 0,
+      "ixDataLen": [],
+      "logs": 0
+    }
+  },
+  "peekIxDataLen": 24,
+  "sigs": {
+    "heartbeat": "34cLMfa93kSdmLdJBytEJgMg4nscYG5JQSoXbQaUWtSu4K1MeeNew6hvawFbv94rBuS5yP2hXp4N8iPBaep2zk4w",
+    "peekSig": "4eYxkuBRMv94VwGPGzejtdWVWGxiEitKwrU1ZxfvXxMtC2FaRqfhJsmWVtZJ41ydJ751XBwstpTC2XCPcBuLSKXX"
+  }
+}
