@@ -74,3 +74,13 @@ pub fn cu_marks(logs: &[String]) -> Vec<u64> {
 pub fn cu_phases(logs: &[String]) -> Vec<u64> {
     cu_marks(logs).windows(2).map(|w| w[0] - w[1]).collect()
 }
+
+/// CU used by `program` in a tx's logs ("Program <id> consumed N of M compute units").
+pub fn consumed(logs: &[String], program: &str) -> u64 {
+    logs.iter()
+        .filter_map(|l| {
+            let rest = l.strip_prefix(&format!("Program {program} consumed "))?;
+            rest.split(' ').next()?.parse::<u64>().ok()
+        })
+        .sum()
+}

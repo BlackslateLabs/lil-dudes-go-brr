@@ -23,9 +23,11 @@ pub const SLOTS_PER_TICK: u64 = 5;
 /// 400k CU per call; player txs run with the default 200k.
 pub const CRANK_CATCH_UP: u32 = 8;
 pub const PLAYER_CATCH_UP: u32 = 2;
-/// Crank: one `advance` every 50 ms, enough runs for a whole match plus slack for missed slots.
+/// Crank: one `advance` every 50 ms of wall time. The tick follows ER slots, so if slots run
+/// slower than 10 ms a match outlasts MATCH_TICKS crank runs: schedule 1.5× (covers slots up to
+/// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand).
 pub const CRANK_INTERVAL_MS: i64 = 50;
-pub const CRANK_ITERATIONS: i64 = lil_dudes_sim::MATCH_TICKS as i64 + 400;
+pub const CRANK_ITERATIONS: i64 = lil_dudes_sim::MATCH_TICKS as i64 * 3 / 2;
 /// A match that has not started this long after its permissions were made can be aborted
 /// (everyone refunded), ~60 s of 10 ms slots.
 pub const ABORT_SLOTS: u64 = 6_000;
