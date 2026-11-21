@@ -430,3 +430,46 @@ re-delegates on the next write; tests clear it (the real DLP does). Not a progra
 
 **Blocked / risks:** an upgrade needs a full-size buffer (~2.33 SOL) next to the live program;
 7.59 SOL covers one at a time (the buffer is refunded after each upgrade).
+
+## 2026-11-22 04:50 IST · Kai · M3 step 8 (LiveSource, live devnet match) · [STAGE] [CONTRACT] [HANDOFF]
+**Did:** M3 step 8 done; next: step 9 (apps/server quick-match queue + room codes).
+- `packages/client/src/live/`: **`LiveSource`** (same `MatchSource`, no field changes): burner
+  signs everything on the TEE (0 SOL), TEE token (challenge/login, ~25 lines, no MagicBlock TS SDK),
+  raw-websocket `accountSubscribe` on Match + my Peek, 20 Hz playout ~3 ticks behind the newest
+  snapshot, events derived from state diffs (tested against the sim's own events tick by tick over
+  whole matches), `set_aim` throttled to 10/s (fire and forget), rig/peek deduped. It **auto-drives
+  the TEE choreography**: init_permissions → private salt + VRF request → start (crank) →
+  heartbeat `advance` if the crank stalls → finish. Lobby calls (base layer): `createMatch`,
+  `joinMatch`, `delegateMatch`, `cancelMatch`, `settleMatch`, `closeMatch`, `fetchMatch`, `isSettled`.
+- Headless run `pnpm --filter @lil-dudes/client live` (bot vs bot through two LiveSources, WASM
+  Warlord on each side, fresh 0-SOL burners), twice on devnet + devnet-tee, both ✅ end to end:
+
+| | run 1 (0.05 SOL) | run 2 (0.1 SOL) |
+|---|---|---|
+| create → join → delegate | 8.1 s | 7.8 s |
+| delegate → playing (perms, salts, VRF, start) | 3.8 s | 4.4 s |
+| match | KO at tick 593 (side 1) | KO at tick 2,049 (side 0), all 3 phases |
+| finish → paid by the Magic Action | 0.4 s, exact (+0.0975 / 0, fee 0.0025) | 0.4 s, exact (+0.195 / 0, fee 0.005) |
+| Verify (seed + rigs re-derive every revealed gate) | 12 gates, 0 mismatches | 11 gates, 0 mismatches |
+| snapshots / ticks, render gap p50 / p99 / max | 617 / 593, 50 / 53 / – ms | 2,092 / 2,049, 50 / 51 / 101 ms |
+| cost | 0.012 SOL | 0.012 SOL |
+
+  Proven on devnet now: a 0-SOL burner can be the crank authority (`start`) and the Magic Action's
+  escrow authority (`finish`); four accounts delegate in one tx; ephemeral permissions + VRF +
+  crank + commit/undelegate/action all work in the real program. Raw results:
+  `packages/client/scripts/out/live-*.json`. SOL: 7.594650761 → 7.570683081 (two runs, everything
+  closed and swept back).
+
+**CONTRACT (additions only):** `LiveSource.connect({ matchId, burner, onStage?, onTx?,
+delayTicks? })` → `MatchSource`; `view.status` is `'waiting'` until the match starts on the TEE.
+Extras: `currentStage`, `reveal()` (after the end, same shape as `OfflineSource.reveal()`),
+`latest`/`latestBytes`, `awaitFinal(base)`, `stats`, `dispose()`. Lobby functions above, plus
+`baseConnection`, `STAKE_TIERS`, `newMatchId`, `teeToken`, `chain.*` (PDAs, decoders, ix builders).
+New deps of `@lil-dudes/client`: `@solana/web3.js` 1.98.4, `buffer`, `tweetnacl`, `bs58`.
+
+**Next / handoff:** **Suparno:** the one-line swap is ready: `await LiveSource.connect({ matchId,
+burner })` instead of `new OfflineSource(…)`, then `subscribe`/`start` as today (README "Live
+matches"). Show a waiting state while `view.status === 'waiting'` / `onStage` is `setup`. If Vite
+complains about `global`, add `define: { global: 'globalThis' }`. Lobby screens: wire Room Code
+to `createMatch` (share `id`) / `joinMatch`; the server queue + room-code API comes next (step 9).
+Phone ws check: run any live match and watch it on the phone (the feed is the same).
