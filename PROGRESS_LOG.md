@@ -473,3 +473,52 @@ matches"). Show a waiting state while `view.status === 'waiting'` / `onStage` is
 complains about `global`, add `define: { global: 'globalThis' }`. Lobby screens: wire Room Code
 to `createMatch` (share `id`) / `joinMatch`; the server queue + room-code API comes next (step 9).
 Phone ws check: run any live match and watch it on the phone (the feed is the same).
+
+## 2026-11-22 05:15 IST · Kai · M3 Live 1v1 (step 9 + summary) · [STAGE] [DECISION] [HANDOFF]
+**Did:** M3 step 9 done (last step). `apps/server` (Hono, in memory, no keys, not in the trust
+path): room codes (`POST /rooms {id, stake}` → 6-char code, `GET /rooms/:code`) and a quick-match
+queue (`POST /queue {player, stake}` → ticket, `GET /queue/:ticket` → `{state: matched, id, role:
+create|join, opponent}`), 2 tests; client helpers `createRoom`, `findRoom`, `quickMatch`,
+`waitForStatus`. A third live devnet match went through the queue (`--server … --mode queue`).
+
+**M3 result: a real 1v1 match runs on devnet + the Private ER, end to end, and settles itself.**
+
+| What | Status / number |
+|---|---|
+| Program | `lil_dudes` on devnet `4QFSXrcG…9FDa`, 457,672 B, 16 instructions, TEE-pinned |
+| Tests | sim 63 · sim-wasm 8 · program 3 · MagicSVM 15 (every instruction + refused cases) · client TS 12 · server 2; autofixer clean |
+| Codec | 68,388 → 5,870 CU; worst tick 50.5k → 13.5k (M2 state) / 38.4k (new worst); 10 ticks per 400k crank tx |
+| Live runs (bot vs bot, 0-SOL burners) | 3 / 3 ✅: KO 0.05, KO 0.1 (3 phases), timer win 0.05 (lead 649‰ → 82.45% of S); every payout exact via the Magic Action ~0.4 s after `finish`; Verify 11–15 revealed gates, 0 mismatches |
+| Timings | create→delegate ~8 s; delegate→playing ~4 s (permissions, salts, VRF, start); render gap p50 50 / p99 51–53 ms |
+| SOL (deploy wallet) | 9.923621481 → 7.558699241: 2.3258526 locked as program rent, ~0.003 deploy fees, 3 × 0.012 per live match (everything closed and swept back) |
+
+**Decided:** (beyond the step entries) LiveSource auto-drives the whole TEE choreography from
+both players (idempotent on-chain), so the web app only does lobby calls + `connect`/`start`;
+no WASM prediction in the live feed (the 3-tick buffer already gives p99 ~52 ms); room codes and
+the queue only hand out match ids and roles.
+
+**Blocked / risks:**
+- Not yet on phones or in `apps/web` (headless Node only); the phone ws rate is still unmeasured.
+- Disk: 5 GB free (96%); MagicSVM's test build needs ~1 GB, `target/debug` ~5 GB.
+- The bots are lopsided live (one KO was 2200:0); balance work stays in M6.
+- Crank tasks are not cancelled; they run out (≤ 3,600 runs) as cheap no-ops / failed retries.
+- The server keeps state in memory (one instance; a restart drops waiting players).
+
+**Next (M4–M5 plan):**
+- M4 hidden info is mostly done on-chain (Secrets/Peek privacy, VRF deals, rig, peek, re-deal,
+  reveal, Verify data). Left: a privacy re-check of the real program on devnet with a second
+  token (`getTransaction` / `getAccountInfo` of Secrets and the opponent's Peek, like Stage 0
+  check 2), Verify screen data from `reveal()`, GOTCHA/peek UI wiring.
+- M5 money + onboarding: burner top-up faucet (`POST /topup`, sponsor wallet in the server env),
+  wallet sheet (withdraw), stake picker (tiers already enforced on-chain), "Settle now" button
+  (`settleMatch`), on-chain bot for Play vs Bot online (or keep the bot offline: decide), deploy
+  the server (Render/Vercel), close old matches automatically.
+
+**Handoff (Suparno):** LiveSource is ready behind the same `MatchSource`: README "Live matches"
+in `packages/client`. Room Code screen: creator `createMatch` → `createRoom(server, id, stake)` →
+show `code`; joiner `findRoom(server, code)` → `joinMatch`; creator `waitForStatus(JOINED)` →
+`delegateMatch`; both `LiveSource.connect({ matchId, burner })` → `start()`. Quick Match:
+`quickMatch(server, burner.publicKey, stake)` → by `role` create or (`waitForStatus(OPEN)` then)
+join, as `packages/client/scripts/live-bot-match.ts` does. Run the server with
+`pnpm --filter server dev` (port 8787). Burners need devnet SOL for the base steps (stake +
+~0.013 SOL rent) until the M5 faucet lands; ask me for a top-up.
