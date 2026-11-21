@@ -177,6 +177,14 @@ impl SimMatch {
     pub fn digest(&self) -> u64 {
         self.state.digest()
     }
+
+    /// The public state in the on-chain codec layout (crates/sim/src/codec.rs), exactly the
+    /// bytes the Match account holds; packages/client/src/codec.ts decodes it.
+    pub fn public_bytes(&self) -> Vec<u8> {
+        let mut out = [0u8; PUBLIC_LEN];
+        codec::encode_public(&self.state.public, &mut out);
+        out.to_vec()
+    }
 }
 
 fn flag(b: bool) -> f64 {
@@ -273,6 +281,12 @@ pub fn rules_version() -> u16 {
 #[wasm_bindgen]
 pub fn layout_version() -> u32 {
     LAYOUT_VERSION
+}
+
+/// crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
+#[wasm_bindgen]
+pub fn codec_version() -> u8 {
+    codec::CODEC_VERSION
 }
 
 /// Every constant packages/client mirrors, as JSON (the TS parity test compares them).
@@ -386,6 +400,19 @@ mod tests {
         let mut h = SimMatch::new(42, 7, 100_000_000, 0b10, false);
         while h.step() {}
         assert_eq!(h.digest(), PARITY_DIGEST);
+    }
+
+    #[test]
+    fn public_bytes_round_trip() {
+        let mut h = SimMatch::new(3, 4, 0, 0b11, false);
+        for _ in 0..300 {
+            h.step();
+        }
+        let bytes = h.public_bytes();
+        assert_eq!(bytes.len(), PUBLIC_LEN);
+        let mut p = MatchState::zeroed().public;
+        codec::decode_public(bytes.as_slice().try_into().unwrap(), &mut p);
+        assert_eq!(p, h.state.public);
     }
 
     #[test]

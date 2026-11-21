@@ -63,6 +63,17 @@ export class SimMatch {
         return v1;
     }
     /**
+     * The public state in the on-chain codec layout (crates/sim/src/codec.rs), exactly the
+     * bytes the Match account holds; packages/client/src/codec.ts decodes it.
+     * @returns {Uint8Array}
+     */
+    public_bytes() {
+        const ret = wasm.simmatch_public_bytes(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
      * Later calls before the step win.
      * @param {number} side
@@ -101,6 +112,15 @@ export class SimMatch {
     }
 }
 if (Symbol.dispose) SimMatch.prototype[Symbol.dispose] = SimMatch.prototype.free;
+
+/**
+ * crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
+ * @returns {number}
+ */
+export function codec_version() {
+    const ret = wasm.codec_version();
+    return ret;
+}
 
 /**
  * Every constant packages/client mirrors, as JSON (the TS parity test compares them).
@@ -162,6 +182,11 @@ const SimMatchFinalization = (typeof FinalizationRegistry === 'undefined')
 function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 
 let cachedFloat64ArrayMemory0 = null;

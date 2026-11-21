@@ -23,6 +23,11 @@ export class SimMatch {
      */
     private_view(side: number): Float64Array;
     /**
+     * The public state in the on-chain codec layout (crates/sim/src/codec.rs), exactly the
+     * bytes the Match account holds; packages/client/src/codec.ts decodes it.
+     */
+    public_bytes(): Uint8Array;
+    /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
      * Later calls before the step win.
      */
@@ -40,6 +45,11 @@ export class SimMatch {
 }
 
 /**
+ * crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
+ */
+export function codec_version(): number;
+
+/**
  * Every constant packages/client mirrors, as JSON (the TS parity test compares them).
  */
 export function constants_json(): string;
@@ -53,6 +63,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_simmatch_free: (a: number, b: number) => void;
+    readonly codec_version: () => number;
     readonly constants_json: () => [number, number];
     readonly layout_version: () => number;
     readonly rules_version: () => number;
@@ -61,6 +72,7 @@ export interface InitOutput {
     readonly simmatch_events: (a: number) => [number, number];
     readonly simmatch_new: (a: bigint, b: bigint, c: bigint, d: number, e: number) => number;
     readonly simmatch_private_view: (a: number, b: number) => [number, number];
+    readonly simmatch_public_bytes: (a: number) => [number, number];
     readonly simmatch_set_input: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly simmatch_step: (a: number) => number;
     readonly simmatch_tick: (a: number) => number;

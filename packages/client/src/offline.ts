@@ -162,6 +162,11 @@ export class OfflineSource implements MatchSource {
     return this.sim.digest();
   }
 
+  /** The public state in the on-chain Match account layout (decode with `decodePublic`). */
+  publicBytes(): Uint8Array {
+    return this.sim.public_bytes();
+  }
+
   /** Stop and free the WASM memory now (otherwise it is freed when garbage-collected). */
   dispose(): void {
     this.stop();
