@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sprite, SpriteMaterial, Vector3 } from 'three';
-import { COLS, ROW_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
-import { PALETTE, colCenter, isGoodOp, opLabel, wx, wz } from './layout';
+import { PALETTE, opLabel, wx, wz } from './layout';
 
 const POOL = 16;
 const POP_LIFE = 0.7; // s
@@ -17,7 +16,7 @@ interface Pop {
   z: number;
 }
 
-/** Reveal pops over gates, and rate-limited camera shake on hits to your cannon and on KO. */
+/** Reveal pops over gates in your lane, and rate-limited shake on tower hits / tower down / death. */
 export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
   const pops = useRef<Pop[]>([]);
   const free = useRef<Sprite[]>([]);
@@ -29,33 +28,32 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
 
   useEffect(() => {
     free.current = sprites.current.filter(Boolean);
-    return feed.onEvent((e) => {
+    const kick = (amount: number, force = false) => {
+      if (!force && clock.current - lastShake.current < SHAKE_GAP) return;
+      lastShake.current = clock.current;
+      shake.current = Math.min(1.4, shake.current + amount);
+    };
+    return feed.onEvent((e, view) => {
+      if ('side' in e && e.side !== feed.mySide) return; // only my lane shakes and pops
       if (e.type === 'reveal') {
+        const g = view.sides[feed.mySide].gates.find((x) => x.slot === e.slot);
         const s = free.current.pop();
-        if (!s) return;
-        const row = Math.floor(e.cell / COLS);
-        const col = e.cell % COLS;
-        const good = e.gold ? e.op.kind === 'mul' : isGoodOp(e.op);
+        if (!g || !s) return;
+        const bad = e.op.kind === 'div';
         (s.material as SpriteMaterial).map = labelTexture(opLabel(e.op), {
           color: '#ffffff',
-          outline: e.gold ? PALETTE.gold : good ? PALETTE.good : PALETTE.bad,
+          outline: bad ? PALETTE.bad : g.big ? PALETTE.gold : PALETTE.good,
           width: 256,
           height: 128,
         });
         s.visible = true;
-        pops.current.push({
-          sprite: s,
-          born: clock.current,
-          x: wx(colCenter(col), feed.mySide),
-          z: wz(e.side, ROW_Y[row] ?? 0, feed.mySide),
-        });
-      } else if (e.type === 'hit' && e.side === feed.mySide) {
-        if (clock.current - lastShake.current >= SHAKE_GAP) {
-          lastShake.current = clock.current;
-          shake.current = Math.min(0.8, shake.current + 0.35);
-        }
-      } else if (e.type === 'end' && e.result.ko) {
-        shake.current = 1.4;
+        pops.current.push({ sprite: s, born: clock.current, x: wx(g.x), z: wz(g.y) });
+      } else if (e.type === 'towerHit') {
+        kick(0.15);
+      } else if (e.type === 'towerDown') {
+        kick(0.7, true);
+      } else if (e.type === 'death') {
+        kick(1.4, true);
       }
     });
   }, [feed]);

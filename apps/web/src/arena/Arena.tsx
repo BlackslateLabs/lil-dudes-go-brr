@@ -1,23 +1,22 @@
 import { useEffect, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Group, Sprite, Vector3 } from 'three';
-import { CLASH_END_Y, CLASH_START_Y, type Side } from '@lil-dudes/client';
+import { Group, Vector3 } from 'three';
 import type { MatchFeed } from '../match/feed';
+import { Base } from './Base';
 import { Crowds } from './Crowds';
 import { Fx } from './Fx';
 import { Gates } from './Gates';
-import { labelTexture } from './labelTexture';
-import { CAM_FOV, CAM_POS, CAM_TARGET, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, SY, shortNum, wx, wz } from './layout';
+import { CAM_FOV, CAM_POS, CAM_TARGET, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, wx, wz } from './layout';
 
 interface ArenaProps {
   feed: MatchFeed;
-  /** Gate taps (rig / peek). Off for the Home background. */
+  /** Gate taps (peek). Off for the Home background. */
   interactive?: boolean;
 }
 
 const camBase = new Vector3(...CAM_POS);
 
-/** The 3D arena. It only draws what the MatchSource says; it never decides outcomes. */
+/** Your lane in 3D. It only draws what the MatchSource says; it never decides outcomes. */
 export function Arena({ feed, interactive = false }: ArenaProps) {
   return (
     <Canvas
@@ -33,10 +32,9 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
 
       <Predictor feed={feed} />
       <Ground />
-      <Gates feed={feed} side={0} interactive={interactive} />
-      <Gates feed={feed} side={1} interactive={interactive} />
-      <Cannon feed={feed} side={0} />
-      <Cannon feed={feed} side={1} />
+      <Base feed={feed} />
+      <Gates feed={feed} interactive={interactive} />
+      <Cannon feed={feed} />
       <Crowds feed={feed} />
       <Fx feed={feed} camBase={camBase} />
     </Canvas>
@@ -50,9 +48,6 @@ function Predictor({ feed }: { feed: MatchFeed }) {
 }
 
 function Ground() {
-  // The clash zone is measured from either cannon; draw it from side 0's frame.
-  const z0 = HALF_L - CLASH_START_Y * SY;
-  const z1 = HALF_L - CLASH_END_Y * SY;
   return (
     <group>
       <mesh rotation-x={-Math.PI / 2} position-y={-0.05}>
@@ -69,68 +64,50 @@ function Ground() {
           <meshLambertMaterial color={PALETTE.laneEdge} />
         </mesh>
       ))}
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, (z0 + z1) / 2]}>
-        <planeGeometry args={[LANE_W, Math.abs(z0 - z1)]} />
-        <meshBasicMaterial color={PALETTE.clash} transparent opacity={0.28} />
+      {/* Your cannon line: an enemy crossing it ends your run. */}
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.03, wz(0) - 0.6]}>
+        <planeGeometry args={[LANE_W, 0.25]} />
+        <meshBasicMaterial color={PALETTE.enemy} transparent opacity={0.6} />
+      </mesh>
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, -HALF_L + 0.6]}>
+        <planeGeometry args={[LANE_W, 1.2]} />
+        <meshBasicMaterial color={PALETTE.base} transparent opacity={0.25} />
       </mesh>
     </group>
   );
 }
 
-function Cannon({ feed, side }: { feed: MatchFeed; side: Side }) {
+function Cannon({ feed }: { feed: MatchFeed }) {
   const ref = useRef<Group>(null!);
   const barrel = useRef<Group>(null!);
-  const hpLabel = useRef<Sprite>(null!);
-  const shownHp = useRef<number | null>(null);
-  const mine = side === feed.mySide;
-  const facing = mine ? 1 : -1;
-  const color = mine ? PALETTE.me : PALETTE.them;
   const kick = useRef(0);
 
   useEffect(
     () =>
       feed.onEvent((e) => {
-        if (e.type === 'volley' && e.side === side) kick.current = 1;
+        if (e.type === 'volley' && e.side === feed.mySide) kick.current = 1;
       }),
-    [feed, side],
+    [feed],
   );
 
   useFrame((_, dt) => {
-    const { prev, cur } = feed;
-    if (!cur || !prev) return;
-    const a = feed.alpha();
-    const x = mine ? feed.myCannon : prev.sides[side].cannonX + (cur.sides[side].cannonX - prev.sides[side].cannonX) * a;
-    ref.current.position.x = wx(x, feed.mySide);
-    // Recoil on each volley (cosmetic).
+    ref.current.position.x = wx(feed.myCannon);
     kick.current = Math.max(0, kick.current - dt * 6);
-    barrel.current.position.z = facing * kick.current * 0.35;
-    // HP label ticks smoothly toward the real value (no per-hit numbers).
-    const hp = cur.sides[side].hp;
-    shownHp.current = shownHp.current === null ? hp : shownHp.current + (hp - shownHp.current) * Math.min(1, dt * 8);
-    const mat = hpLabel.current.material;
-    const tex = labelTexture(shortNum(shownHp.current), { color: '#ffffff', outline: color, width: 256, height: 112 });
-    if (mat.map !== tex) {
-      mat.map = tex;
-      mat.needsUpdate = true;
-    }
+    barrel.current.position.z = kick.current * 0.35;
   });
 
   return (
-    <group ref={ref} position={[0, 0, wz(side, 0, feed.mySide) + facing * 1.2]}>
+    <group ref={ref} position={[0, 0, wz(0) + 1.2]}>
       <mesh position-y={0.9}>
         <boxGeometry args={[3.4, 1.8, 2.8]} />
-        <meshLambertMaterial color={color} />
+        <meshLambertMaterial color={PALETTE.me} />
       </mesh>
       <group ref={barrel}>
-        <mesh position={[0, 2.2, -facing * 0.9]} rotation-x={-facing * (Math.PI / 2 - 0.35)}>
+        <mesh position={[0, 2.2, -0.9]} rotation-x={-(Math.PI / 2 - 0.35)}>
           <cylinderGeometry args={[0.65, 0.85, 2.8, 18]} />
           <meshLambertMaterial color="#2b2b3a" />
         </mesh>
       </group>
-      {/* Your HP label sits above your cannon; theirs sits in front of it, clear of the top bar. */}
-      <sprite ref={hpLabel} position={mine ? [0, 4.6, 0] : [0, 3.2, 3.2]} scale={[5, 2.2, 1]} renderOrder={15}>
-        <spriteMaterial transparent depthTest={false} />
-      </sprite>
     </group>
   );
 }
