@@ -874,3 +874,29 @@ peek stage/slot/op).
 
 **Next / handoff:** program port (compile-checked here; Kai builds/redeploys/runs MagicSVM) and client
 port are in progress; then `apps/web` on v3.
+
+## 2026-11-22 14:16 IST · Suparno · program v3 · [CONTRACT] [HANDOFF]
+**Did:** `programs/lil_dudes` ported to the v3 sim (13 commits). **No instruction changed** (names,
+accounts, args): `plant_rig(cell)` / `peek_cell(cell)` keep their arg, which is now a **gate slot**.
+- Accounts: **Match 1,792 B** (unchanged up to 288; `gotcha` 288..296 now [tick lo, tick hi, slot,
+  rigged_by]; `history` 296..320 = 24 B; `_pad` 2; public state 322..1792), **Secrets 168 B** (state
+  112..168), **Peek 56 B** (side 48, then stage, rig_stage, rig_slot, peek_stage, peek_slot, peek_op, pad).
+  All pinned by `offset_of!` asserts. `CRANK_ITERATIONS` 5,400 (MATCH_TICKS 3,600).
+- Rig/peek validated by the sim's v3 rules (own plant / own fight-or-raid). Peeks refreshed from the private
+  view after each rig/peek and at finish; **`advance` can't write Peeks** (it would change the IDL), so a Peek
+  stays stale across a stage change until the owner's next rig/peek or finish: clients treat
+  `Peek.stage != public stage` as "nothing this stage".
+- Settle uses the v3 payout stored by the sim. **CONTRACT:** `packages/client/src/idl/lil_dudes.json` edited by
+  hand for the account layouts + refusal messages; checked against Anchor's IDL generator (types, errors,
+  accounts identical; instructions only differ by the PDA seeds `anchor build` adds, as before).
+- MagicSVM tests ported to v3 and **compile**; not run (no SBF toolchain here). TECH §4 updated, unverified
+  facts marked ⚠️. Host checks: check (3 feature sets), clippy -D warnings, fmt, `cargo test -p lil_dudes` (4).
+
+**Blocked / risks:** nothing is built as SBF, deployed or run in MagicSVM yet. Runtime-uncertain tests:
+`endgame::rig_and_peek_follow_the_v3_rules_and_stay_private` (edits Match bytes on the rollup to show a gate
+face-up), `endgame::finish_publishes_...` (expects a GOTCHA on the gate B fires through), `tee::match_runs_to_the_end`
+(manual advance cap raised to 600).
+
+**Next / handoff:** **Kai:** `anchor build` (IDL should match the committed JSON), the magicsvm + bench feature
+builds, the full MagicSVM suite + `--test bench -- --nocapture` (confirm catch-up caps 8/2 still fit; `finish` now
+also decodes once), redeploy to devnet, re-run the privacy check (account sizes 1,792 / 168 / 56).
