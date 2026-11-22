@@ -1,5 +1,5 @@
 // MockSource: a scripted, hands-off match for building screens. It is the real rules (WASM)
-// with the Warlord bot on BOTH sides, so every MatchView field and every MatchEvent is v3-correct
+// with the Warlord bot on BOTH sides, so every MatchView field and every MatchEvent is v4-correct
 // and nothing needs input (setAim / rig / peek are ignored). `startTick` fast-forwards.
 import { OfflineSource } from './offline';
 import type { MatchListener, MatchSource } from './source';
@@ -14,7 +14,7 @@ export interface MockOptions {
   stake?: number;
   /** Playback speed multiplier for testing (2 = twice as fast). Default 1. */
   speed?: number;
-  /** Start at this tick (played instantly, no events), e.g. to jump to Fight 2 or the raid. Default 0. */
+  /** Start at this tick (played instantly, no events), e.g. to jump to Fight 2 or the town hall raid. Default 0. */
   startTick?: number;
   /** Match / bot seeds. Default: fixed, so the mock plays the same match every time. */
   seed?: bigint;
@@ -57,6 +57,10 @@ export class MockSource implements MatchSource {
   /** Ignored: the bot plays this side too. */
   setAim(_x: number): void {}
   rig(_slot: number): void {}
+  /** Always false: the bot plays this side, so nothing can be rigged by hand. */
+  canRig(_slot: number): boolean {
+    return false;
+  }
   peek(_slot: number): void {}
 
   /** Advance one tick now (tests). */

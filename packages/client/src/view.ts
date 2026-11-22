@@ -16,9 +16,12 @@ export interface EnemyState {
 /** One lane's public fields, as the sim keeps them. */
 export interface LaneState {
   stage: number;
-  /** Sim phase code: 0 plant, 1 fight, 2 transit, 3 raid, 4 done. */
+  /** Sim phase code: 0 plant, 1 fight, 2 transit, 3 raid (the town hall raid of the final
+   *  stage), 4 done. */
   phase: number;
   phaseTicks: number;
+  /** Ticks since the town hall raid started (0 before it). */
+  raidTicks: number;
   dead: boolean;
   cannonX: number;
   aimX: number;
@@ -44,6 +47,8 @@ export interface RawResult {
 }
 
 const PHASES: readonly LanePhase[] = ['plant', 'fight', 'transit', 'raid', 'done'];
+const RAID = 3;
+const DONE = 4;
 
 export const sideOf = (n: number): Side => (n === 1 ? 1 : 0);
 
@@ -73,8 +78,10 @@ export function laneView(l: LaneState, layout: number, name: string, isBot: bool
     stage: l.stage,
     phase: lanePhase(l),
     phaseTick: l.phaseTicks,
+    raidTicks: l.raidTicks,
     gold: l.gold,
-    raidGold: l.stage >= C.RAID_STAGE ? Math.max(0, l.gold - fightGold(layout)) : 0,
+    // The raid starts with exactly fightGold (every tower of every stage down); only loot after.
+    raidGold: l.phase === RAID || l.phase === DONE ? Math.max(0, l.gold - fightGold(layout)) : 0,
     cannonX: l.cannonX,
     aimX: l.aimX,
     cohorts: l.cohorts.map(({ id, count, x, y, age }) => ({ id, count, x, y, age })),

@@ -1,4 +1,4 @@
-// MatchView v3: everything the screen needs to draw one moment of a match (SPEC v3).
+// MatchView v4: everything the screen needs to draw one moment of a match (SPEC v4).
 // It mirrors the public Match account (plus the viewer's own private Peek/Rig).
 // Changing it needs a CONTRACT entry in PROGRESS_LOG.md.
 
@@ -14,10 +14,13 @@ export type Side = 0 | 1;
 
 export type MatchStatus = 'waiting' | 'playing' | 'ended';
 
-/** Where one player is in their own level (SPEC §3). */
+/** Where one player is in their own level (SPEC §3). v4 flow: plant → fight (stage 0) → transit
+ *  → plant → fight (stage 1) → raid → done. The raid is the town hall raid of the final stage:
+ *  it starts in place when Fight 2's last tower falls (same stage, same field, no transit or
+ *  plant before it). 'dead' can come at any point. */
 export type LanePhase = 'plant' | 'fight' | 'transit' | 'raid' | 'done' | 'dead';
 
-/** v3 gates only multiply; a sprung rig acts as ÷2. */
+/** Gates only multiply; a sprung rig acts as ÷2. */
 export type GateOp = { kind: 'mul'; value: number } | { kind: 'div'; value: number };
 
 export interface GateView {
@@ -70,11 +73,16 @@ export interface CohortView {
 export interface LaneView {
   name: string;
   isBot: boolean;
-  /** 0 = fight 1, 1 = fight 2, 2 = raid. */
+  /** 0 = fight 1, 1 = fight 2 (FINAL_STAGE; its raid phase is the town hall raid). */
   stage: number;
   phase: LanePhase;
-  /** Ticks since the current phase started (moving gates and wave timers count from fight start). */
+  /** Ticks since the current phase started (moving gates and wave timers count from fight start).
+   *  The raid keeps counting the Fight's ticks (no reset), so gates slide on smoothly. */
   phaseTick: number;
+  /** Ticks since the town hall raid started (0 outside it; it keeps its last value once done).
+   *  The cannon fires while raidTicks < RAID_TICKS; the raid ends when that is over and no dudes
+   *  are left. Use it for the raid countdown. */
+  raidTicks: number;
   gold: number;
   /** Gold earned in the raid so far (part of `gold`). */
   raidGold: number;
@@ -86,12 +94,13 @@ export interface LaneView {
   cohorts: CohortView[];
   /** The base's troops coming down this lane. */
   enemies: CohortView[];
-  /** Towers of the current stage (empty in the raid). */
+  /** Towers of the current stage (all at 0 HP in the raid: they fell, the town hall is next). */
   towers: TowerView[];
   /** Gates of the current stage. */
   gates: GateView[];
   crates: CrateView[];
-  /** Used in the current stage. */
+  /** Used in the current stage (a rig can be placed in any phase while alive and not done; see
+   *  MatchSource.canRig). */
   rigUsed: boolean;
   peekUsed: boolean;
 }
@@ -121,7 +130,8 @@ export interface MatchView {
 
 /** Private to the viewer: never visible to the opponent. */
 export interface PrivateView {
-  /** The trap I planted this stage of mine: which opponent stage and gate slot. */
+  /** The trap I planted this stage of mine: the opponent's stage (= my stage when I rigged) and
+   *  gate slot (= the slot I tapped in my own lane). */
   myRig: { stage: number; slot: number } | null;
   /** My peek in my current stage: which slot and its true value (`div` = rigged). */
   myPeek: { stage: number; slot: number; op: GateOp } | null;

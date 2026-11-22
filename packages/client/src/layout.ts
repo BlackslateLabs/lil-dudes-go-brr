@@ -5,13 +5,14 @@ import type { GateOp } from './types';
 /** The layout with this id (out of range → layout 0, like the sim). */
 export const layoutDef = (id: number): C.LayoutDef => C.LAYOUTS[id] ?? C.LAYOUTS[0]!;
 
-/** One stage of a layout (out of range → that layout's Raid, like the sim). */
+/** One stage of a layout (out of range → that layout's last stage, like the sim). */
 export function stageDef(layout: number, stage: number): C.StageDef {
   const l = layoutDef(layout);
   return l.stages[stage] ?? l.stages[C.STAGES - 1]!;
 }
 
-/** crates/sim `GateDef::x_at`: centre x `t` ticks into the player's Fight/Raid (ping-pong). */
+/** crates/sim `GateDef::x_at`: centre x `t` ticks into the player's Fight (ping-pong). The raid
+ *  keeps counting the Fight's ticks, so pass the lane's `phaseTick` there too. */
 export function gateXAt(g: C.GateDef, t: number): number {
   const range = g.xMax - g.xMin;
   if (g.speed === 0 || range <= 0) return g.x;
@@ -24,6 +25,29 @@ export function gateXAt(g: C.GateDef, t: number): number {
 
 export const gateMoving = (g: C.GateDef): boolean => g.speed !== 0 && g.xMax > g.xMin;
 
+/** crates/sim `covers` (SPEC §6): `x` is inside a gate (or crate) of `width` centred on `centre`,
+ *  edges included, plus GATE_GRACE on each side: |x − centre| · 2 ≤ width + 2 · GATE_GRACE. */
+export const covers = (x: number, centre: number, width: number): boolean =>
+  Math.abs(x - centre) * 2 <= Math.abs(width + 2 * C.GATE_GRACE);
+
+/** crates/sim `StageDef::gate_at`: the gate slot of `row` a cohort at `x` goes through, or -1 in a
+ *  gap. Of the gates that cover `x`, the nearest centre wins, the lower slot on ties.
+ *  `gateX(slot, def)` is that gate's centre right now (default: its start x). */
+export function gateAt(st: C.StageDef, row: number, x: number, gateX: (slot: number, def: C.GateDef) => number = (_, d) => d.x): number {
+  let best = -1;
+  let bestD = Infinity;
+  st.gates.forEach((def, slot) => {
+    if (def.row !== row) return;
+    const centre = gateX(slot, def);
+    const d = Math.abs(x - centre);
+    if (covers(x, centre, def.width) && d < bestD) {
+      best = slot;
+      bestD = d;
+    }
+  });
+  return best;
+}
+
 /** The crate that locks gate `slot` of a stage, or -1: a crate just below a big gate's row,
  *  covering its span (crates/sim/src/layouts.rs `lock`). */
 export function crateOfGate(st: C.StageDef, slot: number): number {
@@ -33,12 +57,13 @@ export function crateOfGate(st: C.StageDef, slot: number): number {
   return st.crates.findIndex((c) => Math.abs(c.x - g.x) * 2 <= g.width && c.y < rowY && rowY - c.y <= 500);
 }
 
-/** Gold a player has when entering the Raid: every fight tower's HP (1 gold per point of damage
- *  actually dealt) plus TOWER_BONUS per tower. A fight only ends when all its towers are down. */
+/** Gold a player has when the town hall raid starts: every tower's HP of every stage (1 gold per
+ *  point of damage actually dealt) plus TOWER_BONUS per tower. The raid only starts once the
+ *  final stage's last tower is down, so this is exact. */
 export function fightGold(layout: number): number {
   const l = layoutDef(layout);
   let gold = 0;
-  for (const st of l.stages.slice(0, C.RAID_STAGE)) for (const t of st.towers) gold += t.hp + C.TOWER_BONUS;
+  for (const st of l.stages) for (const t of st.towers) gold += t.hp + C.TOWER_BONUS;
   return gold;
 }
 

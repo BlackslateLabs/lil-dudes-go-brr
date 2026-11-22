@@ -11,7 +11,7 @@ import { matchView, sideOf, type LaneState, type RawResult } from './view';
 import type { MatchEvent, MatchView, PrivateView, Side } from './types';
 
 /** Must equal LAYOUT_VERSION in crates/sim-wasm/src/lib.rs (the flat layouts are documented there). */
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 const EVENT_STRIDE = 8;
 const PHASE_NAMES = ['plant', 'fight', 'transit', 'raid', 'done'] as const;
 
@@ -123,9 +123,16 @@ export class OfflineSource implements MatchSource {
     this.sim.set_input(this.mySide, aim, undefined, undefined);
   }
 
+  /** Rig from my own lane: gate `slot` of my current stage, trapped in the opponent's copy (see
+   *  MatchSource.rig). Passed straight to the sim, which refuses what `canRig` says no to. */
   rig(slot: number): void {
-    // The sim refuses invalid rigs; out-of-range numbers must not reach the u8 binding.
+    // Out-of-range numbers must not reach the u8 binding.
     if (isSlot(slot)) this.sim.set_input(this.mySide, undefined, slot, undefined);
+  }
+
+  /** The sim's own rig rule for `mySide` right now (`SimMatch.can_rig`). */
+  canRig(slot: number): boolean {
+    return isSlot(slot) && !this.current.view.result && this.sim.can_rig(this.mySide, slot);
   }
 
   peek(slot: number): void {
@@ -234,12 +241,13 @@ export class OfflineSource implements MatchSource {
       const rigUsed = next() === 1;
       const peekUsed = next() === 1;
       bot[s] = next() === 1;
+      const raidTicks = next();
       const towers = Array.from({ length: C.TOWERS_MAX }, next);
       const crates = Array.from({ length: C.CRATES_MAX }, next);
       const gates = Array.from({ length: C.GATES_MAX }, () => ({ x: next(), revealed: opFromSigned(next()) }));
       const cohorts = Array.from({ length: next() }, () => ({ id: next(), count: next(), x: next(), y: next(), age: next() }));
       const enemies = Array.from({ length: next() }, () => ({ id: next(), count: next(), x: next(), y: next(), tower: next() }));
-      return { stage, phase, phaseTicks, dead, cannonX, aimX, gold, rigUsed, peekUsed, towers, crates, gates, cohorts, enemies };
+      return { stage, phase, phaseTicks, raidTicks, dead, cannonX, aimX, gold, rigUsed, peekUsed, towers, crates, gates, cohorts, enemies };
     };
     const lanes: [LaneState, LaneState] = [lane(0), lane(1)];
     this.lanes = lanes;
