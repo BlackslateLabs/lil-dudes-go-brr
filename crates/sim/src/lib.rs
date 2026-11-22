@@ -1,4 +1,4 @@
-//! Lil Dudes Go Brr: match rules (docs/SPEC.md v2.1).
+//! Lil Dudes Go Brr: match rules (docs/SPEC.md v3, a 1v1 race on identical copies of a level).
 //!
 //! Rules for this crate:
 //! - Integer-only and deterministic: no floats, no `HashMap`, no clock, no external RNG. Time
@@ -26,6 +26,7 @@ pub mod codec;
 pub mod constants;
 pub mod deal;
 pub mod events;
+pub mod layouts;
 pub mod payout;
 pub mod rng;
 pub mod state;
@@ -37,13 +38,20 @@ pub use codec::{PUBLIC_LEN, SECRET_LEN};
 pub use constants::*;
 pub use deal::Deal;
 pub use events::{Event, EventSink, Events, NoEvents, EVENT_CAP};
+pub use layouts::{layout_for, Layout, Slot, LAYOUTS};
 pub use payout::{payout, MatchResult};
 pub use state::{
-    Inputs, MatchOptions, MatchState, Peek, PhaseLog, PrivateView, PublicGate, PublicSide,
-    PublicState, SecretState, SideInput,
+    Inputs, MatchOptions, MatchState, Peek, PrivateView, PublicGate, PublicSide, PublicState, Rig,
+    SecretState, SideInput, StageLog,
 };
 pub use step::{apply_input, step};
 pub use types::*;
 
 /// Bump when rules change in a way that changes outcomes (Verify must use the same version).
-pub const RULES_VERSION: u16 = 1;
+pub const RULES_VERSION: u16 = 3;
+
+/// Every stage's gate values and the layout of a match with this seed: what Verify re-derives
+/// once the seed is published (SPEC §11).
+pub fn deals_for(seed: u64) -> Deal {
+    Deal::new(seed)
+}
