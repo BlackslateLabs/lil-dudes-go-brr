@@ -28,6 +28,7 @@ import {
   LiveSource,
   matchResultOf,
   settleMatch,
+  STAGES,
   trueOp,
   type LiveStage,
   type MatchEvent,
@@ -205,7 +206,7 @@ async function main() {
     }
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
-      log(`tick ${v.tick} ${v.status} ${v.layoutName} lanes ${v.sides[0].phase} ${v.sides[0].stage + 1}:${v.sides[1].phase} ${v.sides[1].stage + 1} gold ${v.sides[0].gold}:${v.sides[1].gold} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
+      log(`tick ${v.tick} ${v.status} ${v.layoutName} lanes ${v.sides[0].phase} ${v.sides[0].stage + 1}:${v.sides[1].phase} ${v.sides[1].stage + 1} raid ticks ${v.sides[0].raidTicks}:${v.sides[1].raidTicks} gold ${v.sides[0].gold}:${v.sides[1].gold} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
     }
     if (sources.every((s) => s.currentStage === 'finished')) break;
     if (sources.some((s) => s.currentStage === 'finished' || s.currentStage === 'finishing') && (await isOnBase(base, id))) break;
@@ -278,7 +279,9 @@ async function main() {
     revealChecks.gotchasMatchRigs = full.gotchas!.every((g) =>
       full.history.some((h) => h.rigs[g.riggedBy]?.stage === g.stage && h.rigs[g.riggedBy]?.slot === g.slot && h.sprung[g.riggedBy]),
     );
-    revealChecks.threeStages = full.values.length === 3;
+    revealChecks.twoStages = full.values.length === STAGES && full.history.length === STAGES;
+    // v4: a rig names the rigger's own stage.
+    revealChecks.rigsOnOwnStage = full.history.every((h) => h.rigs.every((rig) => !rig || rig.stage === h.stage));
   }
   const revealOk = !!full && Object.values(revealChecks).every(Boolean);
   log('reveal', revealOk ? 'OK' : 'FAILED', JSON.stringify(revealChecks));

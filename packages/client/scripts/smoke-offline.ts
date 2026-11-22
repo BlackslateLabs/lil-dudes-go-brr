@@ -1,8 +1,8 @@
-// Headless smoke run: one full v3 match through OfflineSource on its own timer. A scripted player
-// on side 0 (defends, follows the best revealed gates, rigs and peeks every stage), the Warlord
-// bot on side 1. Exits non-zero if the match doesn't end cleanly.
+// Headless smoke run: one full v4 match through OfflineSource on its own timer. A scripted player
+// on side 0 (defends, follows the best revealed gates, rigs from its own lane and peeks every
+// stage), the Warlord bot on side 1. Exits non-zero if the match doesn't end cleanly.
 //   pnpm --filter @lil-dudes/client smoke [-- --speed 20 --seed 123 --selfbot]   (speed 1 = real time)
-import { DEFEND_Y, LANE_WIDTH, MATCH_TICKS, OfflineSource, TICKS_PER_SEC } from '../src/index';
+import { DEFEND_Y, FINAL_STAGE, LANE_WIDTH, MATCH_TICKS, OfflineSource, RAID_TICKS, TICKS_PER_SEC } from '../src/index';
 import type { LaneView, MatchView } from '../src/index';
 
 const args = process.argv.slice(2);
@@ -50,9 +50,10 @@ src.subscribe((view: MatchView, priv, events) => {
   const [me, them] = view.sides;
   if (!selfBot) {
     src.setAim(aimFor(me));
-    if (me.phase === 'plant' && !me.rigUsed) {
-      const slot = them.gates.find((g) => !g.revealed)?.slot;
-      if (slot !== undefined) src.rig(slot);
+    // v4: rig from my own lane, any phase; the big gate first if their copy of it is still open.
+    if (!me.rigUsed) {
+      const open = me.gates.filter((g) => src.canRig(g.slot)).sort((a, b) => Number(b.big) - Number(a.big));
+      if (open[0]) src.rig(open[0].slot);
     }
     if ((me.phase === 'fight' || me.phase === 'raid') && !me.peekUsed) {
       const slot = me.gates.find((g) => !g.revealed && !g.locked)?.slot;
@@ -60,7 +61,7 @@ src.subscribe((view: MatchView, priv, events) => {
     }
   }
   if (view.tick % (10 * TICKS_PER_SEC) === 0 && view.tick > 0) {
-    const lane = (s: LaneView) => `${s.phase} ${s.stage + 1}, gold ${s.gold}, dudes ${s.cohorts.reduce((n, c) => n + c.count, 0)}, foes ${s.enemies.reduce((n, c) => n + c.count, 0)}`;
+    const lane = (s: LaneView) => `${s.phase} ${s.stage + 1}${s.raidTicks ? ` (raid ${s.raidTicks})` : ''}, gold ${s.gold}, dudes ${s.cohorts.reduce((n, c) => n + c.count, 0)}, foes ${s.enemies.reduce((n, c) => n + c.count, 0)}`;
     const rig = priv.myRig ? `stage ${priv.myRig.stage + 1} slot ${priv.myRig.slot}` : '-';
     const peek = priv.myPeek ? `slot ${priv.myPeek.slot} = ${priv.myPeek.op.kind === 'mul' ? '×' : '÷'}${priv.myPeek.op.value}` : '-';
     console.log(`  ${at} [${lane(me)}] vs [${lane(them)}], my rig ${rig}, peek ${peek}`);
@@ -81,6 +82,10 @@ src.subscribe((view: MatchView, priv, events) => {
   if (r.died !== (dead[0] !== dead[1] ? (dead[0] ? 0 : 1) : null)) fail('died disagrees with the lanes');
   if (reveal.payout!.moved !== r.moved || reveal.payout!.fee !== r.fee) fail('payoutOf disagrees with the sim');
   if (!view.tick || !(counts.volley && counts.wave && counts.stage && counts.reveal)) fail('missing core events');
+  for (const s of view.sides) {
+    if (s.phase === 'done' && (s.stage !== FINAL_STAGE || s.raidTicks < RAID_TICKS)) fail(`done before the raid ran out (stage ${s.stage}, raid ticks ${s.raidTicks})`);
+  }
+  if (!selfBot && !reveal.history.some((h) => h.rigs[0])) fail('the scripted player never rigged');
   setTimeout(() => {
     if (src.view.tick !== view.tick) fail('kept ticking after the end');
     console.log(problems ? `smoke: FAILED (${problems})` : 'smoke: OK');
@@ -92,4 +97,6 @@ src.start();
 setTimeout(() => {
   console.error('smoke: FAILED (match did not end in time)');
   process.exit(1);
-}, (MATCH_TICKS / TICKS_PER_SEC / speed) * 3000 + 5000);
+  // A tick can't fire faster than the OS timer (~15.6 ms on Windows), so a full 3:00 match at a
+  // high speed may take longer than its nominal time.
+}, MATCH_TICKS * Math.max(1000 / TICKS_PER_SEC / speed, 16) * 1.5 + 5000);

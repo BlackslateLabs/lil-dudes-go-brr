@@ -225,10 +225,11 @@ async function main() {
       const [aim, rig, peek] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
       const me = view.sides[side]!;
-      const them = view.sides[side === 0 ? 1 : 0]!;
-      if (me.phase === 'plant' && !me.rigUsed) {
-        const cell = rig! >= 0 ? rig! : them.gates.findIndex((g) => !g.revealed);
-        if (cell >= 0) {
+      // v4: rig from my own lane in any phase (the bot picks 1-3 s into its fight; in the plant,
+      // rig the first gate canRig allows so every stage's rig path is exercised).
+      if (!me.rigUsed) {
+        const cell = rig! >= 0 ? rig! : me.phase === 'plant' ? me.gates.findIndex((g) => src.canRig(g.slot)) : -1;
+        if (cell >= 0 && src.canRig(cell)) {
           src.rig(cell);
           note(side, 'rig', cell, me.stage);
         }
@@ -262,7 +263,7 @@ async function main() {
         out[who][name] = visible ? 'visible' : r.error ? `error: ${r.error.message.slice(0, 60)}` : 'null';
         out[who][`${name} (multi)`] = mv[Object.keys(k).indexOf(name)] ? 'visible' : 'null';
       }
-      for (const size of [chain.MATCH_LEN, 200, 56]) {
+      for (const size of [chain.MATCH_LEN, chain.SECRETS_LEN, chain.PEEK_LEN]) {
         const g = await rpc(url[who], 'getProgramAccounts', [P, { ...enc, filters: [{ dataSize: size }] }]);
         absorb(who, g);
         const keys = ((g.result as { pubkey: string }[] | undefined) ?? []).map((x) => x.pubkey);
@@ -275,7 +276,7 @@ async function main() {
       for (const [name, member] of [['secrets', null], ['peek0', 'A'], ['peek1', 'B']] as const) {
         if (member === who) continue;
         for (const via of [name, `${name} (multi)`]) if (out[who]![via] === 'visible') fails.push(`${who} reads ${via} (${label})`);
-        if (out[who]![`gpa(${name === 'secrets' ? 200 : 56} B)`]?.includes(name)) fails.push(`${who} lists ${name} via getProgramAccounts (${label})`);
+        if (out[who]![`gpa(${name === 'secrets' ? chain.SECRETS_LEN : chain.PEEK_LEN} B)`]?.includes(name)) fails.push(`${who} lists ${name} via getProgramAccounts (${label})`);
       }
     }
     controls[`A reads own Peek0 (${label})`] = out.A!.peek0 === 'visible';
