@@ -123,7 +123,8 @@ permission is public.
 - **Base:** `create_match(id, pick, burner, name)` (A: escrows the pick, pays all rent + permission
   rent), `join_match(id, pick, burner, name)` (B: S = lower pick, A's excess refunded),
   `delegate_match(id)` (Match + Secrets + Peek×2 → the TEE in one tx, commit frequency `u32::MAX`),
-  `cancel_match(id)` (creator while open; either player 60 s after an undelegated join),
+  `cancel_match(id)` (creator while open, **anyone after 20 min**; either player 60 s after an
+  undelegated join, **anyone after 5 min**; refunds always go to the recorded players),
   `settle_action(id)` (`#[action]`, the Magic Action scheduled by `finish`), `settle(id)`
   (permissionless fallback, once the Match is back on base), `close_match(id)` (anyone after
   settlement; rent → creator).
@@ -133,10 +134,11 @@ permission is public.
   `start` (tick 0 = now, schedules the crank; any player), `advance` (anyone; catch-up ≤ 8),
   `set_aim(x)` (public, writes the aim byte-wise, ~3.3k CU), `plant_rig(cell)` / `peek_cell(cell)`
   (catch up ≤ 2, apply, write Secrets + my Peek; refused = error), `finish` (anyone with a result,
-  or a player aborting an unstarted match after ~60 s: publishes seed + history in the Match,
+  or an abort of a match that never started: a player at once before the permissions / ~60 s
+  after, **anyone ~5 min (30,000 slots) after READY**: publishes seed + history in the Match,
   commit + undelegate all four, post-commit action `settle_action`).
-- Tested in MagicSVM (15 tests, `tests-magicsvm/`, every instruction + refused cases) and on
-  devnet (three full live matches).
+- Tested in MagicSVM (17 tests, `tests-magicsvm/`, every instruction + refused cases, the M5
+  anyone-after-timeout refunds) and on devnet (live matches, the privacy re-check, the sweeper e2e).
 
 ### Time and the tick
 
@@ -231,7 +233,10 @@ Two rules learned the hard way:
 
 `finish` on the ER → `MagicIntentBundleBuilder.commit_and_undelegate(Match, Secrets, Peek×2)` +
 post-commit action `settle_action` on base → pays winner/loser/treasury from the Vault per SPEC §7
-(`moved`/`fee` from `crates/sim` `payout`; a draw or abort refunds S each). If the action fails,
+(`moved`/`fee` from `crates/sim` `payout`; a draw or abort refunds S each). **M5:** the result
+screen's "Settle now" is `LiveSource.settleNow(server?)` (permissionless `settle`, fee paid by the
+burner or by the server's sponsor via `POST /settle`), and the server's sweeper settles anything
+still unpaid 30 s after it is back on base (§9). If the action fails,
 anyone calls `settle` directly. ✅ **M3 on devnet:** the finisher is a 0-SOL burner (it is the
 action's escrow authority) and the action paid out exactly in all three runs, ~0.4 s after `finish`
 was confirmed (KO 0.05 and 0.1 SOL, timer win 0.05 SOL with lead 649‰ → moved 82.45% of S).
@@ -314,8 +319,11 @@ idempotency guard), or use `add_post_undelegate_actions`. The base tx is a **v1 
 - Toolchain: Agave 3.1.10, Anchor 1.0.2 (avm), rustup stable (host), Node ≥ 22.12, pnpm 10.34 (pinned in `packageManager`). Front-end work needs only Node + pnpm.
   SBF builds outside `anchor build` need `cargo build-sbf --tools-version v1.52` (v1.51's cargo
   can't parse an edition-2024 dependency).
-- ✅ **Deployed (M3):** `lil_dudes` = `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` on devnet,
-  457,672 B, 2.3259 SOL rent, upgrade authority = the deploy wallet.
+- ✅ **Deployed (M3, upgraded M5 2026-11-22):** `lil_dudes` = `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa`
+  on devnet, upgrade authority = the deploy wallet. M5 build 457,760 B (sha256 `6508568be59c55c6…`,
+  `anchor build --ignore-keys`), slot 524,984,012, sig `4hovzsFw…cPYL`; the program account was
+  first extended by 10,240 B (the loader extends by ≥ 10 KB, and the new .so was 88 B bigger):
+  467,912 B, 2.3779 SOL rent. IDL unchanged.
 - Client deps (M3): `@solana/web3.js` 1.98.4, `buffer`, `tweetnacl`, `bs58` only. The TEE auth
   (challenge → sign → login) and every instruction (from the committed IDL
   `packages/client/src/idl/lil_dudes.json`) are built in `packages/client/src/live/chain.ts`; no Anchor
@@ -377,3 +385,36 @@ Also: ✅ a burner with 0 SOL can send ER transactions; ❌ `advance` with 40 st
 | Anchor macro crates drift to 1.2.2 | Keep them pinned to 1.0.2 in `Cargo.lock` |
 | Phone perf in 3D | Lower instance cap, flat shading, then a 2D sprite fallback in the same R3F scene |
 | Faucet limits | Server sponsor wallet tops up burners; keep a funded deploy wallet |
+
+## 9. Server (`apps/server`, M5)
+
+Hono on Node, one instance, state in memory (rooms, queue, limits; a restart only drops waiting
+players and resets limits). **Not in the trust path:** it never decides an outcome; every
+on-chain thing it does is permissionless or its own player's move, and every refund goes to the
+players recorded in the Match.
+
+| Route | What |
+|---|---|
+| `GET /healthz` | `{ ok }` for platform health checks (no RPC, never rate-limited) |
+| `GET /health` | rooms, queue size, faucet on/off, bot stats, sweeper stats |
+| `POST /rooms {id, stake}` / `GET /rooms/:code` / `DELETE` | room codes (6 chars, 15 min) |
+| `POST /queue {player, stake}` / `GET /queue/:ticket` / `DELETE` | quick match; a FREE ticket alone for 5 s gets the bot (`bot: true`, role `join`) |
+| `POST /topup {burner, stake?}` | faucet: fills the burner to stake + 0.035 SOL (≤ 0.3); 1 / 10 min per burner, 3 / 10 min per IP, 3 SOL / hour; devnet only (genesis hash checked) |
+| `GET /faucet` | sponsor address, balance, policy, spent last hour |
+| `POST /settle {id}` | "Settle now" for a burner with no SOL: permissionless `settle`, sponsor pays (10 / 10 min per IP) |
+
+- **Sponsor wallet** (`SPONSOR_KEYPAIR_PATH` or `SPONSOR_SECRET_KEY`, env only, never logged):
+  `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`. Pays top-ups, the bot's float, the sweeper's fees.
+- **Online bot** (`src/bot.ts`): its own wallet = burner (`BOT_KEYPAIR_PATH`,
+  `CJbQuVNXhA2ygutqD48ucoHC3wfvawegSDTEL49Y9ogW`), a server-side `LiveSource` + the WASM Warlord,
+  public state only. Creates stake-0 matches only (the human joins, so matched stake = 0); ≤ 2
+  at once; ~0.012 SOL per match (delegation + commit; the rent comes back at close). ✅ devnet: a
+  fresh 0-SOL burner was playing the bot **15.4 s** after asking for a top-up.
+- **Sweeper** (`src/sweeper.ts`, every 60 s, sponsor-signed): cancels rooms open 20 min and joins
+  never delegated for 5 min, aborts TEE matches stuck before the start ~5 min, finishes over
+  matches nobody finished, nudges a dead crank (`advance`), settles a finished match the Magic
+  Action left unpaid for 30 s, closes paid-out matches after 10 min (rent → creator).
+- **Hardening:** CORS only for `CORS_ORIGINS` (default: localhost / LAN dev origins), 4 KB body
+  cap, JSON-only writes, 240 requests / min per IP (`X-Forwarded-For` behind the proxy with
+  `TRUST_PROXY=1`), secure headers, JSON errors without stack traces, strict validation of every
+  pubkey / u64 / tier / code / ticket.

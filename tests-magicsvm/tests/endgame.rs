@@ -299,3 +299,28 @@ fn free_match_finishes_and_closes() {
     assert!(g.base(g.settle_ix(), &[&anyone]).is_err(), "settled twice");
     g.base(g.close_ix(), &[&anyone]).unwrap();
 }
+
+#[test]
+fn anyone_aborts_a_delegated_match_that_never_started() {
+    // Both players gone after delegation (no second salt): after ABORT_ANYONE_SLOTS a stranger
+    // with 0 SOL (the sweeper's burner) aborts; the settle action refunds both stakes.
+    const S: u64 = 100_000_000;
+    let mut g = Game::new(25);
+    g.to_ready(S, S);
+    let stranger = Keypair::new();
+    let s = g.slot(Ephemeral);
+    g.svm.warp_to_slot(s + 29_000);
+    assert!(
+        g.er(g.finish_ix(stranger.pubkey()), &[&stranger]).is_err(),
+        "stranger aborted before ABORT_ANYONE_SLOTS"
+    );
+    g.svm.warp_to_slot(s + 30_001);
+    let w = [g.players[0].wallet.pubkey(), g.players[1].wallet.pubkey()];
+    let before = [g.balance(&w[0]), g.balance(&w[1])];
+    g.er(g.finish_ix(stranger.pubkey()), &[&stranger]).unwrap();
+    assert_eq!(g.status(Base), status::FINISHED);
+    assert_eq!(g.match_data(Base)[off::FLAGS] & 8, 8, "aborted flag");
+    assert_eq!(g.balance(&g.vault), 0);
+    assert_eq!(g.balance(&w[0]) - before[0], S);
+    assert_eq!(g.balance(&w[1]) - before[1], S);
+}

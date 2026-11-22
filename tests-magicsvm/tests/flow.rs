@@ -144,3 +144,46 @@ fn cancel_refunds_before_the_tee() {
         )
         .is_err());
 }
+
+#[test]
+fn anyone_refunds_abandoned_matches_after_the_long_timeouts() {
+    // MVP §4: nobody has to come back. The payees are fixed by the Match, so after
+    // OPEN_ANYONE_SECS / JOIN_ANYONE_SECS any wallet (the server's sweeper) may trigger the refund.
+    let stranger = solana_keypair::Keypair::new();
+    // Open room nobody joined: refused before 20 min, then the creator gets everything back.
+    let mut g = Game::new(6);
+    g.svm.airdrop(&stranger.pubkey(), SOL).unwrap();
+    let w0 = g.wallet(0);
+    let start = g.balance(&w0.pubkey());
+    let now = g.svm.base().get_sysvar::<solana_clock::Clock>().unix_timestamp;
+    g.base(g.create_ix(100_000_000), &[&w0]).unwrap();
+    set_unix(&mut g, now + 19 * 60);
+    assert!(
+        g.base(g.cancel_ix(stranger.pubkey(), w0.pubkey()), &[&stranger]).is_err(),
+        "stranger cancelled an open room before 20 min"
+    );
+    set_unix(&mut g, now + 20 * 60 + 1);
+    g.base(g.cancel_ix(stranger.pubkey(), w0.pubkey()), &[&stranger]).unwrap();
+    assert!(g.svm.get_account(&g.game).is_none(), "match closed");
+    assert!(start - g.balance(&w0.pubkey()) < 100_000, "creator not refunded");
+
+    // Joined, never delegated: players after 60 s, anyone only after 5 min; both refunded.
+    let mut g = Game::new(7);
+    g.svm.airdrop(&stranger.pubkey(), SOL).unwrap();
+    let (w0, w1) = (g.wallet(0), g.wallet(1));
+    let b1 = g.players[1].burner.pubkey();
+    g.base(g.create_ix(50_000_000), &[&w0]).unwrap();
+    let now = g.svm.base().get_sysvar::<solana_clock::Clock>().unix_timestamp;
+    g.base(g.join_ix(50_000_000, b1), &[&w1]).unwrap();
+    let before = [g.balance(&w0.pubkey()), g.balance(&w1.pubkey())];
+    set_unix(&mut g, now + 61);
+    assert!(
+        g.base(g.cancel_ix(stranger.pubkey(), w1.pubkey()), &[&stranger]).is_err(),
+        "stranger cancelled a join after 61 s"
+    );
+    set_unix(&mut g, now + 5 * 60 + 1);
+    g.base(g.cancel_ix(stranger.pubkey(), w1.pubkey()), &[&stranger]).unwrap();
+    assert_eq!(g.balance(&g.vault), 0);
+    assert_eq!(g.balance(&w1.pubkey()) - before[1], 50_000_000);
+    assert!(g.balance(&w0.pubkey()) - before[0] >= 50_000_000, "creator: stake + rent back");
+}

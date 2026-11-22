@@ -5,6 +5,7 @@
 // for the hackathon; a restart only drops waiting players).
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import { baseConnection, settleNow } from '@lil-dudes/client';
 import type { BotService } from './bot';
 import type { Faucet } from './faucet';
 import { Budget, RateLimit } from './limits';
@@ -47,6 +48,10 @@ export interface ServerOptions {
   /** The online bot: takes a FREE queue ticket nobody matched within `botAfterMs`. */
   bot?: BotService | null;
   botAfterMs?: number;
+  /** For /health (the sweeper runs on its own timer, see sweeper.ts). */
+  sweeperStats?: () => unknown;
+  /** POST /settle: "Settle now" for a burner with no SOL (the sponsor pays the fee). */
+  settle?: (id: bigint) => Promise<{ state: string; signature?: string }>;
 }
 
 /** MVP §4 "Faucet abuse": a burner is topped up to `stake + reserve` (≤ maxBalance), once per
@@ -97,6 +102,15 @@ export function createApp(opts: ServerOptions = {}) {
   const perIp = new RateLimit(policy.ipWindowMs, policy.ipMax, now);
   const budget = new Budget(60 * 60_000, policy.hourlyLamports, now);
   const topping = new Set<string>();
+  const settleLimit = new RateLimit(10 * 60_000, 10, now);
+  const settle =
+    opts.settle ??
+    (faucet?.keypair
+      ? async (id: bigint) => {
+          const r = await settleNow(faucet.connection ?? baseConnection(), faucet.keypair!, id);
+          return 'signature' in r ? { state: r.state, signature: r.signature } : { state: r.state };
+        }
+      : null);
   const bot = opts.bot ?? null;
   const botAfterMs = opts.botAfterMs ?? 5_000;
   /** MVP §3.5: nobody on the free tier after ~5 s → the server's bot joins (never staked). */
@@ -124,7 +138,15 @@ export function createApp(opts: ServerOptions = {}) {
   const app = new Hono();
   app.use('*', cors());
   app.get('/health', (c) =>
-    c.json({ ok: true, service: 'lil-dudes-server', rooms: rooms.size, queued: tickets.size, faucet: !!faucet, bot: bot ? { address: bot.address, ...bot.stats } : null }),
+    c.json({
+      ok: true,
+      service: 'lil-dudes-server',
+      rooms: rooms.size,
+      queued: tickets.size,
+      faucet: !!faucet,
+      bot: bot ? { address: bot.address, ...bot.stats } : null,
+      sweeper: opts.sweeperStats?.() ?? null,
+    }),
   );
 
   // --- room codes --------------------------------------------------------------------------
@@ -235,6 +257,21 @@ export function createApp(opts: ServerOptions = {}) {
       return c.json({ error: `top-up failed: ${String(e instanceof Error ? e.message : e).slice(0, 120)}` }, 502);
     } finally {
       topping.delete(burner);
+    }
+  });
+
+  // --- settle now (MVP §3.7) ---------------------------------------------------------------
+  // The permissionless `settle`, sponsor-paid, for a player whose burner can't pay the fee.
+  app.post('/settle', async (c) => {
+    if (!settle) return c.json({ error: 'settling via the server is off (no sponsor)' }, 503);
+    const body = (await c.req.json().catch(() => null)) as { id?: unknown } | null;
+    if (!body || !isU64(body.id)) return c.json({ error: 'need { id: u64 string }' }, 400);
+    const r = settleLimit.take(clientIp(c, opts.trustProxy ?? false));
+    if (!r.ok) return c.json({ error: 'too many settle requests, try later', retryAfterSec: Math.ceil(r.retryMs / 1000) }, 429);
+    try {
+      return c.json(await settle(BigInt(body.id)));
+    } catch (e) {
+      return c.json({ error: `settle failed: ${String(e instanceof Error ? e.message : e).split('\n')[0]!.slice(0, 120)}` }, 502);
     }
   });
 

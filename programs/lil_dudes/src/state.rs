@@ -35,6 +35,13 @@ pub const ABORT_SLOTS: u64 = 6_000;
 pub const SEED_RETRY_SLOTS: u64 = 300;
 /// Base layer: either player may cancel a joined but never delegated match after this long.
 pub const JOIN_TIMEOUT_SECS: i64 = 60;
+/// Refunds nobody has to be around for (MVP §4): the payees are fixed in the Match, so after a
+/// longer wait ANYONE may trigger them (the server's sweeper does). An abandoned open room
+/// (refund to the creator), a join that was never delegated (both refunded), and a delegated
+/// match that never started (both refunded, ~5 min of 10 ms slots).
+pub const OPEN_ANYONE_SECS: i64 = 20 * 60;
+pub const JOIN_ANYONE_SECS: i64 = 5 * 60;
+pub const ABORT_ANYONE_SLOTS: u64 = 30_000;
 
 /// Peek fields: no rig / no peek this match yet.
 pub const NONE: u8 = u8::MAX;

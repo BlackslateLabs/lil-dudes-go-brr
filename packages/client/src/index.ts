@@ -14,8 +14,11 @@ export type { LiveOptions, LiveStage } from './live/source';
 export * as chain from './live/chain';
 export {
   baseConnection, createMatch, joinMatch, delegateMatch, cancelMatch, settleMatch, closeMatch, fetchMatch, isOnBase, isSettled,
-  waitForStatus, matchTxs, settlementOf,
+  waitForStatus, matchTxs, settlementOf, myMatches, recoverMatches,
 } from './live/lobby';
+export type { Recovered } from './live/lobby';
+export { withdraw, planWithdraw, settleNow, vaultBalance, RENT_EXEMPT_MIN, BASE_FEE } from './live/wallet';
+export type { WithdrawPlan, SettleNowResult } from './live/wallet';
 export { createRoom, findRoom, quickMatch, topUp } from './live/server';
 export type { Room, QuickMatch, TopUp } from './live/server';
 export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from './live/chain';

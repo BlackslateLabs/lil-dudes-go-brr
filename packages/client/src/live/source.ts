@@ -31,6 +31,7 @@ import {
 } from './chain';
 import { diffEvents } from './events';
 import { baseConnection, matchTxs, settlementOf } from './lobby';
+import { settleNow, type SettleNowResult } from './wallet';
 
 /** Where a live match is, for waiting / result screens (finer than MatchView.status). */
 export type LiveStage = 'connecting' | 'setup' | 'playing' | 'finishing' | 'finished';
@@ -282,6 +283,20 @@ export class LiveSource implements MatchSource {
       await new Promise((r) => setTimeout(r, 500));
     }
     return this.reveal();
+  }
+
+  /**
+   * Result screen "Settle now" (MVP §3.7): if `reveal().settlement.state` is still 'pending' ~20 s
+   * after the end, pays the vault out with the permissionless `settle` (the burner pays the fee,
+   * or the server's sponsor via `POST /settle` if the burner has no SOL). Safe to call any time.
+   */
+  async settleNow(server?: string): Promise<SettleNowResult> {
+    const r = await settleNow(baseConnection(this.opts.baseRpc), this.opts.burner, this.matchId, server);
+    if (r.state === 'sent' || r.state === 'settled') {
+      this.tracking = null;
+      this.trackSettlement();
+    }
+    return r;
   }
 
   /** After the end: poll the base layer until the vault is paid out, then list the base txs. */

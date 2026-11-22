@@ -597,3 +597,35 @@ Bot wallet (persistent key, Kai's machine): `CJbQuVNXhA2ygutqD48ucoHC3wfvawegSDT
 `q.bot`, show "Playing the Warlord bot" (the flow is the normal `role: 'join'` one:
 `waitForStatus(OPEN)` → `joinMatch` → `LiveSource.connect`). Before joining, `topUp(server,
 burner.publicKey)` so a fresh burner can pay the join fee.
+
+## 2026-11-22 · Kai · M4/5 step 5 (money edges) · [STAGE] [DECISION] [CONTRACT]
+**Did:** M4/5 step 5 done; next: step 6 (server hardening + deploy plan).
+- **Program (upgraded on devnet, slot 524,984,012):** refunds nobody has to be around for.
+  `cancel_match`: anyone after 20 min for an open room (refund → creator), anyone after 5 min
+  for a join never delegated (both refunded); `finish` abort: anyone ~5 min (30,000 slots) after
+  READY. Payees stay fixed by the Match; IDL unchanged (client untouched). MagicSVM 17/17 (2 new:
+  refused before each timeout, exact refunds after). Autofixer clean.
+- **Client:** `settleNow(base, payer, id, server?)` + `LiveSource.settleNow(server?)` (the "Settle
+  now" button: burner pays the fee, else the server's sponsor via `POST /settle`); `withdraw(base,
+  burner, to, amount?)` + pure `planWithdraw` (no 1–890,879 lamport dust left, ≥ 890,880 to a new
+  address, "all" empties it); `myMatches` / `recoverMatches(base, burner)` (on app start: cancel own
+  stale rooms/joins, settle, close). `settlementOf` treats a closed match as settled.
+- **Server:** `POST /settle {id}` (sponsor-paid, 10 / 10 min per IP) and the **sweeper** (every
+  60 s: cancel abandoned rooms/joins, abort never-started TEE matches, finish over ones, nudge a
+  dead crank, settle a late Magic Action after 30 s, close paid-out matches after 10 min). The bot
+  no longer closes its matches right away (the human's result screen still reads them).
+- **Devnet:** sweeper e2e PASS (`apps/server/scripts/sweeper-e2e.ts`): a join never delegated and
+  a delegated match with no salts, both abandoned → cancelled / aborted + closed at ~6.5 min, B got
+  exactly its 2 stakes back, A stakes + rent; withdraw rules on a real burner; recoverMatches
+  cancelled an open room. Regression live match (0.05, KO) on the upgraded program: exact payout,
+  reveal OK. Tests: client 16, server 13.
+- **SOL (deploy wallet):** 7.510728881 → 7.456424681 for the upgrade (0.0520192 extra program
+  rent for the 10 KB extension, ~0.0023 fees; buffer refunded); e2e + regression ~0.036 more.
+
+**Decided:** permissionless refunds after long timeouts (20 min / 5 min / ~5 min) instead of
+player-only: safe because the payees are fixed, and it lets the sweeper clean up when everybody
+left. A player's own fast paths (creator any time, 60 s, ~60 s) are unchanged.
+
+**CONTRACT (additions):** `settleNow`, `LiveSource.settleNow`, `withdraw`, `planWithdraw`,
+`RENT_EXEMPT_MIN`, `BASE_FEE`, `vaultBalance`, `myMatches`, `recoverMatches`, types
+`SettleNowResult`, `WithdrawPlan`, `Recovered`.

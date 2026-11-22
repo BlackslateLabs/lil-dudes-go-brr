@@ -104,14 +104,17 @@ Portrait everywhere. On desktop the game sits in a centred phone-shaped column.
 | Case | Behaviour |
 |---|---|
 | Opponent disconnects mid-match | Their cannon keeps firing at its last position; the match runs to the end. |
-| Nobody joins a room / the queue is cancelled | `cancel_match` refunds the stake. |
-| Join but never delegated (crash) | Either side can cancel after 60 s → refund. |
-| Settle action fails | Anyone can call `settle`; the result screen offers the button. |
+| Nobody joins a room / the queue is cancelled | `cancel_match` refunds the stake: the creator any time; **anyone after 20 min** (the server's sweeper does it; the refund always goes to the creator). |
+| Join but never delegated (crash) | Either side can cancel after 60 s → refund; **anyone after 5 min** (sweeper). On app start, `recoverMatches(base, burner)` cancels the player's own stale matches. |
+| Settle action fails | Anyone can call `settle`; the result screen offers **Settle now** (`LiveSource.settleNow(server)`: the burner pays the fee, or the server's sponsor via `POST /settle`); the sweeper settles anything still unpaid 30 s after it is back on base. |
 | Chain or rollup down | Banner "Live play is down"; Play vs Bot falls back to offline mode. |
 | Balance too low | Stake chips greyed out; "Top up" offered. Free stays playable. |
-| Faucet abuse | Server tops up a burner to 0.3 SOL at most once per 10 minutes per burner + IP. |
+| Faucet abuse | `POST /topup` fills a burner to stake + 0.035 SOL (≤ 0.3 SOL), at most once per 10 min per burner, 3 per 10 min per IP, 3 SOL per hour in total; devnet only (genesis hash checked). |
 | Two tabs, same burner | The second tab shows "Already playing in another tab". |
 | Burner lost (site data cleared) | Funds lost (devnet). The warning in 3.9 says so. |
+| Player never shows after delegation (no salt) | `LiveSource` aborts ~65 s after READY (a player may after ~60 s); the sweeper aborts after ~5 min if nobody is left. Everyone is refunded by the settle action. |
+| Paid-out matches pile up | The sweeper closes them 10 min after settlement (rent back to the creator); the grace keeps result screens and Verify readable. |
+| Withdraw leaves rent dust | `withdraw()` refuses to leave 1–890,879 lamports (below rent-exempt) or to send < 890,880 to a brand-new address; "withdraw all" empties the burner. |
 
 ## 5. Look and sound
 
@@ -165,7 +168,11 @@ M1 and M2 run in parallel. M2 does not block M1, and M1 does not need SOL.
 - **Deploy wallet** (`FdZL…rfbB`, 5 SOL): program deploys only. The program locks ~1.5–2.5 SOL of
   rent, and each upgrade needs a temporary buffer of the same size (refunded). Close the Stage 0 spike
   program after M2 to get its rent back.
-- **Server sponsor wallet** (new keypair, made in M5, kept only in the server's env): tops up burners.
+- **Server sponsor wallet** `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr` (made in M5; key only in the
+  server's env, on Kai's machine at `~/.config/lil-dudes/sponsor.json`): tops up burners, funds the
+  online bot (~0.012 SOL per bot match), pays the sweeper's fees.
+- **Online bot wallet** `CJbQuVNXhA2ygutqD48ucoHC3wfvawegSDTEL49Y9ogW` (`BOT_KEYPAIR_PATH`): its own
+  burner, topped up by the sponsor (0.04 SOL float per live bot match).
   It needs ~5 SOL for testing and the demo week.
 - **Two test burners** for live testing come from the sponsor wallet.
 

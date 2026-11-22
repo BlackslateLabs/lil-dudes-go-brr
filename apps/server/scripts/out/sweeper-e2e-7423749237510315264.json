@@ -1,0 +1,39 @@
+{
+  "withdraw": {
+    "dustRefused": true,
+    "partial": 1000000,
+    "freshAddressRefused": true,
+    "all": 1990000,
+    "left": 0
+  },
+  "recover": [
+    {
+      "id": "3192853171661181116",
+      "action": "cancelled"
+    }
+  ],
+  "sweeper": {
+    "m1Gone": true,
+    "m2Gone": true,
+    "timelineSec": {
+      "cancel 16404943581329535703 failed": 376,
+      "abort 7423749237510315264": 376,
+      "cancel 16404943581329535703": 411,
+      "close 7423749237510315264": 411
+    },
+    "bGot": 100000000,
+    "aGot": 122366400,
+    "stats": {
+      "runs": 12,
+      "actions": 3,
+      "failed": 1,
+      "lastRunAt": 1795329924108,
+      "last": [
+        "cancel 16404943581329535703: joined but never delegated (5 min) (4fukzyavdZ…)",
+        "close 7423749237510315264: paid out 10 min ago: rent back to the creator (3RAXHT8Mm1…)"
+      ]
+    }
+  },
+  "settleNowClosed": "settle: no match 7423749237510315264",
+  "sol": 0.02401768
+}

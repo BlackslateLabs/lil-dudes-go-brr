@@ -5,13 +5,13 @@
 // opponent could not). It only ever creates stake-0 matches, so the matched stake is always 0.
 //
 // Flow: create (bot pays the rent, back at close) → the human joins → the bot delegates → both
-// LiveSources auto-drive the TEE → finish → settle (free: nothing to pay) → the bot closes it.
+// LiveSources auto-drive the TEE → finish → settle (free: nothing to pay) → the sweeper closes it
+// 10 min later (rent back to the bot).
 // If the human never joins, the bot cancels; if they join but never connect, LiveSource aborts.
 import {
   baseConnection,
   cancelMatch,
   chain,
-  closeMatch,
   createMatch,
   delegateMatch,
   fetchMatch,
@@ -94,8 +94,8 @@ export function onlineBot(opts: BotOptions): BotService {
         if (peek! >= 0) live.peek(peek!);
       });
       live.start();
+      // Closing is left to the sweeper (10 min later): the human's result screen still reads it.
       const reveal = await waitFinished(live, 6 * 60_000);
-      if (reveal?.settlement?.state === 'settled') await closeMatch(base, wallet, id).catch((e: unknown) => log(`match ${id}: close failed`, String(e).split('\n')[0]));
       stats.finished++;
       log(`match ${id}: ${reveal?.payout?.why ?? 'ended'} (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
     } catch (e) {

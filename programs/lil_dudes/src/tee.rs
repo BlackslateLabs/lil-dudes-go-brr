@@ -512,7 +512,8 @@ pub struct Finish<'info> {
 /// Ends the match on the TEE: publishes the seed and every phase's rigs and peeks in the Match
 /// (Verify and the result screen), then commits + undelegates all four accounts with the
 /// `settle_action` Magic Action. Anyone may finish a match with a result; a player may abort one
-/// that never started (after ABORT_SLOTS, or at once if its permissions were never made).
+/// that never started (after ABORT_SLOTS, or at once if its permissions were never made), and
+/// anyone may after ABORT_ANYONE_SLOTS (everyone refunded either way).
 pub fn handle_finish(ctx: Context<Finish>) -> Result<()> {
     let slot = Clock::get()?.slot;
     let a = &ctx.accounts;
@@ -533,9 +534,20 @@ pub fn handle_finish(ctx: Context<Finish>) -> Result<()> {
         match g.status {
             status::PLAYING => require!(has_result, GameError::NotOver),
             status::JOINED | status::READY | status::SEEDED => {
-                side_of(&g, &a.payer.key())?;
-                let waited = slot >= g.ready_slot.saturating_add(ABORT_SLOTS);
-                require!(g.status == status::JOINED || waited, GameError::TooEarly);
+                // A player: at once before the permissions, else after ABORT_SLOTS. Anyone
+                // else (the sweeper): only once READY, after ABORT_ANYONE_SLOTS.
+                let player = g.side_of_burner(&a.payer.key()).is_some();
+                require!(player || g.status != status::JOINED, GameError::NotAPlayer);
+                let wait = if player {
+                    ABORT_SLOTS
+                } else {
+                    ABORT_ANYONE_SLOTS
+                };
+                let waited = slot >= g.ready_slot.saturating_add(wait);
+                require!(
+                    (player && g.status == status::JOINED) || waited,
+                    GameError::TooEarly
+                );
                 g.flags |= flags::ABORTED;
             }
             _ => return err!(GameError::WrongStatus),

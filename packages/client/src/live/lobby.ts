@@ -158,10 +158,13 @@ export async function matchTxs(base: Connection, id: bigint, header?: MatchAccou
 }
 
 /** Where the stakes are (MVP §3.7 "Settling…"): settled once the Match is back on base and the
- *  vault is paid out. `txs` (from matchTxs) supplies the signature and who paid. */
+ *  vault is paid out (or the match is closed). Call it after the end only. `txs` (from matchTxs)
+ *  supplies the signature and who paid. */
 export async function settlementOf(base: Connection, id: bigint, txs?: TxRecord[]): Promise<SettlementInfo> {
   const m = await fetchMatch(base, id);
-  if (!m || !(await isOnBase(base, id))) return { state: 'pending' };
+  // Closed (close_match / cancel_match need the money out first): nothing left to pay.
+  if (!m) return { state: 'settled' };
+  if (!(await isOnBase(base, id))) return { state: 'pending' };
   if (m.header.status < Status.FINISHED) return { state: 'pending' };
   if (m.header.stake === 0) return { state: 'settled', by: 'free' };
   const vault = await base.getBalance(matchAccounts(id).vault, 'confirmed');
@@ -171,4 +174,58 @@ export async function settlementOf(base: Connection, id: bigint, txs?: TxRecord[
   const fallback = list.find((t) => t.what === 'settle');
   if (fallback) return { state: 'settled', by: 'fallback', signature: fallback.signature };
   return { state: 'settled', by: 'action', signature: action?.signature };
+}
+
+/** Matches on the base layer where `player` is player A or B (delegated ones live on the TEE
+ *  and are not listed). Oldest first. */
+export async function myMatches(base: Connection, player: PublicKey): Promise<MatchAccount[]> {
+  const out: MatchAccount[] = [];
+  for (const offset of [88, 120]) {
+    const list = await base.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed', filters: [{ dataSize: 8 + 1368 }, { memcmp: { offset, bytes: player.toBase58() } }] });
+    for (const x of list) out.push(decodeMatch(x.account.data));
+  }
+  return out.sort((a, b) => a.header.createdAt - b.header.createdAt);
+}
+
+export interface Recovered {
+  id: bigint;
+  action: 'cancelled' | 'settled' | 'closed' | 'left';
+  signature?: string;
+  /** Why it was left alone (e.g. "joined 20 s ago: cancel after 60 s"). */
+  note?: string;
+}
+
+/**
+ * "Where did my stake go?" on app start (MVP §4): for every base-layer match of `wallet`, cancel
+ * its own open room (refund), cancel a join that was never delegated once 60 s passed, settle a
+ * finished match the action didn't pay, and close paid-out ones it created (rent back). Never
+ * touches a match that is still in play. Safe to run any time; the server's sweeper does the same
+ * for everyone after longer timeouts.
+ */
+export async function recoverMatches(base: Connection, wallet: Keypair, opts: { keepOpen?: bigint[] } = {}): Promise<Recovered[]> {
+  const out: Recovered[] = [];
+  const now = Math.floor(Date.now() / 1000);
+  for (const m of await myMatches(base, wallet.publicKey)) {
+    const { id, status, players, joinedAt, stake } = m.header;
+    const creator = players[0].equals(wallet.publicKey);
+    try {
+      if (status === Status.OPEN) {
+        if (!creator || opts.keepOpen?.includes(id)) out.push({ id, action: 'left', note: 'open room' });
+        else out.push({ id, action: 'cancelled', signature: await cancelMatch(base, wallet, id) });
+      } else if (status === Status.JOINED) {
+        if (now - joinedAt < 60) out.push({ id, action: 'left', note: `joined ${now - joinedAt} s ago: cancel after 60 s` });
+        else out.push({ id, action: 'cancelled', signature: await cancelMatch(base, wallet, id) });
+      } else if (status >= Status.FINISHED) {
+        const s = await settlementOf(base, id, []);
+        if (s.state !== 'settled' && stake > 0) {
+          out.push({ id, action: 'settled', signature: await settleMatch(base, wallet, id) });
+        } else if (creator) {
+          out.push({ id, action: 'closed', signature: await closeMatch(base, wallet, id) });
+        } else out.push({ id, action: 'left', note: 'the creator (or the sweeper) closes it' });
+      } else out.push({ id, action: 'left', note: 'in play' });
+    } catch (e) {
+      out.push({ id, action: 'left', note: String(e).split('\n')[0]!.slice(0, 120) });
+    }
+  }
+  return out;
 }

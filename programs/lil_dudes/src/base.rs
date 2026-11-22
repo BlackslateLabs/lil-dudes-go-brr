@@ -242,25 +242,28 @@ pub struct CancelMatch<'info> {
 }
 
 /// Refunds and closes a match that never reached the TEE (MVP §4): the creator any time while
-/// nobody joined; either player JOIN_TIMEOUT_SECS after a join that was never delegated.
+/// nobody joined (anyone after OPEN_ANYONE_SECS); either player JOIN_TIMEOUT_SECS after a join
+/// that was never delegated (anyone after JOIN_ANYONE_SECS). The payees are fixed by the Match.
 pub fn handle_cancel_match(ctx: Context<CancelMatch>, _id: u64) -> Result<()> {
     let a = &ctx.accounts;
     let g = *a.game.load()?;
     let signer = a.signer.key();
     require_keys_eq!(a.creator.key(), g.players[0], GameError::WrongRecipient);
+    let now = Clock::get()?.unix_timestamp;
     let refunds = match g.status {
         status::OPEN => {
-            require_keys_eq!(signer, g.players[0], GameError::NotAPlayer);
+            let abandoned = now >= g.created_at.saturating_add(OPEN_ANYONE_SECS);
+            require!(signer == g.players[0] || abandoned, GameError::NotAPlayer);
             [g.picks[0], 0]
         }
         status::JOINED => {
-            require!(g.players.contains(&signer), GameError::NotAPlayer);
             require_keys_eq!(a.opponent.key(), g.players[1], GameError::WrongRecipient);
-            let now = Clock::get()?.unix_timestamp;
-            require!(
-                now >= g.joined_at.saturating_add(JOIN_TIMEOUT_SECS),
-                GameError::TooEarly
-            );
+            let wait = if g.players.contains(&signer) {
+                JOIN_TIMEOUT_SECS
+            } else {
+                JOIN_ANYONE_SECS
+            };
+            require!(now >= g.joined_at.saturating_add(wait), GameError::TooEarly);
             [g.stake, g.stake]
         }
         _ => return err!(GameError::WrongStatus),
