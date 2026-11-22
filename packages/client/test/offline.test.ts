@@ -1,14 +1,15 @@
-// OfflineSource: the real rules (v3) through the bundled WASM. Run: pnpm --filter @lil-dudes/client test
+// OfflineSource: the real rules (v4) through the bundled WASM. Run: pnpm --filter @lil-dudes/client test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/constants';
 import { crateOfGate, stageDef } from '../src/layout';
+import { can_rig_bytes } from '@lil-dudes/sim-wasm';
 import { MockSource, OfflineSource, simConstants, simRulesVersion } from '../src/index';
 import type { MatchEvent, MatchView, PrivateView } from '../src/types';
 
 /** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs: bot on side 1, idle side 0
  *  (it dies at tick 209). */
-const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, digest: 4502489461824871878n, tick: 209 };
+const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, digest: 18_369_198_370_544_550_614n, tick: 209 };
 
 function playOut(src: { view: MatchView; step(): void }, onTick?: (view: MatchView) => void) {
   let guard = 0;
@@ -37,7 +38,7 @@ test('TS constants and layouts equal the Rust ones in the WASM build', () => {
 });
 
 test('bundled WASM is built from the current sim (parity digest)', () => {
-  assert.equal(simRulesVersion(), 3);
+  assert.equal(simRulesVersion(), 4);
   const src = new OfflineSource(PARITY);
   playOut(src);
   assert.equal(src.view.tick, PARITY.tick);
@@ -60,8 +61,17 @@ function checkView(view: MatchView) {
     assert.equal(s.gates.length, st.gates.length);
     assert.equal(s.towers.length, st.towers.length);
     assert.equal(s.crates.length, st.crates.length);
-    if (s.stage === C.RAID_STAGE) assert.equal(s.towers.length, 0);
-    else assert.equal(s.raidGold, 0);
+    // v4: the town hall raid is Fight 2 with its towers down, in place.
+    const raided = s.raidTicks > 0;
+    if (raided) {
+      assert.equal(s.stage, C.FINAL_STAGE);
+      assert.ok(s.towers.every((t) => t.hp === 0), 'the raid starts when every tower is down');
+    } else {
+      assert.equal(s.raidGold, 0);
+    }
+    if (s.phase === 'raid' || s.phase === 'done') assert.equal(s.stage, C.FINAL_STAGE);
+    if (s.phase === 'done') assert.ok(s.raidTicks >= C.RAID_TICKS && s.cohorts.length === 0 && s.enemies.length === 0);
+    if (s.phase === 'plant' || s.phase === 'fight' || s.phase === 'transit') assert.equal(s.raidTicks, 0);
     assert.ok(s.raidGold <= s.gold);
     s.gates.forEach((g, slot) => {
       assert.equal(g.slot, slot);
@@ -118,15 +128,19 @@ test('whole bot-vs-bot matches: every event type, invariants, raid gold = loot',
   }
 });
 
-test('a player rigs in their plant and peeks in their fight (private view by stage and slot)', () => {
+test('a player rigs from their own lane and peeks in their fight (private view by stage and slot)', () => {
   const src = new OfflineSource({ seed: 9n, botSeed: 10n });
   let priv: PrivateView = { myRig: null, myPeek: null };
   src.subscribe((_v, p) => (priv = p));
-  // Tick 0 is my plant: rig the opponent's slot 1 of their stage 0.
+  // Tick 0 is my plant: my gate slot 1 traps the same slot of the opponent's stage 0.
+  const gates = stageDef(src.view.layout, 0).gates.length;
+  assert.ok(src.canRig(1));
+  assert.equal(src.canRig(gates), false, 'no such gate in my stage');
   src.rig(1);
   src.step();
   assert.deepEqual(priv.myRig, { stage: 0, slot: 1 });
   assert.equal(src.view.sides[0].rigUsed, true);
+  assert.equal(src.canRig(0), false, 'once per stage');
   assert.equal(priv.myPeek, null);
   // A peek in the plant is refused (and not used up).
   src.peek(0);
@@ -144,6 +158,49 @@ test('a player rigs in their plant and peeks in their fight (private view by sta
   // The peeked value is the dealt one.
   assert.deepEqual(peek?.op, src.reveal().values[0]![0]);
   src.dispose();
+});
+
+test('a rig in my fight lands on their copy of my stage; canRig follows the v4 rule', () => {
+  const src = new OfflineSource({ seed: 21n, botSeed: 22n });
+  let priv: PrivateView = { myRig: null, myPeek: null };
+  src.subscribe((_v, p) => (priv = p));
+  while (src.view.sides[0].phase !== 'fight') src.step();
+  for (let i = 0; i < 10; i++) src.step();
+  const [me, them] = src.view.sides;
+  assert.equal(me.rigUsed, false);
+  // The rule from public state: same stage, their copy of the gate still face-down.
+  me.gates.forEach((g) => {
+    const want = them.stage > me.stage ? false : them.stage < me.stage || !them.gates[g.slot]!.revealed;
+    assert.equal(src.canRig(g.slot), want && them.phase !== 'done' && them.phase !== 'dead', `slot ${g.slot}`);
+  });
+  const slot = me.gates.find((g) => src.canRig(g.slot))!.slot;
+  src.rig(slot);
+  src.step();
+  assert.deepEqual(priv.myRig, { stage: me.stage, slot });
+  // The history logs it under my stage, naming the same stage of theirs.
+  const r = src.reveal();
+  assert.deepEqual(r.history[me.stage]!.rigs[0], { stage: me.stage, slot });
+  src.dispose();
+});
+
+test('canRig (SimMatch.can_rig) == can_rig_bytes on the public bytes (what LiveSource asks)', () => {
+  let yes = 0;
+  let no = 0;
+  for (const seed of [4n, 15n, 2026n]) {
+    const src = new OfflineSource({ seed, botSeed: seed + 9n, selfBot: true, mySide: seed === 15n ? 1 : 0 });
+    while (!src.view.result) {
+      const bytes = src.publicBytes();
+      for (let slot = 0; slot < C.GATES_MAX; slot++) {
+        const ok = src.canRig(slot);
+        assert.equal(ok, can_rig_bytes(bytes, src.mySide, slot), `seed ${seed} tick ${src.view.tick} slot ${slot}`);
+        if (ok) yes++;
+        else no++;
+      }
+      src.step();
+    }
+    src.dispose();
+  }
+  assert.ok(yes > 100 && no > 100, `${yes} yes, ${no} no`);
 });
 
 test('same seeds and inputs give the same match through the TS layer', () => {
@@ -175,8 +232,8 @@ test('selfBot: the bot plays my side too, my inputs are ignored', () => {
   const src = new OfflineSource({ seed: 3n, botSeed: 4n, selfBot: true, mySide: 1 });
   assert.deepEqual(src.view.sides.map((s) => s.isBot), [true, true]);
   src.setAim(0);
-  for (let i = 0; i < 100; i++) src.step();
-  assert.ok(src.view.sides[1].rigUsed, 'the bot rigs in its plant');
+  for (let i = 0; i < 160; i++) src.step();
+  assert.ok(src.view.sides[1].rigUsed, 'the bot rigs 1-3 s into its fight');
   src.dispose();
 });
 
@@ -208,6 +265,7 @@ test('MockSource: a hands-off bot-vs-bot match, fast-forwarded', () => {
   });
   src.setAim(0);
   src.rig(0);
+  assert.equal(src.canRig(0), false, 'the mock takes no input');
   playOut(src);
   assert.ok(end);
   assert.ok(new MockSource().view.sides.every((s) => s.isBot));

@@ -12,8 +12,8 @@ import { OfflineSource } from '../src/index';
 test('codec constants match the WASM build', () => {
   new OfflineSource().dispose(); // loads the WASM
   assert.equal(codec_version(), CODEC_VERSION);
-  assert.equal(PUBLIC_LEN, 1470);
-  assert.equal(HISTORY_LEN, 24);
+  assert.equal(PUBLIC_LEN, 1474);
+  assert.equal(HISTORY_LEN, 16);
 });
 
 test('decodePublic(publicBytes) == the WASM view at every tick of whole matches', () => {
@@ -53,7 +53,8 @@ test('decodePublic refuses short buffers and other codec versions', () => {
 
 test('dealsFor + history: every revealed gate re-derives from the seed and the rigs', () => {
   let checked = 0;
-  for (const seed of [5n, 1234n, 99n, 2026n]) {
+  let rigs = 0;
+  for (const seed of [5n, 1234n, 99n, 2026n, 7n, 31n, 64n, 500n]) {
     const src = new OfflineSource({ seed, botSeed: 9n, selfBot: true });
     const deals = dealsFor(seed);
     assert.equal(deals.layout, Number(seed % BigInt(C.LAYOUTS.length)));
@@ -80,12 +81,14 @@ test('dealsFor + history: every revealed gate re-derives from the seed and the r
     while (!src.view.result) src.step();
     const h = decodeHistory(src.history());
     assert.equal(h.length, C.STAGES);
-    // The bots rig in their first plant.
-    assert.ok(h[0]!.rigs[0] && h[0]!.rigs[1]);
+    // The bots rig 1-3 s into each fight (refused when the target gate is already revealed).
     for (const log of h) {
-      for (const r of log.rigs) if (r) assert.ok(r.slot < stageDef(deals.layout, r.stage).gates.length);
+      rigs += log.rigs.filter(Boolean).length;
+      // v4: a rig names the rigger's own stage, and a slot of it.
+      for (const r of log.rigs) if (r) assert.ok(r.stage === log.stage && r.slot < stageDef(deals.layout, r.stage).gates.length);
     }
     src.dispose();
   }
-  assert.ok(checked > 50, `${checked} reveals checked`);
+  assert.ok(checked > 80, `${checked} reveals checked`);
+  assert.ok(rigs >= 16, `${rigs} rigs in 8 bot matches`);
 });

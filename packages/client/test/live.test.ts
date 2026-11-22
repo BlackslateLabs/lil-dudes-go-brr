@@ -1,5 +1,5 @@
 // The live feed's event reconstruction (live/events.ts) vs the sim's own events, through whole
-// offline matches decoded from the on-chain byte layout; and the v3 Peek account decoder.
+// offline matches decoded from the on-chain byte layout (rules v4); and the Peek account decoder.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decodePublic, type PublicState } from '../src/codec';
@@ -61,8 +61,12 @@ function sums(events: MatchEvent[]) {
 
 const sorted = (xs: (string | null)[]) => xs.filter((x): x is string => x !== null).sort();
 
+const FIGHT = 1;
+const RAID = 3;
+
 test('diffEvents reconstructs the sim events of whole matches', () => {
   let ticks = 0;
+  let raids = 0;
   const seen = new Set<string>();
   // Side 0 aims at an unbroken crate if its stage has one, else at the nearest enemy.
   const crateHunter = (src: OfflineSource) => {
@@ -92,7 +96,12 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
       const derived = diffEvents(prev, next);
       const at = `seed ${opts.seed} tick ${next.tick}`;
       assert.deepEqual(sorted(derived.map((e) => exactKey(e, prev))), sorted(got.map((e) => exactKey(e, prev))), at);
-      const moved = new Set(([0, 1] as Side[]).filter((s) => prev.sides[s].stage !== next.sides[s].stage || prev.sides[s].phase !== next.sides[s].phase));
+      // Fight 2 → Raid keeps the stage and the field (v4), so its gates and crates stay exact.
+      const inPlace = (s: Side) => prev.sides[s].phase === FIGHT && next.sides[s].phase === RAID;
+      const moved = new Set(
+        ([0, 1] as Side[]).filter((s) => prev.sides[s].stage !== next.sides[s].stage || (prev.sides[s].phase !== next.sides[s].phase && !inPlace(s))),
+      );
+      for (const s of [0, 1] as Side[]) if (inPlace(s)) raids++;
       const lane = (es: MatchEvent[]) => sorted(es.filter((e) => 'side' in e && !moved.has(e.side)).map(laneKey));
       assert.deepEqual(lane(derived), lane(got), at);
       // Sums: tower damage and loot always; clash unless a wave merged into a cohort that clashed.
@@ -110,6 +119,7 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
     src.dispose();
   }
   assert.ok(ticks > 3000, `${ticks} ticks`);
+  assert.ok(raids > 4, `${raids} town hall raids started`);
   for (const type of ['volley', 'reveal', 'gate', 'gotcha', 'crate', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'stage', 'death', 'end']) {
     assert.ok(seen.has(type), `no ${type} events to compare`);
   }
@@ -139,24 +149,24 @@ test('diffEvents across multi-tick gaps: no duplicates of exact events, the end 
   src.dispose();
 });
 
-test('decodePeek reads the v3 Peek account and peekPrivateView keeps only my current stage', () => {
+test('decodePeek reads the Peek account and peekPrivateView keeps only my current stage', () => {
   const data = new Uint8Array(PEEK_LEN);
   const set = (i: number, v: number) => (data[8 + i] = v);
   set(40, 1); // side
   for (const i of [41, 42, 44]) set(i, 255);
   assert.deepEqual(decodePeek(data), { side: 1, stage: null, rig: null, peek: null });
   assert.deepEqual(peekPrivateView(decodePeek(data), 0), { myRig: null, myPeek: null });
-  // Rigged in my stage 1: the opponent's stage 2, slot 3; peeked my slot 4 in stage 1: ÷2.
+  // Rigged in my stage 1 (v4: their copy of the same stage), slot 3; peeked my slot 4 in stage 1: ÷2.
   set(41, 1);
-  set(42, 2);
+  set(42, 1);
   set(43, 3);
   set(44, 1);
   set(45, 4);
   set(46, 0x82);
   const acc = decodePeek(data);
-  assert.deepEqual(acc, { side: 1, stage: 1, rig: { stage: 2, slot: 3 }, peek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
-  assert.deepEqual(peekPrivateView(acc, 1), { myRig: { stage: 2, slot: 3 }, myPeek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
-  assert.deepEqual(peekPrivateView(acc, 2), { myRig: null, myPeek: null }, 'stale entries');
+  assert.deepEqual(acc, { side: 1, stage: 1, rig: { stage: 1, slot: 3 }, peek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
+  assert.deepEqual(peekPrivateView(acc, 1), { myRig: { stage: 1, slot: 3 }, myPeek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
+  assert.deepEqual(peekPrivateView(acc, 0), { myRig: null, myPeek: null }, 'not my stage');
   // A Peek left over from an earlier stage (the program can't write it on a stage change).
   set(41, 0);
   assert.deepEqual(peekPrivateView(decodePeek(data), 1), { myRig: null, myPeek: null }, 'Peek.stage != my stage');
