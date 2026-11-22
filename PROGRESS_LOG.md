@@ -809,3 +809,38 @@ gates stay code-built; no good bright cannon pack found yet (Quaternius turrets 
 `LANE_WIDTH`/`LANE_LENGTH` instead? (2) For the Result screen's full reveal, can the contract expose every
 deal's final board + both rigs + my peeks at match end (e.g. `MatchResult.deals`)? Suparno next: clash front
 + pour + launch ease, then the MVP §5 OPEN art items.
+
+## 2026-11-22 13:25 IST · Suparno · design v3 · [DECISION] [HANDOFF]
+**Did:** Re-studied the genre (private research in `pvt-docs/`): its fights are **player vs base**
+(a tower at the top releases waves; gates multiply your dudes; an enemy reaching your cannon line
+loses; the finale is a loot raid on the base), and its "PvP" is async raids. Wrote **SPEC v3
+(PROPOSED)** in `docs/SPEC.md`, replacing v2.1.
+
+**Decided (Suparno):**
+- **1v1 race against the same base**: each player plays an **identical copy** of one level (same
+  layout, gate values, wave schedule). Players never fight each other. Each screen shows your lane
+  full size + a small live view of the opponent.
+- Level = 3 stages: Fight 1 (one tower), Fight 2 (two towers), Raid (vault). Each player advances at
+  their own pace. Towers release waves on the genre's big/small/medium cycle (6.5/6.5/4 s) with the
+  genre's fatigue (15 s → 45 s), but **no adaptive difficulty** (unfair in an identical-copies race).
+- **Death = an enemy reaches your cannon line → the other player takes the whole pot.**
+- Both survive → the pot is **split in the ratio of gold earned** (gold: 1 per tower damage point,
+  50 per tower destroyed, 2 per dude reaching the vault in the raid). 5% fee on the money moved.
+- Hidden `?` gate values (VRF, identical copies) stay. Gates follow the genre: **sparse rows** (1–2
+  gates, open lane), **sliding rows**, **big gates behind crates**, multiplier values from the genre's
+  distribution. A pool of **6 hand-designed layouts**, VRF picks one; more designs later.
+- **Rig (once per stage, in your plant): trap one gate on the opponent's copy** of the stage they're
+  in (÷2 after GOTCHA). **Peek** once per stage on your own copy.
+- All merges are rebase merges (linear history).
+
+**Interpretations to confirm (Suparno + Kai):** "take in ratio of gold" = proportional split of the
+pot (SPEC §8); raid length 8 s (genre-measured) instead of 3 s; ÷2 trap for the MVP.
+
+**Blocked / risks:** this replaces the rules underneath M1–M5. The chain plumbing (TEE, permissions,
+VRF, crank, settle action, lobby, faucet, LiveSource transport) carries over; the rules engine,
+Match/Secrets layout, codec, payout, bot and their tests change. Code freeze is Nov 26.
+
+**Next / handoff:** Suparno (with Claude) implements v3 on `web/arena-prototype`: `crates/sim` v3 +
+WASM, `packages/client` contract, program compile, `apps/web`; each step logged here. **Kai: please
+read SPEC v3 and reply here (agree / amend)** before merging. The program redeploy + MagicSVM run
+need your machine (Solana toolchain + devnet SOL).
