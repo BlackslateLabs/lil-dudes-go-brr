@@ -10,13 +10,16 @@
 // idempotent on-chain, so both players' sources can race safely.
 import { Connection, Transaction, TransactionInstruction, type Keypair } from '@solana/web3.js';
 import * as C from '../constants';
-import { opOf, phaseAt, PUBLIC_LEN, toMatchView } from '../codec';
+import { matchResultOf, PUBLIC_LEN, toMatchView } from '../codec';
+import { layoutDef } from '../layout';
 import type { MatchListener, MatchSource } from '../source';
 import type { MatchEvent, MatchStatus, MatchView, PrivateView, Side } from '../types';
 import { ACCOUNT_EXPLORER, markSprung, payoutOf, revealOf, TEE_EXPLORER, type GotchaLog, type MatchReveal, type SettlementInfo, type TxRecord } from '../verify';
 import {
   decodeMatch,
   decodePeek,
+  peekPrivateView,
+  STATE_OFFSET,
   Flags,
   ixs,
   matchAccounts,
@@ -65,8 +68,6 @@ interface Snap {
 const SALT_LEN = 32;
 /** Abort a match stuck before the seed this long after it became READY (program: ABORT_SLOTS ≈ 60 s). */
 const ABORT_AFTER_MS = 65_000;
-/** Offset of the codec public state in the Match account (state.rs). */
-const STATE_OFFSET = 330;
 
 export class LiveSource implements MatchSource {
   readonly mySide: Side;
@@ -97,7 +98,7 @@ export class LiveSource implements MatchSource {
   private tried = new Map<string, number>();
   private disposed = false;
   private stage: LiveStage = 'connecting';
-  /** rig / peek: one request at a time, and none once it took this phase. */
+  /** rig / peek: one request at a time, and none once it took this stage. */
   private inflight = { rig: false, peek: false };
   /** TEE txs this source sent (set_aim folded into one line), for reveal().txs. */
   private teeTxs: TxRecord[] = [];
@@ -173,20 +174,28 @@ export class LiveSource implements MatchSource {
     this.pendingAim = Math.round(Math.max(0, Math.min(C.LANE_WIDTH - 1, x)));
   }
 
-  rig(cell: number): void {
-    if (!Number.isInteger(cell) || cell < 0 || cell >= C.CELLS) return;
-    if (this.inflight.rig || this.newest.view.sides[this.mySide].rigUsed || this.newest.view.status !== 'plant') return;
+  /** Rig gate `slot` of the opponent's current stage: only during my own Plant, once per stage
+   *  (the program refuses the rest: revealed gate, opponent finished, stage already rigged). */
+  rig(slot: number): void {
+    const v = this.newest.view;
+    const me = v.sides[this.mySide];
+    const them = v.sides[this.mySide === 0 ? 1 : 0];
+    if (!Number.isInteger(slot) || slot < 0 || slot >= them.gates.length) return;
+    if (this.inflight.rig || me.rigUsed || me.phase !== 'plant' || v.status !== 'playing') return;
     this.inflight.rig = true;
-    void this.tx('plant_rig', ixs.plantRig(this.accounts, this.opts.burner.publicKey, this.mySide, cell), true).finally(() => {
+    void this.tx('plant_rig', ixs.plantRig(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
       this.inflight.rig = false;
     });
   }
 
-  peek(cell: number): void {
-    if (!Number.isInteger(cell) || cell < 0 || cell >= C.CELLS) return;
-    if (this.inflight.peek || this.newest.view.sides[this.mySide].peekUsed || this.newest.view.status !== 'playing') return;
+  /** Peek my unrevealed gate `slot` of my current stage: only during my Fight or Raid, once per stage. */
+  peek(slot: number): void {
+    const v = this.newest.view;
+    const me = v.sides[this.mySide];
+    if (!Number.isInteger(slot) || slot < 0 || slot >= me.gates.length || me.gates[slot]!.revealed) return;
+    if (this.inflight.peek || me.peekUsed || (me.phase !== 'fight' && me.phase !== 'raid') || v.status !== 'playing') return;
     this.inflight.peek = true;
-    void this.tx('peek_cell', ixs.peekCell(this.accounts, this.opts.burner.publicKey, this.mySide, cell), true).finally(() => {
+    void this.tx('peek_cell', ixs.peekCell(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
       this.inflight.peek = false;
     });
   }
@@ -237,18 +246,23 @@ export class LiveSource implements MatchSource {
   }
 
   /**
-   * The result screen's data once the match finished (null before): seed + every deal, rigs and
-   * peeks per phase (with `sprung`), GOTCHAs, final HP, the payout and why, every tx with an
+   * The result screen's data once the match finished (null before): seed, layout and every
+   * stage's values, rigs and peeks per stage (with `sprung`), GOTCHAs, gold, deaths, the payout
+   * and why, every tx with an
    * explorer link, and the settlement state. Base-layer txs and the settlement arrive a few
    * seconds after the end (`onStage('finished', 'settled')`, or `await awaitReveal()`).
-   * An aborted match (never started) has no seed: deals are empty.
+   * An aborted match (never started) has no seed: values and history are empty.
    */
   reveal(): MatchReveal | null {
     const { header: h, state } = this.newest.account;
     if (h.status < Status.FINISHED) return null;
     const aborted = !!(h.flags & Flags.ABORTED);
-    const base = aborted ? { seed: 0n, deals: [], history: [] } : revealOf(h.seed, h.history);
-    const hp: [number, number] = [state.sides[0].hp, state.sides[1].hp];
+    const base: MatchReveal = aborted
+      ? { seed: 0n, layout: state.layout, layoutName: layoutDef(state.layout).name, values: [], history: [] }
+      : revealOf(h.seed, h.history);
+    const gold: [number, number] = [state.sides[0].gold, state.sides[1].gold];
+    const dead: [boolean, boolean] = [state.sides[0].dead, state.sides[1].dead];
+    const result = aborted ? null : matchResultOf(state);
     const isLobby = (t: TxRecord) => ['create_match', 'join_match', 'delegate_match'].includes(t.what);
     const lobby = this.baseTxs.filter(isLobby);
     const after = this.baseTxs.filter((t) => !isLobby(t));
@@ -260,11 +274,12 @@ export class LiveSource implements MatchSource {
       history: markSprung(base.history, this.gotchas),
       matchId: this.matchId.toString(),
       names: h.names,
-      result: aborted ? null : state.result,
-      hp,
+      result,
+      gold,
+      dead,
       finalTick: state.tick,
       gotchas: [...this.gotchas],
-      payout: payoutOf(h.stake, aborted ? null : state.result, hp, aborted, h.names),
+      payout: payoutOf(h.stake, result, { aborted, names: h.names, dead }),
       // Chronological: lobby (base) → this device's TEE txs → commit / settlement / close (base).
       txs: [...lobby, ...this.teeTxs.filter((t) => t.what !== 'set_aim'), ...aims, ...after],
       settlement: { ...this.settlement },
@@ -395,7 +410,7 @@ export class LiveSource implements MatchSource {
     this.noteGotchas(account);
     this.stats.snapshots++;
     if (account.state.tick !== this.lastProgress.tick) this.lastProgress = { tick: account.state.tick, at: Date.now() };
-    if (snap.view.status === 'playing' || snap.view.status === 'plant') {
+    if (snap.view.status === 'playing') {
       if (this.played.view.status === 'waiting') this.playTick = account.state.tick - this.delay;
       this.queue.push(snap);
       this.stats.maxQueue = Math.max(this.stats.maxQueue, this.queue.length);
@@ -407,13 +422,21 @@ export class LiveSource implements MatchSource {
     void this.drive();
   }
 
-  /** GOTCHAs from the header's last-sprung record (at most one per grid per phase, so no snapshot
-   *  can hide one: the feed never skips a state, TECH §4). */
+  /** GOTCHAs from the header's last-sprung record (at most one per lane per stage), as a backup
+   *  for the ones the feed derives from reveals (diffEvents). The victim's stage is the one its
+   *  lane shows in the snapshot that first carries the record. */
   private noteGotchas(account: MatchAccount): void {
     account.header.gotcha.forEach((g, s) => {
-      if (!g || this.gotchas.some((x) => x.side === s && x.tick === g.tick)) return;
-      this.gotchas.push({ phase: phaseAt(g.tick), tick: g.tick, side: s as Side, cell: g.cell, riggedBy: (g.riggedBy === 1 ? 1 : 0) as Side });
+      if (!g) return;
+      const side = s as Side;
+      const stage = account.state.sides[side].stage;
+      this.addGotcha({ stage, tick: g.tick, side, slot: g.slot, riggedBy: side === 0 ? 1 : 0 });
     });
+  }
+
+  private addGotcha(g: GotchaLog): void {
+    if (this.gotchas.some((x) => x.side === g.side && x.stage === g.stage && x.slot === g.slot)) return;
+    this.gotchas.push(g);
   }
 
   private onPeek(bytes: Uint8Array): void {
@@ -422,7 +445,7 @@ export class LiveSource implements MatchSource {
     } catch {
       return;
     }
-    this.priv = this.privateView(this.played.view.phase);
+    this.priv = this.privateView(this.played.view);
   }
 
   private async refreshPeek(): Promise<void> {
@@ -430,12 +453,8 @@ export class LiveSource implements MatchSource {
     if (info) this.onPeek(info.data);
   }
 
-  private privateView(phase: number): PrivateView {
-    const p = this.peekAcc;
-    return {
-      myRig: p?.rig && p.rig.phase === phase ? p.rig.cell : null,
-      myPeek: p?.peek && p.peek.phase === phase ? { cell: p.peek.cell, op: opOf(p.peek.kind, p.peek.value), gold: p.peek.gold } : null,
-    };
+  private privateView(view: MatchView): PrivateView {
+    return peekPrivateView(this.peekAcc, view.sides[this.mySide].stage);
   }
 
   /** One playout frame (20 Hz): advance the render clock, play out the snapshots it reached. */
@@ -456,13 +475,13 @@ export class LiveSource implements MatchSource {
   private emit(next: Snap): void {
     if (next === this.played) return;
     if (next.account.state.tick < this.played.account.state.tick) return;
-    const events: MatchEvent[] = diffEvents(
-      { state: this.played.account.state, gotcha: this.played.account.header.gotcha },
-      { state: next.account.state, gotcha: next.account.header.gotcha },
-    );
+    const events: MatchEvent[] = diffEvents(this.played.account.state, next.account.state);
+    for (const e of events) {
+      if (e.type === 'gotcha') this.addGotcha({ stage: e.stage, tick: next.account.state.tick - 1, side: e.side, slot: e.slot, riggedBy: e.riggedBy });
+    }
     this.played = next;
     this.stats.emitted++;
-    this.priv = this.privateView(next.view.phase);
+    this.priv = this.privateView(next.view);
     for (const l of this.listeners) l(next.view, this.priv, events);
   }
 
