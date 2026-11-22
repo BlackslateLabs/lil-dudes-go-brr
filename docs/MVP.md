@@ -1,28 +1,31 @@
 # Lil Dudes Go Brr: MVP and build order
 
-Status: **DECIDED** unless marked **OPEN**. Updated 2026-11-22 (M4–M5 back end done: §4 edge cases, §8 wallets).
+Status: **DECIDED** unless marked **OPEN**. Updated 2026-11-22 (M4–M5 back end done: §4 edge cases, §8 wallets;
+**v3 rules PROPOSED**: §1, §2, §3.2, §3.6–3.8, §5, §6, §7 follow SPEC v3).
 Idea: [IDEA.md](IDEA.md) · Rules: [SPEC.md](SPEC.md) · Tech: [TECH.md](TECH.md).
 
 ## 1. The MVP in one paragraph
 
 A phone-first web game. Opening the link drops a first-time player into a short, skippable guided
-match against the bot. After that they can play the bot for free, or play a live 1v1 against a person
-(quick match or room code) for a small devnet-SOL stake. Matches last 2:00, with hidden `?` gates,
-one rig and one peek per phase, re-deals at 0:40 and 1:20, and Surge at 1:45. The match runs in
+match against the bot. After that they can play the bot for free, or race a person live (quick match
+or room code) for a small devnet-SOL stake. Both players play identical copies of one level against
+the same enemy base (two tower fights, then a loot raid), with hidden `?` gates, one rig (on the
+opponent's copy) and one peek per stage. An enemy reaching your cannon ends it; otherwise the pot is
+split by gold. A match takes ~1:30–2:00 (3:00 cap). The match runs in
 MagicBlock's Private Ephemeral Rollup. It settles automatically to the base layer, and the result
 screen proves the match was fair.
 
-**Never cut:** live 1v1 on the private rollup, hidden gates + rig, stakes that settle on-chain, the bot.
+**Never cut:** live 1v1 race on the private rollup, hidden gates + rig, stakes that settle on-chain, the bot.
 
 ## 2. Features
 
 | In the MVP | Stretch (only if MVP is done) | Out |
 |---|---|---|
-| Bot match (free), quick match, room code | Double-or-Toll (SPEC §8) | Real money, mainnet |
-| Stakes: Free / 0.05 / 0.1 / 0.25 devnet SOL | Turncoat rig (if it beats ÷2) | Accounts, login, email |
-| Hidden gates, hints, gold gate, rig, peek, re-deal, Surge | Emotes during a match | Cards, upgrades, meta progression |
+| Bot match (free), quick match, room code | Turncoat trap | Real money, mainnet |
+| Stakes: Free / 0.05 / 0.1 / 0.25 devnet SOL | Pipes, turbo pads, portals, cages | Accounts, login, email |
+| Towers + waves, hidden gates, sliding gates, crates, rig, peek, raid + gold | Emotes during a match | Cards, upgrades, meta progression |
 | Guided first match (skippable, replayable) | Spectator link | Leaderboards, seasons |
-| Result screen + Verify + explorer links | Sliding gate rows, Giant power-up | Chat |
+| Result screen + Verify + explorer links | Champion / Giant meter, more layouts | Chat |
 | Burner wallet, auto top-up, withdraw to any address | Test-USDC stakes | Native app |
 | Offline mode (no chain) as fallback demo | | |
 | Sound, music, haptics, quality auto-switch | | |
@@ -38,9 +41,9 @@ Portrait everywhere. On desktop the game sits in a centred phone-shaped column.
 
 ### 3.2 Tutorial match (vs bot, local)
 - The same arena as a real match. Each beat shows a one-line prompt above the cannon and a ✓ when done:
-  1. "Drag to aim". 2. "Hit a gate". 3. "Crash into their dudes". 4. "Blue hint = probably good".
-  5. "Rig one of their gates" (plant window). 6. "Peek at one of yours". Then the match plays out freely.
-- The bot holds back in phase 1, so a newcomer can't be knocked out.
+  1. "Drag to aim". 2. "Hit a gate". 3. "Stop the wave before it reaches you". 4. "Knock out the tower".
+  5. "Rig one of their gates" (stage 2 plant). 6. "Peek at one of yours". 7. "Raid the vault!".
+- The player's fight-1 waves are at 50%, so a newcomer can't die early (SPEC §10).
 - End → short result → **Home**, with "Play for real" pulsing.
 
 ### 3.3 Home
@@ -64,32 +67,39 @@ Portrait everywhere. On desktop the game sits in a centred phone-shaped column.
   behind this countdown.
 
 ### 3.6 Match
-- **HUD** (top ≤ 8%): you (left), opponent (right), centre = timer + stake + three phase pips.
-- **Arena:** a static camera shows the whole lane. Their cannon and gates are at the top, yours at the
-  bottom; your cannon sits at ~75–80% of screen height, and the bottom ~20% is empty thumb space. HP labels sit on each cannon.
-- **Plant window (3 s, start of each phase):** the board flips face-down, both cannons stop, and a
-  countdown ring plus "Tap one of their gates to rig it" appear. Tap a cell on their grid → it locks in
-  with a small trap icon only you see. No tap = no rig.
-- **Peek:** an eye button by your thumb (one per phase). Tap → tap one of your `?` cells → only you
-  see its value for the rest of the phase (an outline marks it).
-- **Events:** reveal flip + pour, clash front, GOTCHA overlay, danger stripes, cannon hit flash,
-  re-deal flip, "SURGE" banner at 1:45.
-- **Leaving:** no pause. Closing the tab keeps your cannon firing at its last position (SPEC §10).
-- **End:** KO explosion or a timer horn → payout fountain → Result.
+- **HUD** (top ≤ 8%): you (left: name, gold, stage pips), opponent (right: name, gold, stage pips or
+  DEAD/DONE), centre = timer + stake.
+- **Arena:** a static camera shows your whole lane, cannon to base. The base and its towers are at the
+  top (HP labels on the towers), your cannon at ~75–80% of screen height, and the bottom ~20% is
+  empty thumb space. A **mini-view** of the opponent's lane sits in a corner (their stage, crowd,
+  towers, gold, live).
+- **Plant (3 s, start of each of your stages):** the stage's gates appear face-down, your cannon holds
+  fire, the mini-view enlarges, and "Tap one of their gates to rig it" appears. Tap a gate on their
+  copy → it locks in with a trap icon only you see. No tap = no rig.
+- **Peek:** an eye button by your thumb (one per stage). Tap → tap one of your `?` gates → only you
+  see its value for the rest of the stage.
+- **Events:** reveal flip + pour, wave release (tower pulse), clash front, crate counter + break,
+  GOTCHA overlay, danger stripes when an enemy wave nears your line, tower hit flash + explosion,
+  transit (field wipe + drive up), "RAID!" banner + loot counter, the opponent's stage changes in the
+  mini-view.
+- **Leaving:** no pause. Closing the tab keeps your cannon firing at its last position (SPEC §11).
+- **End:** your death (an enemy reaches your line), the opponent's death, or both done → payout
+  fountain → Result. If you finish first, you watch the opponent's lane until the end.
 
 ### 3.7 Result
-- WIN / LOSE / DRAW, final HP for both, then a count-up of the money moved with one line explaining why
-  ("Won by 22% → you take 61% of the stake, 5% fee").
-- Full reveal: both boards from every deal, with rigs marked and who peeked what.
+- WIN / LOSE / DRAW, gold for both (and who died), then a count-up of the money moved with one line
+  explaining why ("They died → you take the pot" / "900 vs 600 gold → you take 60% of the pot, 5% fee").
+- Full reveal: every stage's gate values from the seed, with rigs marked (and whether they sprang) and
+  who peeked what.
 - Buttons (after ~1.5–2 s): **Rematch** (same opponent, same stake; both must accept), **Home**,
   **Verify**. Explorer links to the settle tx and the match account.
 - If settlement is still landing: a "Settling…" state; after 20 s, a **Settle now** button
   (permissionless `settle`).
 
 ### 3.8 Verify
-- Shows the VRF seed, then re-derives every deal and hint in the browser (WASM sim) and checks them
-  against the on-chain final state. Big ✓ "This match was fair", plus a step-by-step "under the hood"
-  list of every transaction, with links.
+- Shows the VRF seed, then re-derives the layout and every stage's gate values in the browser (WASM
+  sim) and checks every revealed gate against the on-chain final state. Big ✓ "This match was fair",
+  plus a step-by-step "under the hood" list of every transaction, with links.
 
 ### 3.9 Wallet sheet
 - Burner address (copy), balance, **Top up** (server faucet, devnet), **Withdraw** (to any address,
@@ -119,9 +129,9 @@ Portrait everywhere. On desktop the game sits in a centred phone-shaped column.
 ## 5. Look and sound
 
 **Decided:** portrait; a static telephoto camera (pitch ~44°, FOV ~30°); low-poly toy world with toon
-shading; on your phone **you are always blue and they are always red**. Gate colours: unrevealed = neutral
-panel with a hint glow (blue / red / grey), gold = gold, revealed good = blue, bad = red. Big outlined
-numbers on gates, cannons and the clash front only. Round, chunky UI buttons. One distinct sound per event.
+shading; on your phone **your dudes are blue and the base's troops are red**. Gate colours: unrevealed =
+neutral panel with `?`, revealed = blue (big gates gold), a sprung trap = red. Big outlined numbers on
+gates, towers, crates and the clash front only. Round, chunky UI buttons. One distinct sound per event.
 
 **OPEN (Suparno owns, decide in the arena prototype):**
 1. The **lil dudes** character design (original; small, round, readable in a crowd of 1,000).
@@ -131,17 +141,9 @@ numbers on gates, cannons and the clash front only. Round, chunky UI buttons. On
 
 ## 6. Starting numbers
 
-| Constant | Value | Notes |
-|---|---|---|
-| Tick | 50 ms (5 ER slots) | 2,400 ticks per match |
-| Plant windows | ticks 0–60, 800–860, 1600–1660 | cannons hold fire |
-| Surge | from tick 2,100 | `FIRE_TICKS` 8 → 4 |
-| `FIRE_TICKS` / `B` | 8 / 4 | volley = one cohort of 4 |
-| `LAUNCH_TICKS` | 6 at 3× cruise | |
-| Cohort cap | 40 per side | |
-| `CANNON_STEP` | lane width / 5 per tick | |
-| Gate width | ~75% of the column | OPEN until the prototype |
-| HP, ± deck values | tuned by the Rust balance runner | target ~25% KO |
+The v3 constants are in SPEC §12 (genre-measured starting values); the balance runner tunes tower HP
+and wave sizes per layout (`cargo run -p lil-dudes-sim --example balance --release`). Targets: bot vs
+bot death rate ~10–25%, fights ~20–45 s, matches ~1:15–2:15.
 
 ## 7. Build order
 
@@ -154,14 +156,15 @@ Each milestone ends with something you can play or test. K = Kai, S = Suparno.
 | **M3** | **Live 1v1** | `lil_dudes` program: create/join/delegate/start/advance/set_aim/finish; MagicSVM tests; client feed | switch the arena to the live feed with WASM prediction; room-code screens | two phones play a full live match on devnet, smooth |
 | **M4** ✅ back end | **Hidden info** | Secrets/Peek permissions, VRF deals, rig, peek, reveal, re-deal | plant window, peek, GOTCHA, re-deal flip, Verify screen | the opponent's client provably can't read `?` values; Verify ✓ |
 | **M5** ✅ back end | **Money + onboarding** | vault, stakes, settle action + fallback; `apps/server` faucet + quick-match queue | stake picker, wallet sheet, result count-up, Home, waiting screens | a staked match settles correctly on devnet from a fresh phone |
-| **M6** | **Feel + tutorial** | Rust balance runner → tune HP/deck; bot polish; perf of `advance` | tutorial, juice pass, sound, haptics, quality tiers | 5 people play; notes logged; numbers tuned |
+| **M3b** | **v3 rules (race vs the base)** | review SPEC v3; redeploy the program on the v3 sim; MagicSVM on v3 | `crates/sim` v3 + WASM, `packages/client` v3, program compiles, arena v3 (towers, waves, mini-view) | a full offline v3 match vs the bot; a live devnet run on v3 |
+| **M6** | **Feel + tutorial** | Rust balance runner → tune towers/waves/layouts; bot polish; perf of `advance` | tutorial, juice pass, sound, haptics, quality tiers, more layouts | 5 people play; notes logged; numbers tuned |
 | **M7** | **Ship** | deploy, monitoring, README | demo video, landing copy | submitted |
 
 M1 and M2 run in parallel. M2 does not block M1, and M1 does not need SOL.
 
-**If time runs short, cut in this order:** Double-or-Toll (already stretch) → quick-match queue
-(keep room codes + bot) → Verify replay (keep the reveal + explorer links) → interactive tutorial
-(replace with 4 static "how to play" cards) → Surge.
+**If time runs short, cut in this order:** quick-match queue (keep room codes + bot) → Verify replay
+(keep the reveal + explorer links) → interactive tutorial (replace with 4 static "how to play" cards)
+→ layouts beyond 3.
 
 ## 8. Wallets and SOL
 
