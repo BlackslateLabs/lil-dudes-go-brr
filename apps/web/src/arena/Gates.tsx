@@ -1,82 +1,81 @@
 import { useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Group, Mesh, MeshBasicMaterial, MeshLambertMaterial } from 'three';
-import { COLS, GATE_WIDTH, ROW_Y, type GateView, type PrivateView, type Side } from '@lil-dudes/client';
+import type { GateView } from '@lil-dudes/client';
 import { useHud } from '../hud';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
-import { PALETTE, SX, colCenter, isGoodOp, opLabel, wx, wz } from './layout';
+import { PALETTE, SX, opLabel, wx, wz } from './layout';
 
+/** Pool size: more than any stage's gate count. */
+const MAX_GATES = 12;
 /** Panels lean back towards the camera so labels read from the tilted view. */
 const TILT = -0.5;
-const PANEL_W = GATE_WIDTH * SX; // ~75% of the column: the gaps make aim matter (SPEC §2)
 const PANEL_H = 2.3;
 const FLIP_TIME = 0.12; // s: label punch ~1.4× (TECH §5)
 
 function panelColor(g: GateView): string {
-  if (g.revealed) return g.gold ? PALETTE.gold : isGoodOp(g.revealed) ? PALETTE.good : PALETTE.bad;
-  switch (g.hint) {
-    case 'good':
-      return PALETTE.good;
-    case 'bad':
-      return PALETTE.bad;
-    case 'gold':
-      return PALETTE.gold;
-    default:
-      return PALETTE.unknown;
-  }
+  if (!g.revealed) return g.big ? PALETTE.gold : PALETTE.unknown;
+  if (g.revealed.kind === 'div') return PALETTE.bad;
+  return g.big ? PALETTE.gold : PALETTE.good;
 }
 
-export function Gates({ feed, side, interactive }: { feed: MatchFeed; side: Side; interactive: boolean }) {
+/** The current stage's gates in your lane. Gates come and go with the stage, so this is a pool. */
+export function Gates({ feed, interactive }: { feed: MatchFeed; interactive: boolean }) {
   return (
     <group>
-      {ROW_Y.map((y, row) =>
-        Array.from({ length: COLS }, (_, col) => (
-          <Gate
-            key={`${row}:${col}`}
-            feed={feed}
-            side={side}
-            cell={row * COLS + col}
-            x={wx(colCenter(col), feed.mySide)}
-            z={wz(side, y, feed.mySide)}
-            interactive={interactive}
-          />
-        )),
-      )}
+      {Array.from({ length: MAX_GATES }, (_, i) => (
+        <Gate key={i} feed={feed} index={i} interactive={interactive} />
+      ))}
     </group>
   );
 }
 
-function Gate(props: { feed: MatchFeed; side: Side; cell: number; x: number; z: number; interactive: boolean }) {
-  const { feed, side, cell, x, z, interactive } = props;
-  const mine = side === feed.mySide;
+function Gate({ feed, index, interactive }: { feed: MatchFeed; index: number; interactive: boolean }) {
+  const root = useRef<Group>(null!);
   const face = useRef<Group>(null!);
   const panel = useRef<Mesh>(null!);
   const label = useRef<Mesh>(null!);
+  const posts = useRef<Group>(null!);
   const marker = useRef<Mesh>(null!);
   const lastKey = useRef('');
   const flipAt = useRef(-1);
+  const slotRef = useRef(-1);
+  const wasHidden = useRef('');
 
   useFrame(({ clock }) => {
-    const g = feed.cur?.sides[side].gates[cell];
-    if (!g) return;
-    const peekOp = mine ? peekedOp(feed.priv, cell) : null;
-    const text = g.revealed ? opLabel(g.revealed) : peekOp ? opLabel(peekOp) : '?';
-    const key = `${text}|${panelColor(g)}|${g.revealed ? 1 : 0}`;
+    const lane = feed.me;
+    const g = lane?.gates[index];
+    root.current.visible = !!g;
+    if (!g || !lane) return;
+    slotRef.current = g.slot;
+    // Moving gates: interpolate x between snapshots.
+    const p = feed.prevGates.get(g.slot);
+    const x = p ? p.x + (g.x - p.x) * feed.alpha() : g.x;
+    root.current.position.set(wx(x), 0, wz(g.y));
+
+    const peek = feed.priv.myPeek && feed.priv.myPeek.stage === lane.stage && feed.priv.myPeek.slot === g.slot ? feed.priv.myPeek.op : null;
+    const text = g.revealed ? opLabel(g.revealed) : peek ? opLabel(peek) : g.locked ? '🔒' : '?';
+    const width = g.width * SX;
+    const key = `${lane.stage}|${g.slot}|${text}|${panelColor(g)}|${g.revealed ? 1 : 0}|${width}`;
+    // Flip only when this same gate (stage + slot) goes from hidden to revealed.
+    const ident = `${lane.stage}|${g.slot}`;
+    if (g.revealed && wasHidden.current === ident) flipAt.current = clock.elapsedTime;
+    wasHidden.current = g.revealed ? '' : ident;
     if (key !== lastKey.current) {
-      if (g.revealed && !lastKey.current.endsWith('|1')) flipAt.current = clock.elapsedTime;
       lastKey.current = key;
       const pm = panel.current.material as MeshLambertMaterial;
       pm.color.set(panelColor(g));
       pm.opacity = g.revealed ? 0.92 : 0.6;
+      panel.current.scale.set(width, 1, 1);
+      posts.current.children[0]!.position.x = -(width + 0.4) / 2;
+      posts.current.children[1]!.position.x = (width + 0.4) / 2;
       const lm = label.current.material as MeshBasicMaterial;
       lm.map = labelTexture(text);
       lm.needsUpdate = true;
+      marker.current.position.x = width / 2 - 0.4;
     }
-    // Private markers: my rig on their gate, my peek on mine. Only this client sees them.
-    const showMarker = mine ? feed.priv.myPeek?.cell === cell && !g.revealed : feed.priv.myRig === cell && !g.revealed;
-    marker.current.visible = showMarker;
-    // Reveal: the face squashes, then the label punches to ~1.4× (TECH §5).
+    marker.current.visible = !!peek && !g.revealed;
     const since = flipAt.current < 0 ? Infinity : clock.elapsedTime - flipAt.current;
     const k = Math.min(1, since / FLIP_TIME);
     const pop = 1 + 0.4 * Math.sin(k * Math.PI);
@@ -85,48 +84,42 @@ function Gate(props: { feed: MatchFeed; side: Side; cell: number; x: number; z: 
 
   const onTap = (e: ThreeEvent<MouseEvent>) => {
     if (!interactive || e.delta > 8) return; // a drag, not a tap
-    const view = feed.cur;
-    if (!view || view.status === 'ended') return;
-    const g = view.sides[side].gates[cell];
-    if (!g || g.revealed) return;
-    if (!mine && view.status === 'plant') {
+    const lane = feed.me;
+    const g = lane?.gates.find((x) => x.slot === slotRef.current);
+    if (!lane || !g || g.revealed) return;
+    if (useHud.getState().peeking && !lane.peekUsed) {
       e.stopPropagation();
-      feed.source.rig(cell);
-    } else if (mine && useHud.getState().peeking) {
-      e.stopPropagation();
-      feed.source.peek(cell);
+      feed.source.peek(g.slot);
       useHud.getState().set({ peeking: false });
     }
   };
 
   return (
-    <group position={[x, 0, z]}>
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[(s * (PANEL_W + 0.4)) / 2, 1.5, 0]}>
-          <boxGeometry args={[0.4, 3, 0.4]} />
-          <meshLambertMaterial color={PALETTE.post} />
-        </mesh>
-      ))}
+    <group ref={root} visible={false}>
+      <group ref={posts}>
+        {[-1, 1].map((s) => (
+          <mesh key={s} position={[s * 2, 1.5, 0]}>
+            <boxGeometry args={[0.4, 3, 0.4]} />
+            <meshLambertMaterial color={PALETTE.post} />
+          </mesh>
+        ))}
+      </group>
       <group position={[0, 1.6, 0]} rotation-x={TILT}>
         <group ref={face}>
           <mesh ref={panel} onClick={onTap}>
-            <boxGeometry args={[PANEL_W, PANEL_H, 0.2]} />
+            <boxGeometry args={[1, PANEL_H, 0.2]} />
             <meshLambertMaterial color={PALETTE.unknown} transparent opacity={0.6} />
           </mesh>
           <mesh ref={label} position={[0, 0, 0.12]}>
             <planeGeometry args={[2.3, 2.3]} />
             <meshBasicMaterial transparent depthWrite={false} />
           </mesh>
-          <mesh ref={marker} position={[PANEL_W / 2 - 0.4, PANEL_H / 2 - 0.4, 0.15]} visible={false}>
+          <mesh ref={marker} position={[1, PANEL_H / 2 - 0.4, 0.15]} visible={false}>
             <circleGeometry args={[0.38, 20]} />
-            <meshBasicMaterial color={mine ? '#ffffff' : PALETTE.outline} />
+            <meshBasicMaterial color="#ffffff" />
           </mesh>
         </group>
       </group>
     </group>
   );
-}
-
-function peekedOp(priv: PrivateView, cell: number) {
-  return priv.myPeek && priv.myPeek.cell === cell ? priv.myPeek.op : null;
 }
