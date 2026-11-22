@@ -967,3 +967,36 @@ accounts are unreadable by v4), live devnet scripts. Bots still tie on gold ofte
 
 **Next / handoff:** Kai: please review SPEC v4 §3/§6 and the program diff, then SBF build, MagicSVM run,
 bench and redeploy. Suparno/Claude: start the glow-up (lighting and materials first, then the picked packs).
+
+## 2026-11-22 22:30 IST · Suparno · web glow-up (models, look, sound) · [DECISION]
+**Did:**
+- **Models** (`apps/web/src/arena/{Crowds,Base,Cannon,Scenery}.tsx`, `arena/models/`, `public/assets/models/*.glb`, 668 KB):
+  Kenney Mini Characters knight (our dudes, team blue) and robot (base troops, team red), ~400 tris each,
+  one InstancedMesh per team with a cheap hop/waddle; Blaster Kit launcher on a Tower Defense base as the
+  cannon; Tower Defense towers (flash on hit, sink at 0 hp); a two-storey town hall assembled from the
+  Fantasy Town Kit (door glows in the raid); Blaster Kit crates (placeholder for KayKit Block Bits);
+  ~600 seeded Nature Kit props around the lane in one static mesh. Team colours repaint swatches of the
+  shared colormaps from `PALETTE` at load (no extra PNGs). Rebuild script in `arena/models/tools/`.
+- **Look** (`Arena.tsx`, `Post.tsx`, `quality.ts`, `Gates.tsx`, `glass.ts`, `Fx.tsx`, `particles.ts`,
+  `styles.css`): candy daylight with soft shadows, gradient sky, striped lawn, tiled lane, candy-cane
+  kerbs; HDR bloom/vignette on capable devices (`?fx=low|high` to force); glowing glass gates in a
+  shader (exact `g.width*SX`; rig frame and GOTCHA crack in the shader); pooled particles from a 28 KB
+  atlas (Kenney Particle Pack + our puffs/coins); chunky candy CSS for home, HUD, buttons and result;
+  Baloo 2 self-hosted. New dependency: `postprocessing` 6.39.6 (+25 KB gzip).
+- **Sound** (`feel/sound.ts`, `public/assets/sfx/`): 26 Kenney recordings replace the synth (shots,
+  gates, clash, waves, tower hit/down, crates, loot coins, GOTCHA, fight bell, raid, win/lose, clicks);
+  variants, pitch spread and voice caps. API unchanged plus new cues.
+- PWA precaches models, fonts, effects and sounds (42 files, 2.6 MB). Drawn cannon follows a bot-driven
+  aim (autoplay/home). Credits logged in `apps/web/public/assets/CREDITS.md`.
+
+**Decided:** (Suparno) Kenney sound effects are fine; well-known stock music rejected as too
+recognisable. Music still open (CC0 shortlist on Suparno's picks page). Crates stay on the Kenney
+placeholder until the KayKit Block Bits zip is downloaded by hand.
+
+**Blocked / risks:** Nobody has listened to the sound yet, or played on a real phone (perf tiers are
+guesses: low tier = ≤4 cores or ≤2 GB). The first frames stall while GLBs load and the offline match
+keeps ticking; consider starting the match once assets are ready. No outline pass (pass budget).
+
+**Next / handoff:** Suparno: listen and play on a phone; pick music. Claude: start the match after
+assets load, music once picked, KayKit crates when available. Kai: nothing needed for the glow-up
+(no `packages/client` changes).
