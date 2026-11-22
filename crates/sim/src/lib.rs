@@ -44,7 +44,7 @@ pub use state::{
     Inputs, MatchOptions, MatchState, Peek, PrivateView, PublicGate, PublicSide, PublicState, Rig,
     SecretState, SideInput, StageLog,
 };
-pub use step::{apply_input, step};
+pub use step::{apply_input, can_rig, step};
 pub use types::*;
 
 /// Bump when rules change in a way that changes outcomes (Verify must use the same version).

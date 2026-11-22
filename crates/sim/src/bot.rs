@@ -10,8 +10,9 @@ use crate::constants::{
 };
 use crate::layouts::{covers, Slot, StageDef};
 use crate::rng::SplitMix64;
-use crate::state::{other, PublicSide, PublicState, SideInput};
-use crate::types::{GateOp, Phase};
+use crate::state::{PublicSide, PublicState, SideInput};
+use crate::step::can_rig;
+use crate::types::GateOp;
 
 /// SPEC §10: pick a target every 2 ticks.
 pub const THINK_TICKS: u32 = 2;
@@ -21,6 +22,9 @@ pub const SWITCH_MAX: u32 = 60;
 /// Candidate aim points: every AIM_STEP across the lane.
 pub const AIM_STEP: i32 = 100;
 const CANDIDATES: usize = (LANE_WIDTH / AIM_STEP) as usize - 1;
+/// SPEC §10: it rigs once per stage, at a random moment this many ticks (1–3 s) into its fight.
+pub const RIG_AFTER_MIN: u32 = 20;
+pub const RIG_AFTER_MAX: u32 = 60;
 /// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10), big ×8.
 pub const GUESS_NORMAL_PM: u64 = 2_000;
 pub const GUESS_BIG_PM: u64 = 8_000;
@@ -33,6 +37,8 @@ pub struct Warlord {
     target: i32,
     /// When it may switch to another equally good spot.
     switch_at: u32,
+    /// The stage it planned its rig for, and the fight tick to rig at.
+    rig_plan: Option<(u8, u32)>,
 }
 
 impl Warlord {
@@ -44,6 +50,7 @@ impl Warlord {
             rng: SplitMix64::new(seed),
             target: LANE_WIDTH / 2,
             switch_at: 0,
+            rig_plan: None,
         }
     }
 
@@ -54,18 +61,28 @@ impl Warlord {
     /// The bot's input for the tick `view.tick` is about to process.
     pub fn decide(&mut self, view: &PublicState) -> SideInput {
         let mut input = SideInput::default();
-        let (Some(me), Some(enemy)) = (view.side(self.side), view.side(other(self.side))) else {
+        let Some(me) = view.side(self.side) else {
             return input;
         };
         if view.ended() || me.finished() {
             return input;
         }
-        // SPEC §10: a random unrevealed gate of the opponent's stage in each of its plants, and
-        // a random own `?` in each fight.
-        if me.phase == Phase::Plant && !me.rig_used && !enemy.finished() {
-            let n = view.stage_def(other(self.side)).gates.len();
-            input.rig = self.random_hidden(enemy, n);
+        // SPEC §10: once per stage, at a random moment 1–3 s into its fight, a random still
+        // face-down gate of its own current stage that the rig rule accepts (`can_rig`).
+        if me.phase.active() && !me.rig_used {
+            let at = match self.rig_plan {
+                Some((stage, at)) if stage == me.stage => at,
+                _ => {
+                    let at = self.rng.range_inclusive(RIG_AFTER_MIN, RIG_AFTER_MAX);
+                    self.rig_plan = Some((me.stage, at));
+                    at
+                }
+            };
+            if u32::from(me.phase_ticks) >= at {
+                input.rig = self.random_rig(view, me);
+            }
         }
+        // SPEC §10: a random own `?` at the start of each fight.
         if me.phase.active() && !me.peek_used {
             let n = view.stage_def(self.side).gates.len();
             input.peek = self.random_hidden(me, n);
@@ -80,6 +97,28 @@ impl Warlord {
             None => self.pick(view.tick, me, view.stage_def(self.side)),
         });
         input
+    }
+
+    /// A random slot of its own stage that is still face-down in its copy and that `can_rig`
+    /// accepts; `None` (and no randomness spent) if there is none.
+    fn random_rig(&mut self, view: &PublicState, me: &PublicSide) -> Option<u8> {
+        let n = view.stage_def(self.side).gates.len();
+        let mut slots = [0u8; GATES_MAX];
+        let mut k = 0usize;
+        for (slot, g) in (0u8..).zip(me.gates.iter().take(n)) {
+            if g.revealed.is_some() || !can_rig(view, self.side, slot) {
+                continue;
+            }
+            if let Some(dst) = slots.get_mut(k) {
+                *dst = slot;
+                k = k.saturating_add(1);
+            }
+        }
+        if k == 0 {
+            return None;
+        }
+        let pick = self.rng.below(k as u64) as usize;
+        slots.get(pick).copied()
     }
 
     fn random_hidden(&mut self, side: &PublicSide, n: usize) -> Option<u8> {
