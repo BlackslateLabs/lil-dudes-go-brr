@@ -13,13 +13,13 @@ export const STAKE_TIERS: { id: StakeTier; label: string }[] = [
 
 /** What the Result screen shows about the match that just ended. */
 export interface LastMatch {
+  /** Gold, winner and who died are in the result (sides indexed by Side, not [me, them]). */
   result: MatchResult;
   mySide: Side;
-  /** Final HP, [you, them]. */
-  hp: [number, number];
   names: [string, string];
   /** Matched stake in lamports (0 = free). */
   stake: number;
+  layoutName: string;
 }
 
 interface AppState {
