@@ -5,10 +5,12 @@
 //!
 //! Gate slots: a stage's gates in list order (sorted by row, then x). Rig and Peek name a slot.
 //! A crate sits just below the big gate it locks and covers that gate's span; locked gates never
-//! move. Design rules (SPEC §9): sparse rows with open lane between, first row ~1,400 from the
-//! cannon, rows ~900–1,000 apart, at least one sliding row and one crate-locked big gate per
-//! layout, the towers of a fight in different columns. `tests::layouts_follow_the_design_rules`
-//! checks all of it, plus the limits the rules rely on.
+//! move. Design rules (SPEC §9): sparse rows with open lane between (at least `MIN_GAP` between
+//! gates of a row, more than the two GATE_GRACE edges, and at most two thirds of the lane
+//! covered, edges included), first row ~1,400 from the cannon, rows ~900–1,000 apart, at least
+//! one sliding row and one crate-locked big gate per layout, the towers of a fight in different
+//! columns. `tests::layouts_follow_the_design_rules` checks all of it, plus the limits the rules
+//! rely on.
 
 use crate::constants::{GATE_GRACE, LAYOUT_COUNT, STAGES};
 
@@ -150,11 +152,14 @@ pub fn stage(layout_id: u8, stage: u8) -> &'static StageDef {
 
 // --- authoring helpers ------------------------------------------------------------------------
 
-/// Normal gates are 600 wide, big gates 700 (impl).
+/// Normal gates are 600 wide, big gates 1,000 (impl).
 const W: i16 = 600;
-const BIG_W: i16 = 700;
+const BIG_W: i16 = 1_000;
 /// A crate sits this far below the row of the gate it locks.
 const CRATE_GAP: i16 = 300;
+/// The least open lane between two gates of a row (edge to edge, over their whole sweep): the
+/// GATE_GRACE of both edges plus 200 that no gate's edge reaches.
+pub const MIN_GAP: i32 = 2 * GATE_GRACE + 200;
 
 const fn gate(row: u8, x: i16) -> GateDef {
     GateDef {
@@ -282,8 +287,8 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 rows: &ROWS4,
                 gates: &[
                     gate(0, 1_500),
-                    slide(1, 700, 400, 1_100, 30),
-                    slide(1, 2_300, 1_900, 2_600, -30),
+                    slide(1, 700, 400, 1_000, 30),
+                    slide(1, 2_300, 2_000, 2_600, -30),
                     big(2, 1_500),
                     slide(3, 1_500, 400, 2_600, 50),
                 ],
@@ -299,24 +304,24 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 towers: &[f1(2, 1_000)],
                 rows: &ROWS3,
                 gates: &[
-                    gate(0, 1_300),
-                    big(0, 2_600),
+                    gate(0, 1_100),
+                    big(0, 2_450),
                     gate(1, 1_000),
                     slide(2, 1_500, 700, 2_300, 30),
                 ],
-                crates: &[lock(2_600, 1_400, 20)],
+                crates: &[lock(2_450, 1_400, 20)],
             },
             StageDef {
                 towers: &[f2(2, 500), f2(2, 2_000)],
                 rows: &ROWS3,
                 gates: &[
-                    big(0, 400),
-                    gate(0, 1_500),
+                    big(0, 550),
+                    gate(0, 1_750),
                     gate(1, 1_500),
                     narrow(1, 2_650, 500),
                     slide(2, 1_000, 500, 2_000, 35),
                 ],
-                crates: &[lock(400, 1_400, 30)],
+                crates: &[lock(550, 1_400, 30)],
             },
         ],
     },
@@ -329,8 +334,8 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 rows: &ROWS3,
                 gates: &[
                     narrow(0, 1_500, 700),
-                    narrow(1, 1_100, 500),
-                    narrow(1, 1_900, 500),
+                    narrow(1, 1_050, 500),
+                    narrow(1, 1_950, 500),
                     big(2, 1_500),
                 ],
                 crates: &[lock(1_500, 3_400, 25)],
@@ -339,8 +344,8 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 towers: &[f2(3, 500), f2(3, 2_500)],
                 rows: &ROWS3,
                 gates: &[
-                    narrow(0, 1_100, 500),
-                    narrow(0, 1_900, 500),
+                    narrow(0, 1_050, 500),
+                    narrow(0, 1_950, 500),
                     slide(1, 1_500, 900, 2_100, 20),
                     narrow(2, 1_500, 700),
                 ],
@@ -365,8 +370,8 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
             StageDef {
                 towers: &[f2(4, 1_500), f2(4, 2_600)],
                 rows: &ROWS3,
-                gates: &[gate(0, 2_400), gate(1, 600), big(1, 1_800), gate(2, 2_400)],
-                crates: &[lock(1_800, 2_400, 30)],
+                gates: &[gate(0, 2_400), gate(1, 600), big(1, 1_850), gate(2, 2_400)],
+                crates: &[lock(1_850, 2_400, 30)],
             },
         ],
     },
@@ -446,7 +451,8 @@ mod tests {
                     i32::from(*st.rows.last().unwrap()) < LANE_LENGTH / 3 + 200,
                     "{ctx}"
                 );
-                // Gates: ≤ GATES_MAX, sorted by row then x, 1–3 per row, on the lane, no overlap.
+                // Gates: ≤ GATES_MAX, sorted by row then x, 1–3 per row, on the lane, MIN_GAP of
+                // open lane between any two of a row wherever they slide.
                 assert!(!st.gates.is_empty() && st.gates.len() <= GATES_MAX, "{ctx}");
                 for w in st.gates.windows(2) {
                     assert!((w[0].row, w[0].x) < (w[1].row, w[1].x), "{ctx}: slot order");
@@ -457,11 +463,16 @@ mod tests {
                     for (i, a) in in_row.iter().enumerate() {
                         for b in &in_row[i + 1..] {
                             let (a, b) = (sweep(a), sweep(b));
-                            assert!(a.1 < b.0 || b.1 < a.0, "{ctx} row {row}: gates overlap");
+                            let gap = (b.0 - a.1).max(a.0 - b.1);
+                            assert!(gap >= MIN_GAP, "{ctx} row {row}: gap {gap}");
                         }
                     }
-                    // Open lane: the row leaves at least a third of the lane uncovered.
-                    let covered: i32 = in_row.iter().map(|g| i32::from(g.width)).sum();
+                    // Open lane: the row leaves at least a third of the lane uncovered, counting
+                    // the GATE_GRACE edges.
+                    let covered: i32 = in_row
+                        .iter()
+                        .map(|g| i32::from(g.width) + 2 * GATE_GRACE)
+                        .sum();
                     assert!(
                         covered <= LANE_WIDTH * 2 / 3,
                         "{ctx} row {row}: no open lane"
@@ -472,6 +483,8 @@ mod tests {
                     let (lo, hi) = sweep(g);
                     assert!(lo >= 0 && hi <= LANE_WIDTH, "{ctx}: gate off the lane");
                     assert!(g.width >= 400, "{ctx}");
+                    let want = if g.slot == Slot::Big { BIG_W } else { g.width };
+                    assert_eq!(g.width, want, "{ctx}: big gates are BIG_W");
                     if g.moving() {
                         sliding += 1;
                         assert!(g.x_min <= g.x && g.x <= g.x_max, "{ctx}");
@@ -483,7 +496,8 @@ mod tests {
                         assert_eq!((g.x_min, g.x_max), (g.x, g.x), "{ctx}");
                     }
                 }
-                // Crates: each locks one static big gate, just below its row.
+                // Crates: each locks one static big gate, just below its row, and covers its whole
+                // span (both get the same GATE_GRACE edges).
                 assert!(st.crates.len() <= CRATES_MAX, "{ctx}");
                 for c in st.crates {
                     let g = st

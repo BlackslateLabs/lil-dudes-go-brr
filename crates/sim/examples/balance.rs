@@ -2,8 +2,9 @@
 //!
 //!     cargo run -p lil-dudes-sim --example balance --release [-- MATCHES_PER_LAYOUT]
 //!
-//! Prints, per layout: death rate (target ~10–25%), how matches end, match length, Fight and
-//! Raid times, gold per side, the raid's share of gold, and the payout as a share of S.
+//! Prints, per layout: death rate (target ~10–20%) and where deaths happen (Fight 1 / Fight 2 /
+//! the town hall raid), how matches end, match length, Fight and Raid times, gold per side, the
+//! raid's share of gold, and the payout as a share of S.
 
 use lil_dudes_sim::rng::mix64;
 use lil_dudes_sim::*;
@@ -12,6 +13,7 @@ use lil_dudes_sim::*;
 struct Stats {
     n: u64,
     deaths: u64,
+    /// Deaths in Fight 1, Fight 2 and the raid.
     deaths_by_stage: [u64; 3],
     draws: u64,
     capped: u64,
@@ -39,6 +41,7 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         Warlord::new(0, mix64(seed ^ 0xA)),
         Warlord::new(1, mix64(seed ^ 0xB)),
     ];
+    // Per side: the tick Fight 1, Fight 2 and the raid started.
     let mut started = [[0u32; 3]; 2];
     while m.public.result.is_none() {
         let [a, b] = &mut bots;
@@ -54,17 +57,20 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
                 Event::Gotcha { .. } => st.gotchas += 1,
                 Event::Phase { side, stage, phase } => {
                     let s = usize::from(side);
+                    let ended = |k: usize, st: &mut Stats| {
+                        st.stage_ticks[k] += u64::from(t + 1 - started[s][k]);
+                        st.stage_n[k] += 1;
+                    };
                     match phase {
-                        Phase::Fight | Phase::Raid => started[s][usize::from(stage)] = t + 1,
-                        Phase::Transit | Phase::Done => {
-                            let done = if phase == Phase::Transit {
-                                usize::from(stage) - 1
-                            } else {
-                                2
-                            };
-                            st.stage_ticks[done] += u64::from(t + 1 - started[s][done]);
-                            st.stage_n[done] += 1;
+                        Phase::Fight => started[s][usize::from(stage)] = t + 1,
+                        // Fight 1's towers fell.
+                        Phase::Transit => ended(0, st),
+                        // Fight 2's towers fell: the raid starts on this very tick.
+                        Phase::Raid => {
+                            ended(1, st);
+                            started[s][2] = t;
                         }
+                        Phase::Done => ended(2, st),
                         Phase::Plant => {}
                     }
                 }
@@ -92,7 +98,12 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         st.deaths += 1;
         for s in &p.sides {
             if s.dead {
-                st.deaths_by_stage[usize::from(s.stage)] += 1;
+                let k = if s.phase == Phase::Raid {
+                    2
+                } else {
+                    usize::from(s.stage)
+                };
+                st.deaths_by_stage[k] += 1;
             }
         }
     } else if p.tick >= MATCH_TICKS && !p.sides.iter().all(|s| s.phase == Phase::Done) {
