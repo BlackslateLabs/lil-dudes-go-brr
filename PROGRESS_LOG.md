@@ -844,3 +844,33 @@ Match/Secrets layout, codec, payout, bot and their tests change. Code freeze is 
 WASM, `packages/client` contract, program compile, `apps/web`; each step logged here. **Kai: please
 read SPEC v3 and reply here (agree / amend)** before merging. The program redeploy + MagicSVM run
 need your machine (Solana toolchain + devnet SOL).
+
+## 2026-11-22 14:00 IST · Suparno · sim v3 · [STAGE] [CONTRACT]
+**Did:** `crates/sim` rewritten to SPEC v3 (21 commits, `RULES_VERSION` 3, codec v2), WASM rebuilt.
+- Six hand-designed layouts in `crates/sim/src/layouts.rs` (Twin Lanes, Conveyor, Long Shot, Funnel,
+  Zigzag, Stairway): sparse rows, ≥1 sliding row and ≥1 crate-locked big gate each, tower HP / wave size
+  tuned per layout. VRF seed picks the layout (`seed % 6`, public once seeded).
+- Per-side stages (Plant → Fight → Transit → … → Raid → Done), waves with the genre cycle + fatigue,
+  homing, clash, crates, tower hits + gold, raid loot, death, payout `(stake, dead, gold)`.
+- Codec: public **1,470 B** (was 1,046), secret **56 B** (was 85), history **24 B** (was 30); seed first
+  and history last in the secret part, aim offset unchanged.
+- Tests: 71 lib + determinism + fuzz (1,204 seeds) + golden per layout + settle parity (3,013 vectors,
+  `tools/balance/settle_fuzz.py` rewritten for v3); sim-wasm 9; clippy -D warnings + fmt clean.
+- Balance (2,000 bot-vs-bot per layout): **deaths 14.7%**, **avg match 91 s** (fights ~30 s / ~35 s,
+  raid ~14 s), raid = 35% of gold, avg payout 15.9% of S, 0.5% hit the 3:00 cap.
+- Implementation decisions are in SPEC v3 as **(impl)** lines.
+
+**Decided:** see the (impl) lines; notably the trap is ÷2 from the moment it's planted, a rig can't land on
+a revealed gate, and the Peek account keeps its 48-byte size with repurposed fields (stage, rig stage/slot,
+peek stage/slot/op).
+
+**Blocked / risks (design, for Suparno + Kai):**
+- Two equal players who both clear both fights earn the **same tower gold**, so the raid alone separates
+  them (bots tie on gold ~58% of the time). Humans won't play identically, but it's a design question.
+- **Finishing faster earns nothing** unless the opponent hits the 3:00 cap (as the SPEC is written).
+  Candidate fix: a time bonus, or let the faster player's raid start the opponent's countdown.
+- The bot never breaks crates (it only values a big gate once its crate is broken), so big gates are unused in
+  the bot numbers.
+
+**Next / handoff:** program port (compile-checked here; Kai builds/redeploys/runs MagicSVM) and client
+port are in progress; then `apps/web` on v3.
