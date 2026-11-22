@@ -34,17 +34,24 @@ export const CAM_FOV = 30;
 export const CAM_POS = [0, 58.35, 68.22] as const;
 export const CAM_TARGET = [0, 0, 7.8] as const;
 
-/** Bright toy world. Your dudes are blue, the base's troops red (MVP §5). */
+/** Bright candy-toy world. Your dudes are blue, the base's troops red, rewards gold (MVP §5). */
 export const PALETTE = {
   sky: '#8fd3ff',
-  grass: '#79c96a',
-  lane: '#ffe9c2',
+  skyTop: '#3fa9ff',
+  skyHorizon: '#dff4ff',
+  grass: '#6fcf5a',
+  grassDark: '#57b84a',
+  grassLight: '#8fe06e',
+  lane: '#fff3e0',
+  laneTile: '#ffe6c6',
+  laneGrout: '#f3cfa3',
   laneEdge: '#ffffff',
-  me: '#2f7cff',
-  enemy: '#e8413c',
-  base: '#c23b3b',
+  kerbStripe: '#ff7eb3',
+  me: '#2a7bff',
+  enemy: '#f2404f',
+  base: '#c8343f',
   baseTrim: '#ffd9a0',
-  tower: '#d9534f',
+  tower: '#e0505a',
   crate: '#b5763a',
   post: '#ffffff',
   good: '#3aa0ff',
@@ -52,8 +59,16 @@ export const PALETTE = {
   gold: '#ffc21a',
   goldDark: '#b07400',
   hall: '#f3e3c8',
-  unknown: '#a9a3c9',
+  unknown: '#b3a9ec',
   outline: '#1b1530',
+} as const;
+
+/** Glass gate colours: body tint and the glowing rim, per gate state. */
+export const GLASS = {
+  unknown: { body: '#9d92e8', rim: '#efeaff' },
+  good: { body: '#2f8cff', rim: '#9fd6ff' },
+  gold: { body: '#ffb300', rim: '#ffe48a' },
+  bad: { body: '#ff3048', rim: '#ff9aa6' },
 } as const;
 
 export function opLabel(op: GateOp): string {
