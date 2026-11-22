@@ -8,6 +8,7 @@ export const bot_new: (a: number, b: bigint) => number;
 export const codec_version: () => number;
 export const constants_json: () => [number, number];
 export const deals_for: (a: bigint) => [number, number];
+export const gate_x_at: (a: number, b: number, c: number, d: number) => number;
 export const layout_version: () => number;
 export const rules_version: () => number;
 export const simmatch_digest: (a: number) => bigint;
