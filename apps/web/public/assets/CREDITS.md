@@ -6,6 +6,9 @@ Nothing copied from any existing game.
 | Asset | Used for | Source (URL) | Author | Licence |
 |---|---|---|---|---|
 | Lilita One (`public/fonts/LilitaOne-Regular.ttf`) | Display font: logo, numbers, gate labels | https://github.com/google/fonts/tree/main/ofl/lilitaone | Juan Montoreano | SIL OFL 1.1 (`public/fonts/LilitaOne-OFL.txt`) |
+| Baloo 2 (`public/fonts/Baloo2-Latin-Variable.woff2`) | UI text | https://fonts.google.com/specimen/Baloo+2 (https://github.com/EkType/Baloo2) | The Baloo 2 Project Authors (Ek Type) | SIL OFL 1.1 (`public/fonts/Baloo2-OFL.txt`) |
+| Particle Pack (`public/assets/fx/particles.webp`: star_06, star_09, circle_05, smoke_04, dirt_01, circle_02, recoloured and resized) | Sparkles, glows, rings, smoke, debris | https://kenney.nl/assets/particle-pack | Kenney | CC0 1.0 |
+| Puff and coin cells in `public/assets/fx/particles.webp` | Cartoon puffs, coins | drawn in code by us | ours | — |
 | Mini Characters (`public/assets/models/dudes.glb`: character-knight, character-robot) | Your dudes (knight, team blue) and the base's troops (robot, team red) | https://kenney.nl/assets/mini-characters | Kenney | CC0 1.0 |
 | Blaster Kit (`public/assets/models/blaster.glb`: blaster-b, crate-wide) | Cannon launcher; gate-lock crates | https://kenney.nl/assets/blaster-kit | Kenney | CC0 1.0 |
 | Tower Defense Kit (`public/assets/models/towers.glb`: tower-round-bottom-a, tower-round-roof-b) | Enemy towers; cannon base | https://kenney.nl/assets/tower-defense-kit | Kenney | CC0 1.0 |

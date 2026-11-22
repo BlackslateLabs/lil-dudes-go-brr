@@ -56,9 +56,12 @@ export function useMatchHud(feed: MatchFeed) {
         case 'towerHit':
           if (mine) sfx.hit(false);
           break;
+        case 'crate':
+          if (mine) sfx.crate(e.broken);
+          break;
         case 'towerDown':
           if (mine) {
-            sfx.ko();
+            sfx.towerDown();
             banner('TOWER DOWN', 'gold');
           }
           break;
@@ -72,8 +75,14 @@ export function useMatchHud(feed: MatchFeed) {
         case 'stage':
           if (mine && (e.phase === 'plant' || e.phase === 'raid')) {
             hud.set({ peeking: false, rigging: false });
-            if (e.phase === 'plant') banner(`FIGHT ${e.stage + 1}`, 'good');
-            if (e.phase === 'raid') banner('TOWN HALL!', 'gold');
+            if (e.phase === 'plant') {
+              banner(`FIGHT ${e.stage + 1}`, 'good');
+              sfx.fight();
+            }
+            if (e.phase === 'raid') {
+              banner('TOWN HALL!', 'gold');
+              sfx.raid();
+            }
           }
           if (!mine && e.phase === 'done') banner(`${v.sides[them].name} finished`, 'bad');
           break;
@@ -84,6 +93,8 @@ export function useMatchHud(feed: MatchFeed) {
           const won = e.result.winner === null ? null : e.result.winner === me;
           const died = e.result.died === null ? null : e.result.died === me ? 'me' : 'them';
           hud.set({ ended: { won, died } });
+          if (won === true) sfx.win();
+          else if (won === false) sfx.lose();
           useApp.getState().setLastMatch({
             result: e.result,
             mySide: me,

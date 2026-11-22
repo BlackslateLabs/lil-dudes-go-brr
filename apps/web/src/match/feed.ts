@@ -33,6 +33,8 @@ export class MatchFeed {
   /** Your aim (sim x) and the locally predicted cannon x. */
   aim = LANE_WIDTH / 2;
   myCannon = LANE_WIDTH / 2;
+  /** Whether this player has steered yet (see `start`). */
+  private steered = false;
 
   private eventFns = new Set<EventFn>();
   private viewFns = new Set<ViewFn>();
@@ -76,10 +78,10 @@ export class MatchFeed {
         for (const c of mine.enemies) this.prevEnemies.set(c.id, c);
         for (const g of mine.gates) this.prevGates.set(g.slot, g);
       }
-      if (first) {
-        this.myCannon = view.sides[this.mySide].cannonX;
-        this.aim = view.sides[this.mySide].aimX;
-      }
+      if (first) this.myCannon = view.sides[this.mySide].cannonX;
+      // Until this player steers, follow the source's aim: a bot driving my side (autoplay, the
+      // home background) moves the cannon in the source, and the drawn cannon must go with it.
+      if (!this.steered) this.aim = view.sides[this.mySide].aimX;
       for (const e of events) for (const fn of this.eventFns) fn(e, view);
       for (const fn of this.viewFns) fn(view, priv);
     });
@@ -109,6 +111,7 @@ export class MatchFeed {
 
   /** Relative drag: move the aim by a sim-x delta. Sends to the source at most ~20/s. */
   nudgeAim(dx: number) {
+    this.steered = true;
     this.aim = Math.max(0, Math.min(LANE_WIDTH - 1, this.aim + dx));
     const now = performance.now();
     if (now - this.lastAimSent >= 50) {
@@ -119,6 +122,7 @@ export class MatchFeed {
 
   /** Set an absolute aim and send it now (bots / background matches). */
   setAim(x: number) {
+    this.steered = true;
     this.aim = Math.max(0, Math.min(LANE_WIDTH - 1, x));
     this.source.setAim(this.aim);
   }

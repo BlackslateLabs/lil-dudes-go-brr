@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { CanvasTexture, Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SRGBColorSpace } from 'three';
 import type { GateView } from '@lil-dudes/client';
+import { sfx } from '../feel/sound';
 import { useHud } from '../hud';
 import type { MatchFeed } from '../match/feed';
 import { canRigSlot } from '../match/rig';
@@ -159,6 +160,7 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
       e.stopPropagation();
       if (canRigSlot(feed, g.slot)) {
         feed.source.rig(g.slot);
+        sfx.click();
         hud.set({ rigging: false });
       }
       return;
@@ -167,6 +169,7 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
     if (hud.peeking && !lane.peekUsed) {
       e.stopPropagation();
       feed.source.peek(g.slot);
+      sfx.click();
       hud.set({ peeking: false });
     }
   };
