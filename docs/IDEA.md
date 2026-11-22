@@ -5,29 +5,31 @@ The idea in plain words. Rules in detail: [SPEC.md](SPEC.md). How it's built: [T
 ## In one line
 
 **The game from the mobile ads, made real, and made 1v1.** You steer a cannon that pours a crowd
-through math gates (×3, +10, ÷2…), smash your crowd into your opponent's, and knock out their cannon.
-Every gate is hidden until someone runs through it, and your opponent may have secretly rigged one.
+through multiplier gates at an enemy base that fires waves back at you. You and your opponent race
+through identical copies of the same level: survive, knock out the towers, raid the vault for gold.
+Every gate is hidden until your dudes run through it, and your opponent may have secretly rigged one.
 
 ## What we're building
 
-A two-minute, one-thumb, real-time duel that runs in the browser on any phone. Two players (or a player
-and the bot) face each other on one lane. Each side has a cannon that fires nonstop, and a grid of
-hidden gates that multiply, add to, or cut down the crowd passing through. The crowds meet in the
-middle and cancel out; whatever gets through hits the enemy cannon.
+A two-minute, one-thumb, real-time race that runs in the browser on any phone. Two players (or a
+player and the bot) each get an identical copy of one level: an enemy base whose towers release
+waves of troops down the lane, and gates in between that multiply your crowd. Your cannon fires
+nonstop; you steer it. Grind down the waves, knock out the towers, then raid the vault: every dude
+that gets in is loot. If a single enemy reaches your cannon, you're out and your opponent wins.
 
 What turns a simple ad-style game into a real duel is **hidden information**:
 
-- **`?` gates:** you don't know what a gate does until a unit passes through it. Some show a coloured
-  hint (blue = good, red = bad), but hints are only right most of the time.
-- **Rig:** once per phase, you secretly turn one of your opponent's gates into a trap.
-- **Peek:** once per phase, you secretly check one of your own gates before committing to it.
-- **Gold gate:** ×3 or ÷3. A coin flip you choose whether to take.
+- **`?` gates:** you don't know what a gate multiplies by until your dudes pass through it. The
+  values are the same in both copies, so luck is equal.
+- **Rig:** once per stage, you secretly turn one gate on your opponent's copy into a trap.
+- **Peek:** once per stage, you secretly check one of your own gates before committing to it.
+- **Big gates behind crates, sliding gates:** real choices about where to aim and when.
 
-So every match becomes a mind game: *Is that blue hint real? Did they rig the obvious lane? Do I gamble
-on gold while I'm ahead?*
+So every match becomes a race and a mind game: *Do I go for the locked ×10 or play it safe? Did they
+rig the obvious gate? Can I build a bigger crowd for the raid without dying?*
 
-Players can put play money (devnet SOL) on a match. The winner takes more the bigger the win, so
-every unit counts right to the last second.
+Players can put play money (devnet SOL) on a match. Die and your opponent takes the pot; survive and
+the pot is split by the gold you each earned, so every dude counts right to the vault.
 
 ## Why it needs Solana + MagicBlock
 
@@ -38,7 +40,7 @@ Here, the chain replaces that server:
 |---|---|
 | 20 updates per second, no wallet popups | The match runs in a MagicBlock **Ephemeral Rollup**, signed by a throwaway in-browser key |
 | Nobody can see hidden gates, rigs or peeks, not even with a modified client | They live in **private accounts** inside MagicBlock's **Private Ephemeral Rollup** (TEE) |
-| Fair, unpredictable gate deals | **VRF** randomness for every deal |
+| Fair, unpredictable gate values and level choice | **VRF** randomness, identical in both copies |
 | The game clock never stops, even if a player leaves | An on-chain **crank** advances the match |
 | Instant, automatic payout | The match result settles to the base layer and pays from escrow on its own |
 | "Prove you didn't cheat" | After the match the seed and every rig are published; the result screen replays the whole match and checks it |
@@ -56,31 +58,32 @@ Here, the chain replaces that server:
 
 1. **Open the link.** A burner wallet is created silently in the browser. A first-time visitor goes
    straight into a short **guided match against the bot** that teaches one thing at a time: aim,
-   gates, clash, hints, rig, peek. A **Skip** button is always there for anyone who already knows
+   gates, waves, towers, rig, peek, raid. A **Skip** button is always there for anyone who already knows
    the genre, and "How to play" replays it later.
 2. **Home:** a big **Play vs Bot** (free), plus **Quick Match** and **Room Code**. Pick a stake
    (Free, 0.05, 0.1, 0.25 devnet SOL). A first-timer gets topped up with devnet SOL automatically.
-3. **The match** (2:00, details below).
-4. **Result screen:** win or lose, the payout and why ("you won by 22% → you take 61% of the stake"),
-   every hidden gate and rig revealed, a **Verify** button, and links to the transactions.
+3. **The match** (about 1:30–2:00, details below).
+4. **Result screen:** win or lose, the payout and why ("you earned 900 gold vs 600 → you take 60% of
+   the pot"), every hidden gate and rig revealed, a **Verify** button, and links to the transactions.
 5. **Rematch** with one tap, or **Withdraw** winnings to a real wallet (Phantom).
 
 ## How a match feels, moment by moment
 
-- **0:00, the plant.** Both boards appear covered in `?`. You have three seconds to tap one of your
-  opponent's gates and rig it. Your heart rate goes up before a single shot is fired.
-- **0:03, fire.** Cannons open up. Hints fade in. You drag your thumb and your stream follows instantly.
-  Your first cohort hits a `?`, it flips to **×3**, and the crowd balloons with a pop and a number burst.
-- **Reading the board.** Do you stay on the gate you know is good, or try the blue hint next to it?
-  You spend your peek: it's a **÷2**. Good thing you checked.
-- **The clash.** The two crowds collide mid-lane and grind each other down, numbers ticking. Whoever
-  built the bigger crowd pushes through and chips the other cannon.
-- **GOTCHA.** Your opponent's stream hits your rigged gate. Both screens flash, and their crowd halves.
-- **0:40 and 1:20, re-deal.** The whole board flips face-down again: new gates, a new plant, a new rig
-  and peek. Nobody can coast on knowledge.
-- **1:45, Surge.** Fire rate doubles for both sides. It's loud and chaotic, and this is when comebacks happen.
-- **2:00 or KO.** Knock out the cannon to win outright, or have more HP when the timer ends. The payout
-  scales with the margin, so the leader keeps attacking and the trailing player keeps defending.
+- **0:00, the plant.** The first stage appears, its gates covered in `?`. You have three seconds to tap
+  one gate on your opponent's copy and rig it. Your heart rate goes up before a single shot is fired.
+- **0:03, fire.** Your cannon opens up. You drag your thumb and your stream follows instantly. Your
+  first dude hits a `?`, it flips to **×3**, and the crowd pours out of the gate.
+- **The waves.** The tower at the top pulses and releases a wave. Your crowd meets it mid-lane and they
+  grind each other down. Miss the gates and the wave walks straight at your cannon.
+- **Reading the board.** A row slides left and right; a big gate sits behind a crate. Spend your peek
+  on the far `?`: it's a **×4**. Worth it.
+- **GOTCHA.** Your opponent's stream hits the gate you rigged. Both screens flash, and their crowd halves.
+- **Tower down.** The tower explodes, the field clears, and your cannon drives up to stage 2: two towers,
+  new gates, a new rig and peek. In the corner you can see your opponent is still on stage 1.
+- **The raid.** The base's towers are down; the vault opens. Eight seconds to pour everything you've
+  got into it. Every dude that gets in is gold.
+- **The end.** Die and your opponent takes the pot. Survive and the pot is split by gold, so the
+  bigger raid wins more.
 
 **The feel we're aiming for:** instantly readable, loud, juicy numbers, one thumb, and a match short
 enough that you immediately want another. Easy to understand, hard to read your opponent.
@@ -88,16 +91,17 @@ enough that you immediately want another. Easy to understand, hard to read your 
 ## Look and identity
 
 - Portrait, a tilted camera looking up a single lane, bright low-poly toy world.
-- Our own characters and world, designed by us (Suparno leads art direction). Two clearly coloured
-  armies, chunky gates whose colour tells you their type, big outlined numbers everywhere.
+- Our own characters and world, designed by us (Suparno leads art direction). Your blue dudes, the
+  base's red troops, chunky gates and towers, big outlined numbers on things you hit.
 - Every asset is original or openly licensed and credited.
 
 ## What makes it different
 
-- It takes a genre everyone has seen in ads and makes it **head-to-head and skill-based**.
-- **Bluffing in an action game:** hidden gates, fake hints, secret traps and peeks, made trustless by a
-  private rollup.
-- **Payout by margin of victory**, not winner-takes-all, so the whole match matters.
+- It takes a genre everyone has seen in ads and makes it a **live head-to-head race**, skill-based and fair
+  (identical copies, no rubber-banding).
+- **Bluffing in an action game:** hidden gates, secret traps and peeks, made trustless by a private rollup.
+- **Survive or split by gold:** dying loses everything; surviving splits the pot by the loot you earned,
+  so the whole match matters.
 - **Provably fair:** every match can be replayed and verified after it ends.
 
 ## What it is not
