@@ -13,6 +13,7 @@ import type { MatchEvent, MatchView, PrivateView, Side } from './types';
 /** Must equal LAYOUT_VERSION in crates/sim-wasm/src/lib.rs (the flat layouts are documented there). */
 const LAYOUT_VERSION = 2;
 const EVENT_STRIDE = 8;
+const PHASE_NAMES = ['plant', 'fight', 'transit', 'raid', 'done'] as const;
 
 let ready = false;
 
@@ -252,7 +253,65 @@ export class OfflineSource implements MatchSource {
     };
   }
 
-  private decodeEvents(_before: [LaneState, LaneState], _view: MatchView): MatchEvent[] {
-    return [];
+  /** `before`: the lanes before this step (reveals and GOTCHAs name the stage they happened in;
+   *  a `stage` event later in the same tick moves it on). `view`: after the step (the result). */
+  private decodeEvents(before: [LaneState, LaneState], view: MatchView): MatchEvent[] {
+    const v = this.sim.events();
+    const out: MatchEvent[] = [];
+    const stage = [before[0].stage, before[1].stage];
+    const broken = new Set<string>();
+    for (let i = 0; i + EVENT_STRIDE <= v.length; i += EVENT_STRIDE) {
+      const [t, a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0] = v.subarray(i, i + EVENT_STRIDE);
+      const side = sideOf(a);
+      switch (t) {
+        case 0:
+          out.push({ type: 'volley', side, cohortId: b, x: c, count: d });
+          break;
+        case 1: {
+          const op = opFromSigned(d);
+          if (g === 1 && op) out.push({ type: 'reveal', side, stage: stage[side]!, slot: b, op });
+          out.push({ type: 'gate', side, slot: b, cohortId: c, before: e, after: f });
+          break;
+        }
+        case 2:
+          out.push({ type: 'gotcha', side, stage: stage[side]!, slot: b, riggedBy: sideOf(c) });
+          break;
+        case 3:
+          // A hit that breaks the crate is reported broken here; the sim's separate "broken"
+          // event that follows is then dropped (one event per crate hit).
+          if (e === 0) broken.add(`${side}:${b}`);
+          out.push({ type: 'crate', side, index: b, hp: e, broken: e === 0 });
+          break;
+        case 4:
+          if (!broken.has(`${side}:${b}`)) out.push({ type: 'crate', side, index: b, hp: 0, broken: true });
+          break;
+        case 5:
+          out.push({ type: 'wave', side, tower: b, cohortId: c, count: e });
+          break;
+        case 6:
+          out.push({ type: 'clash', side, x: b, y: c, killed: d });
+          break;
+        case 7:
+          out.push({ type: 'towerHit', side, tower: b, damage: c, hp: d, gold: e });
+          break;
+        case 8:
+          out.push({ type: 'towerDown', side, tower: b, gold: c });
+          break;
+        case 9:
+          out.push({ type: 'loot', side, count: c, gold: d });
+          break;
+        case 10:
+          stage[side] = b;
+          out.push({ type: 'stage', side, stage: b, phase: PHASE_NAMES[c] ?? 'plant' });
+          break;
+        case 11:
+          out.push({ type: 'death', side });
+          break;
+        case 12:
+          if (view.result) out.push({ type: 'end', result: view.result });
+          break;
+      }
+    }
+    return out;
   }
 }
