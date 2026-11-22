@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
-import { chain, planWithdraw, RENT_EXEMPT_MIN as R, settleNow } from '../src/index';
+import { chain, CODEC_VERSION, planWithdraw, RENT_EXEMPT_MIN as R, settleNow } from '../src/index';
 
 test('planWithdraw: all, partial, rent dust, new destinations, fee', () => {
   const fee = 5_000;
@@ -37,7 +37,7 @@ function fakeBase(o: { status: number; stake: number; vault: number; onBase?: bo
   dv.setBigUint64(8, id, true);
   dv.setBigUint64(16, BigInt(o.stake), true);
   data[280] = o.status;
-  data[330] = 1; // codec version
+  data[chain.STATE_OFFSET] = CODEC_VERSION;
   const sent: string[] = [];
   const conn = {
     rpcEndpoint: 'http://fake',
