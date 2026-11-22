@@ -1,0 +1,429 @@
+{
+  "verdict": "PASS",
+  "match": "7136509520711739930",
+  "fails": [],
+  "controls": {
+    "A reads own Peek0 (mid-match)": true,
+    "B reads own Peek1 (mid-match)": true,
+    "everyone reads Match (mid-match)": true,
+    "B reads A's public set_aim in full (mid-match)": true,
+    "B accountSubscribe(own Peek1) > 0": true,
+    "C accountSubscribe(Match) > 0": true,
+    "public snapshots during a plant window seen": true,
+    "A rigged and peeked": true
+  },
+  "invariants": {
+    "snapshots": 1359,
+    "plantSnapshots": 127,
+    "seedBeforeFinish": 0,
+    "historyBeforeFinish": 0,
+    "hintDuringPlant": 0
+  },
+  "subscriptions": {
+    "B": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 6,
+        "accountSubscribe(Match)": 1358,
+        "programSubscribe": 1362,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 1,
+        "accountSubscribe(Match)": 1,
+        "programSubscribe": 2,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 1
+      },
+      "errors": {}
+    },
+    "C": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1358,
+        "programSubscribe": 1357,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    },
+    "anon": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1357,
+        "programSubscribe": 1357,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    }
+  },
+  "needles": [
+    "A salt",
+    "A request_seed ix data",
+    "VRF output (base, after)",
+    "salt 1 (B, base, after)",
+    "secret state bytes 8..40",
+    "A Peek account bytes (56 B)"
+  ],
+  "corpusStrings": {
+    "A": 147,
+    "B": 25746,
+    "C": 25281,
+    "anon": 24808
+  },
+  "sigs": {
+    "A request_seed": 1,
+    "B request_seed": 1,
+    "A set_aim": 4,
+    "B set_aim": 22,
+    "A start": 1,
+    "A plant_rig": 2,
+    "B plant_rig": 2,
+    "A peek_cell": 2,
+    "B peek_cell": 2,
+    "A finish": 1
+  },
+  "cellsSent": [
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 7,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 6,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 7,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 7,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 5,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 6,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 6,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 3,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 3,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 8,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 5,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 7,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 3,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 6,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 6,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 8,
+      "phase": 1
+    }
+  ],
+  "probes": {
+    "baseSecretsDuringPlay": {
+      "owner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+      "zeroVrfAndSalts": true,
+      "zeroState": true
+    },
+    "accounts mid-match": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction mid-match": {
+      "A request_seed 3WZniNkd": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed 3joE3ket": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 24uzwutv": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A plant_rig 42P4AbcH": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B plant_rig jzrCd5Rq": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 2amEPwMP": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 3bfQuC7C": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim 2XTdsmQK": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim 3GocaepN": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "A sees own plant_rig (mid-match)": "redacted",
+    "getSignaturesForAddress mid-match": {
+      "B Secrets": "3 sigs; A's secret txs listed: 0",
+      "B Peek0": "0 sigs; A's secret txs listed: 0",
+      "B Match": "8 sigs; A's secret txs listed: 0",
+      "B program": "752 sigs; A's secret txs listed: 0",
+      "B burnerA": "3 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "16 sigs; A's secret txs listed: 0",
+      "C program": "630 sigs; A's secret txs listed: 0",
+      "C burnerA": "3 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "23 sigs; A's secret txs listed: 0",
+      "anon program": "501 sigs; A's secret txs listed: 0",
+      "anon burnerA": "3 sigs; A's secret txs listed: 0"
+    }
+  },
+  "sol": {
+    "before": 7.546690401,
+    "after": 7.534706561,
+    "spent": 0.01198384
+  }
+}

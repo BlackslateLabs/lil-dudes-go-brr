@@ -1,0 +1,717 @@
+{
+  "verdict": "FAIL",
+  "match": "15105495018830034348",
+  "fails": [],
+  "controls": {
+    "A reads own Peek0 (mid-match)": true,
+    "B reads own Peek1 (mid-match)": true,
+    "everyone reads Match (mid-match)": true,
+    "A reads own plant_rig in full (mid-match)": false,
+    "B reads A's public set_aim in full (mid-match)": true,
+    "A reads own Peek0 (phase 3)": true,
+    "B reads own Peek1 (phase 3)": true,
+    "everyone reads Match (phase 3)": true,
+    "A reads own plant_rig in full (phase 3)": false,
+    "B reads A's public set_aim in full (phase 3)": true,
+    "B accountSubscribe(own Peek1) > 0": true,
+    "C accountSubscribe(Match) > 0": true,
+    "public snapshots during a plant window seen": true,
+    "A rigged and peeked": true
+  },
+  "invariants": {
+    "snapshots": 2460,
+    "plantSnapshots": 191,
+    "seedBeforeFinish": 0,
+    "historyBeforeFinish": 0,
+    "hintDuringPlant": 0
+  },
+  "subscriptions": {
+    "B": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 7,
+        "accountSubscribe(Match)": 2458,
+        "programSubscribe": 2465,
+        "logsSubscribe(program)": 34,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 2,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 2,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 1
+      },
+      "errors": {}
+    },
+    "C": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2458,
+        "programSubscribe": 2458,
+        "logsSubscribe(program)": 34,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    },
+    "anon": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2459,
+        "programSubscribe": 2458,
+        "logsSubscribe(program)": 34,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    }
+  },
+  "needles": [
+    "A salt",
+    "A request_seed ix data",
+    "VRF output (base, after)",
+    "salt 1 (B, base, after)",
+    "secret state bytes 8..40",
+    "A Peek account bytes (56 B)"
+  ],
+  "corpusStrings": {
+    "A": 350,
+    "B": 43859,
+    "C": 42974,
+    "anon": 42350
+  },
+  "sigs": {
+    "A request_seed": 1,
+    "B request_seed": 1,
+    "A start": 1,
+    "A set_aim": 11,
+    "B set_aim": 23,
+    "B plant_rig": 3,
+    "A plant_rig": 3,
+    "A peek_cell": 3,
+    "B peek_cell": 3,
+    "A finish": 1
+  },
+  "cellsSent": [
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 4,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 6,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 1,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 3,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 6,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 1,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 2,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 3,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 6,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 8,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 7,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 5,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 8,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 3,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 5,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 4,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 1,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 4,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 3,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 8,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 6,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 8,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 8,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 3,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 1,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "rig",
+      "cell": 4,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 2,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 4,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "rig",
+      "cell": 1,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 5,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 1,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 6,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 8,
+      "phase": 2
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 2,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 5,
+      "phase": 2
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 0,
+      "phase": 2
+    }
+  ],
+  "probes": {
+    "baseSecretsDuringPlay": {
+      "owner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+      "zeroVrfAndSalts": true,
+      "zeroState": true
+    },
+    "accounts mid-match": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction mid-match": {
+      "A request_seed 3eWW2Psw": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed enSgPekc": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 3UFdNnYz": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B plant_rig 2DexwVsn": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A plant_rig 3AkPCgJn": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 5zmpuA51": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 4DD64udM": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim 1mZELnRU": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim 5a3Je22C": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "getSignaturesForAddress mid-match": {
+      "B Secrets": "3 sigs; A's secret txs listed: 0",
+      "B Peek0": "0 sigs; A's secret txs listed: 0",
+      "B Match": "11 sigs; A's secret txs listed: 0",
+      "B program": "757 sigs; A's secret txs listed: 0",
+      "B burnerA": "5 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "9 sigs; A's secret txs listed: 0",
+      "C program": "599 sigs; A's secret txs listed: 0",
+      "C burnerA": "5 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "11 sigs; A's secret txs listed: 0",
+      "anon program": "487 sigs; A's secret txs listed: 0",
+      "anon burnerA": "6 sigs; A's secret txs listed: 0"
+    },
+    "accounts phase 3": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1376 B)": "1 accounts; ours: match",
+        "gpa(200 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction phase 3": {
+      "A request_seed 3eWW2Psw": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed enSgPekc": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 3UFdNnYz": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B plant_rig 2DexwVsn": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A plant_rig 3AkPCgJn": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 5zmpuA51": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 4DD64udM": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B plant_rig 4yVRbBQE": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A plant_rig 5VXzXrm8": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 4riBKADk": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 3B7PUheS": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A plant_rig P7VJfLbC": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B plant_rig 4CY5WW99": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 4rfaUxYT": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 2zYNeSED": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim 1mZELnRU": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim 5a3Je22C": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "getSignaturesForAddress phase 3": {
+      "B Secrets": "3 sigs; A's secret txs listed: 0",
+      "B Peek0": "0 sigs; A's secret txs listed: 0",
+      "B Match": "17 sigs; A's secret txs listed: 0",
+      "B program": "16 sigs; A's secret txs listed: 0",
+      "B burnerA": "12 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "13 sigs; A's secret txs listed: 0",
+      "C program": "13 sigs; A's secret txs listed: 0",
+      "C burnerA": "12 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "12 sigs; A's secret txs listed: 0",
+      "anon program": "6 sigs; A's secret txs listed: 0",
+      "anon burnerA": "12 sigs; A's secret txs listed: 0"
+    }
+  },
+  "sol": {
+    "before": 7.533689241,
+    "after": 7.546690401,
+    "spent": -0.01300116
+  }
+}

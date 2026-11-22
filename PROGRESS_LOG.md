@@ -522,3 +522,16 @@ show `code`; joiner `findRoom(server, code)` → `joinMatch`; creator `waitForSt
 join, as `packages/client/scripts/live-bot-match.ts` does. Run the server with
 `pnpm --filter server dev` (port 8787). Burners need devnet SOL for the base steps (stake +
 ~0.013 SOL rent) until the M5 faucet lands; ask me for a top-up.
+
+## 2026-11-22 · Kai · M4/5 step 1 (privacy re-check) · [STAGE]
+**Did:** M4/5 step 1 done; next: step 2 (result data from `reveal()`).
+`packages/client/scripts/privacy-check.ts`: a free live match on devnet + the TEE (bots via two
+LiveSources, both rig + peek every phase) while the opponent B, a third-token stranger C and a
+token-less client probe A's secrets mid-match and in phase 3. **PASS, 2 runs, 0 fails**:
+Secrets / A's Peek `null` on getAccountInfo, getMultipleAccounts, getProgramAccounts; 0
+notifications on accountSubscribe / logsSubscribe of Secrets and the Peeks; programSubscribe only
+ever shows Match; every `request_seed` / `plant_rig` / `peek_cell` / `start` is redacted for all
+(even the sender, since they touch Secrets); 0 secret txs listed by getSignaturesForAddress; 0 leak
+hits for salts, VRF output, rig/peek ix data, Peek bytes, secret state; no hint shown in a plant
+window (rig timing gives nothing away); base Secrets untouched until `finish`. Table: TECH §4
+Privacy. SOL ~0.012 per run (fees). Raw: `scripts/out/privacy-*.json`.

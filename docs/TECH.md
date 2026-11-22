@@ -205,6 +205,27 @@ Two rules learned the hard way:
   the private account (`Peek` → its player) sees the full tx; a tx touching only public accounts is
   public. Rule: **every tx carrying secret input lists `Secrets` or `Peek`**. Commit-reveal is not needed.
   Exception: the VRF oracle's failed callbacks (see Randomness).
+- ✅ **M4 re-check on the REAL program (devnet + TEE, 2026-11-22): PASS, 2 runs, 0 fails.**
+  `packages/client/scripts/privacy-check.ts` (out: `scripts/out/privacy-*.json`): a free live match,
+  bots on both sides through `LiveSource`, A's salt tagged and sent by hand, both sides rig and peek
+  every phase. While it ran, the opponent B (own token), a stranger C (third token) and a token-less
+  client tried every path on A's secrets, mid-match and again in phase 3:
+
+  | Probe (B, C, no token) | Result (run 1: 3 phases · run 2: KO in phase 2) |
+  |---|---|
+  | `getAccountInfo` / `getMultipleAccounts` of Secrets and A's Peek | `null` every time; each Peek visible to its own burner only (control ✅) |
+  | `getProgramAccounts` (by size 1,376 / 200 / 56 B) | Match only; Secrets never; a Peek only to its owner |
+  | `accountSubscribe(Secrets / A's Peek)` | **0** notifications (B's own Peek: 7 / 6 ✅; Match: ~20/s ✅) |
+  | `programSubscribe` | Match updates only (2,465 / 1,362), never Secrets or a foreign Peek |
+  | `logsSubscribe` (program / Secrets / each Peek) | 34 / 26 notifications on the program (public `set_aim`/`advance`), **0** on Secrets and the Peeks |
+  | `getTransaction` of A's `request_seed`, `plant_rig` ×3, `peek_cell` ×3, `start`, and B's | **redacted** (slot + err only) for everyone, **even the sender**: these txs also touch Secrets, which has no members. A's public `set_aim`: full for all (control ✅) |
+  | `getSignaturesForAddress` (Secrets, A's Peek, Match, program, A's burner) | 0 of A's secret txs listed; every tx a prober could read in full was checked: none touched Secrets or a foreign Peek |
+  | leak search (~25–44k decoded strings per prober, base64/base58 → hex) | **0 hits** for A's salt, the `request_seed` data, every rig/peek ix data, A's Peek bytes, and (read from base after the match) the VRF output, B's salt and the secret state |
+  | public Match snapshots (2,460 / 1,359) | seed = 0 and history empty until FINISHED; **no hint shown during a plant window** (191 / 127 snapshots), so a rig's timing never gives its cell away (`plant_rig` publicly flips only `rig_used`); unrevealed gates encode as `(0, 0)` |
+  | base layer during play | delegated Secrets still holds its creation bytes (VRF, salts, state all zero): nothing is committed before `finish` |
+
+  SOL: ~0.012 per run (fees; rent refunded by `close_match`). After `finish` everything is public on
+  base by design (Verify needs the seed); probes after that are not counted.
 
 ### Settlement
 
