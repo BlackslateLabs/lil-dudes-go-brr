@@ -4,8 +4,11 @@
 #![allow(dead_code)]
 
 use super::*;
-use lil_dudes_sim::codec::{decode_public, decode_secret};
-use lil_dudes_sim::{MatchState, PublicState, SecretState};
+use lil_dudes_sim::codec::{
+    decode_public, decode_secret, GATE_LEN, HEADER_LEN, SIDE_GATES, SIDE_LEN,
+};
+use lil_dudes_sim::layouts;
+use lil_dudes_sim::{MatchState, PublicState, SecretState, Slot};
 use magicsvm::{MagicSVM, TransactionTarget};
 use serde_json::Value;
 use solana_address::Address;
@@ -23,7 +26,7 @@ pub const PERMISSION_PROGRAM: Address =
 pub const TREASURY: Address = Address::new_from_array([7; 32]);
 pub const SOL: u64 = 1_000_000_000;
 
-pub const MATCH_LEN: usize = 8 + 1_368;
+pub const MATCH_LEN: usize = 8 + 1_784;
 /// Byte offsets in the Match account (8-byte discriminator + repr(C) fields, state.rs).
 pub mod off {
     pub const STAKE: usize = 8 + 8;
@@ -34,9 +37,21 @@ pub mod off {
     pub const FLAGS: usize = 8 + 273;
     pub const GOTCHA: usize = 8 + 280;
     pub const HISTORY: usize = 8 + 288;
-    pub const STATE: usize = 8 + 322;
+    pub const STATE: usize = 8 + 314;
 }
 pub const SECRETS_STATE: usize = 8 + 104;
+/// Byte offsets in a Peek account (state.rs): side, then the 7 view bytes.
+pub mod peek_off {
+    pub const SIDE: usize = 8 + 40;
+    pub const STAGE: usize = 8 + 41;
+    pub const RIG_STAGE: usize = 8 + 42;
+    pub const RIG_SLOT: usize = 8 + 43;
+    pub const PEEK_STAGE: usize = 8 + 44;
+    pub const PEEK_SLOT: usize = 8 + 45;
+    pub const PEEK_OP: usize = 8 + 46;
+}
+/// "None" in the Peek, the history and the gotcha record.
+pub const NONE: u8 = u8::MAX;
 pub mod status {
     pub const OPEN: u8 = 0;
     pub const JOINED: u8 = 1;
@@ -334,16 +349,17 @@ impl Game {
         )
     }
 
+    /// `plant_rig` / `peek_cell`: the arg (named `cell` in the IDL) is a gate slot (rules v3).
     pub fn secret_input_ix(
         &self,
         name: &str,
         player: Address,
         peek: Address,
-        cell: u8,
+        slot: u8,
     ) -> Instruction {
         self.idl.ix(
             name,
-            &[cell],
+            &[slot],
             &[
                 ("player", player),
                 ("game", self.game),
@@ -438,6 +454,42 @@ impl Game {
         s
     }
 
+    /// Test-only state surgery on the rollup: overwrites `bytes` at `at` in an account's data,
+    /// keeping its flags (delegated, private) as they are.
+    pub fn poke_ephemeral(&mut self, key: &Address, at: usize, bytes: &[u8]) {
+        let mut acc = self
+            .svm
+            .get_shared_account_for(TransactionTarget::Ephemeral, key)
+            .expect("account on the rollup");
+        magicblock_account::WritableAccount::data_as_mut_slice(&mut acc)[at..at + bytes.len()]
+            .copy_from_slice(bytes);
+        self.svm
+            .ephemeral_mut()
+            .accounts
+            .add_account(*key, acc)
+            .unwrap();
+    }
+
+    /// Shows gate `slot` of `side`'s current stage face-up with `op` (codec op byte) in the
+    /// public state, as if a cohort had passed it.
+    pub fn reveal_gate(&mut self, side: usize, slot: u8, op: u8) {
+        let at =
+            off::STATE + HEADER_LEN + side * SIDE_LEN + SIDE_GATES + usize::from(slot) * GATE_LEN;
+        let game = self.game;
+        self.poke_ephemeral(&game, at + 2, &[op]);
+    }
+
+    /// A Peek's bytes as `viewer` sees them on the rollup (None = hidden from that viewer).
+    pub fn peek_bytes(&mut self, side: usize, viewer: Option<Address>) -> Option<Vec<u8>> {
+        self.svm.set_authorized_user(viewer);
+        let d = self
+            .svm
+            .get_account_for(TransactionTarget::Ephemeral, &self.peeks[side])
+            .map(|a| a.data);
+        self.svm.set_authorized_user(None);
+        d
+    }
+
     pub fn slot(&self, target: TransactionTarget) -> u64 {
         let ledger = match target {
             TransactionTarget::Base => self.svm.base(),
@@ -497,6 +549,47 @@ impl Game {
         let b = self.burner(0);
         self.er(self.start_ix(b.pubkey()), &[&b]).unwrap();
     }
+}
+
+/// The x range a gate can cover over its whole slide (centre range ± half its width).
+fn reach(g: &layouts::GateDef) -> std::ops::RangeInclusive<i32> {
+    let half = i32::from(g.width) / 2;
+    i32::from(g.x_min.min(g.x)) - half..=i32::from(g.x_max.max(g.x)) + half
+}
+
+/// A gate of `stage` that a stream of volleys fired straight up from its x is sure to pass:
+/// static, a normal slot, no crate below it covering that x, and no other gate of its row that
+/// can reach that x. Lowest row first. Returns (slot, x).
+pub fn sure_gate(layout: u8, stage: u8) -> Option<(u8, i16)> {
+    let st = layouts::stage(layout, stage);
+    let mut found: Option<(u8, u8, i16)> = None;
+    for (slot, g) in (0u8..).zip(st.gates.iter()) {
+        if g.moving() || g.slot != Slot::Normal {
+            continue;
+        }
+        let x = i32::from(g.x);
+        let row_y = st.rows[usize::from(g.row)];
+        let blocked = st
+            .crates
+            .iter()
+            .any(|c| c.y < row_y && (x - i32::from(c.x)).abs() * 2 <= i32::from(c.width));
+        let rival = (0u8..)
+            .zip(st.gates.iter())
+            .any(|(other, o)| other != slot && o.row == g.row && reach(o).contains(&x));
+        if !blocked && !rival && found.is_none_or(|(_, row, _)| g.row < row) {
+            found = Some((slot, g.row, g.x));
+        }
+    }
+    found.map(|(slot, _, x)| (slot, x))
+}
+
+/// A gate of `stage` other than `not` whose whole sliding range stays clear of `x` (a stream
+/// fired at `x` never reveals it), if the layout has one.
+pub fn off_path_gate(layout: u8, stage: u8, x: i16, not: u8) -> Option<u8> {
+    let st = layouts::stage(layout, stage);
+    (0u8..)
+        .zip(st.gates.iter())
+        .find_map(|(slot, g)| (slot != not && !reach(g).contains(&i32::from(x))).then_some(slot))
 }
 
 pub const COMPUTE_BUDGET: Address =
