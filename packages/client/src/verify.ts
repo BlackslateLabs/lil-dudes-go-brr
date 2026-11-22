@@ -5,7 +5,7 @@ import { deals_for } from '@lil-dudes/sim-wasm';
 import * as C from './constants';
 import { layoutDef, opFromByte, stageDef } from './layout';
 import { initSim } from './offline';
-import type { GateOp, Side } from './types';
+import type { GateOp, MatchResult, Side } from './types';
 
 const NONE = 255;
 /** Codec history: 3 stages × 2 sides × [rig stage, rig slot, peek slot, peek op]. */
@@ -123,3 +123,116 @@ export const BASE_EXPLORER = (sig: string) => `https://explorer.solana.com/tx/${
 export const TEE_EXPLORER = (sig: string, rpc = 'https://devnet-tee.magicblock.app') =>
   `https://explorer.solana.com/tx/${sig}?cluster=custom&customUrl=${encodeURIComponent(rpc)}`;
 export const ACCOUNT_EXPLORER = (address: string) => `https://explorer.solana.com/address/${address}?cluster=devnet`;
+
+// --- payout (SPEC §8) -------------------------------------------------------------------------
+
+/** crates/sim `payout`: who wins and the lamports moved loser → winner, from deaths and gold.
+ *  A death moves the whole stake S; both alive splits the pot 2S in the ratio of gold, so the
+ *  winner (more gold) gains `floor(S·(gw − gl)/(gw + gl))` (= share_w − S, floored for the
+ *  loser); equal gold, both 0 or both dead = draw. Fee = floor(moved · FEE_BPS / 10 000). */
+export function resultFor(stake: number, dead: [boolean, boolean], gold: [number, number]): { winner: Side | null; ko: boolean; moved: number; fee: number } {
+  const ko = dead[0] || dead[1];
+  const draw = { winner: null, ko, moved: 0, fee: 0 };
+  let winner: Side;
+  let moved: number;
+  if (dead[0] && dead[1]) return draw;
+  if (dead[0] || dead[1]) {
+    winner = dead[0] ? 1 : 0;
+    moved = stake;
+  } else {
+    const [a, b] = gold;
+    if (a === b) return draw;
+    winner = a > b ? 0 : 1;
+    const [gw, gl] = a > b ? [a, b] : [b, a];
+    moved = mulDiv(stake, gw - gl, gw + gl);
+  }
+  return { winner, ko, moved, fee: mulDiv(moved, C.FEE_BPS, 10_000) };
+}
+
+/** floor(a · b / d) exactly (BigInt: lamports × gold can pass 2^53). */
+const mulDiv = (a: number, b: number, d: number): number => (d === 0 ? 0 : Number((BigInt(a) * BigInt(b)) / BigInt(d)));
+
+/** How the match ended and what the money did, for the result screen. */
+export interface PayoutInfo {
+  /** 'death' = one player died; 'gold' = both survived, split by gold; 'draw'; 'aborted' = the
+   *  match never started (everyone refunded). */
+  kind: 'death' | 'gold' | 'draw' | 'aborted';
+  free: boolean;
+  winner: Side | null;
+  /** Who died (null if nobody, or both: then `kind` is 'draw' and `bothDied` is set). */
+  died: Side | null;
+  bothDied: boolean;
+  /** Matched stake S, lamports (each side escrowed S). */
+  stake: number;
+  gold: [number, number];
+  /** Each side's gold share in ‰ of the total (0 when nobody has gold). */
+  goldPm: [number, number];
+  /** Lamports moved loser → winner before the fee, and the fee (5% of moved). */
+  moved: number;
+  fee: number;
+  /** moved / S in ‰ (1000 for a death). In a free match, what it would have been. */
+  sharePm: number;
+  /** What each side got back from the vault, and its net change vs. its stake. */
+  paid: [number, number];
+  net: [number, number];
+  /** One neutral line, e.g. "Blue won on gold, 900 to 600 (60.0% of the pot) → takes 20.0% of Red's stake, minus a 5% fee." */
+  why: string;
+}
+
+const pct = (pm: number) => `${(pm / 10).toFixed(1)}%`;
+const SIDE_NAMES = ['Side A', 'Side B'] as const;
+
+export interface PayoutOptions {
+  /** The match never started (refunds). */
+  aborted?: boolean;
+  /** Default "Side A" / "Side B". */
+  names?: [string, string];
+  /** Who died, if known (tells a double death from an equal-gold draw). */
+  dead?: [boolean, boolean];
+}
+
+/** SPEC §8 in numbers and one line of words. Money is recomputed with `resultFor` from the
+ *  result's deaths and gold (equal to the sim's `moved` / `fee`; the tests check it). */
+export function payoutOf(stake: number, result: MatchResultLike | null, opts: PayoutOptions = {}): PayoutInfo {
+  const free = stake === 0;
+  const n = opts.names ?? [...SIDE_NAMES];
+  const gold: [number, number] = result ? [result.gold[0], result.gold[1]] : [0, 0];
+  const total = gold[0] + gold[1];
+  const goldPm: [number, number] = total > 0 ? [Math.floor((gold[0] * 1000) / total), Math.floor((gold[1] * 1000) / total)] : [0, 0];
+  const bothDied = !!opts.dead?.[0] && !!opts.dead[1];
+  const base = { free, stake, gold, goldPm, died: null, bothDied, moved: 0, fee: 0, sharePm: 0, paid: [stake, stake] as [number, number], net: [0, 0] as [number, number] };
+  const refund = free ? '.' : ', both stakes refunded.';
+  if (opts.aborted || !result) {
+    return { ...base, kind: 'aborted', winner: null, why: free ? 'The match never started.' : 'The match never started: both stakes refunded.' };
+  }
+  if (result.winner === null) {
+    const why = bothDied
+      ? `Both players died on the same tick: draw${refund}`
+      : total === 0
+        ? `Draw: no gold on either side${refund}`
+        : `Draw: equal gold (${gold[0]} each)${refund}`;
+    return { ...base, kind: 'draw', winner: null, why };
+  }
+  const w = result.winner;
+  const l: Side = w === 0 ? 1 : 0;
+  const dead: [boolean, boolean] = result.died === null ? [false, false] : result.died === 0 ? [true, false] : [false, true];
+  const { moved, fee } = resultFor(stake, dead, gold);
+  const death = result.died !== null;
+  const sharePm = death ? 1000 : stake > 0 ? Math.floor((moved * 1000) / stake) : total > 0 ? Math.floor(((gold[w] - gold[l]) * 1000) / total) : 0;
+  const paid: [number, number] = [0, 0];
+  paid[w] = stake + moved - fee;
+  paid[l] = stake - moved;
+  const net: [number, number] = [0, 0];
+  net[w] = moved - fee;
+  net[l] = -moved;
+  const how = death ? `${n[l]} died: ${n[w]} wins` : `${n[w]} won on gold, ${gold[w]} to ${gold[l]} (${pct(goldPm[w])} of the pot)`;
+  const money = free
+    ? ' (free match: no money moved)'
+    : death
+      ? ' → takes the whole stake, minus a 5% fee'
+      : ` → takes ${pct(sharePm)} of ${n[l]}'s stake, minus a 5% fee`;
+  return { ...base, kind: death ? 'death' : 'gold', winner: w, died: result.died, moved, fee, sharePm, paid, net, why: `${how}${money}.` };
+}
+
+/** The MatchResult fields payoutOf reads. */
+export type MatchResultLike = Pick<MatchResult, 'winner' | 'died' | 'gold'>;
