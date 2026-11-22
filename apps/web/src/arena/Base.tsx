@@ -1,42 +1,69 @@
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Group, Mesh, MeshLambertMaterial, Sprite } from 'three';
+import { Group, MeshStandardMaterial, Sprite } from 'three';
 import { FINAL_STAGE, VAULT_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
+import { mergeParts, preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
+import { HALL_DOOR, HALL_FRONT_Z, HALL_TOP, hallParts, wallParts } from './models/hall';
 
 const MAX_TOWERS = 4;
 const MAX_CRATES = 6;
 
+/**
+ * The crate model: one constant, so swapping to another crate (e.g. a KayKit Block Bits crate once
+ * it's in `public/assets/models/`) is a one-line change. `[pack, piece]`; the piece's long side
+ * runs along Z (it is turned to lie across the lane) and it is ~1.2 long, 0.55 deep, 0.37 tall.
+ */
+const CRATE_MODEL = ['blaster', 'crate'] as const;
+const CRATE_LEN = 1.2;
+
+/** Fantasy Town Kit: roof + banner swatches → enemy red, stone swatches → warm cream. */
+const HALL_TINT: readonly TintRule[] = [
+  { cells: [[0, 3], [1, 3]], ref: [1, 3], color: PALETTE.enemy },
+  { cells: [[2, 2], [3, 2]], ref: [3, 2], color: PALETTE.hall },
+];
+/** Tower Defense Kit: the red trim/roof swatches → enemy red (the stone stays). */
+const TOWER_TINT: readonly TintRule[] = [{ cells: [[14, 2], [15, 2]], ref: [15, 2], color: PALETTE.enemy }];
+
+/** Town-kit tile size in world units: the hall is 5 tiles ≈ 61% of the lane width. */
+const TILE = 2.2;
+/** Tower Defense pieces are 1 unit across; scaled to the old tower's ~3.4 footprint. */
+const TOWER_SCALE = 3.4;
+const TOWER_SINK = 0.7; // s to collapse when its hp hits 0
+
+preloadPacks('hall', 'towers', 'blaster');
+
 /** The enemy base at the far end: a wall across the lane, its towers, and on the last stage the town hall. */
 export function Base({ feed }: { feed: MatchFeed }) {
   return (
-    <group>
-      {/* Wall across the far end of the lane. */}
-      <mesh position={[0, 1.6, -HALF_L - 1.2]}>
-        <boxGeometry args={[LANE_W + 2, 3.2, 2]} />
-        <meshLambertMaterial color={PALETTE.base} />
-      </mesh>
-      <mesh position={[0, 3.3, -HALF_L - 1.2]}>
-        <boxGeometry args={[LANE_W + 2.4, 0.4, 2.4]} />
-        <meshLambertMaterial color={PALETTE.baseTrim} />
-      </mesh>
-      <TownHall feed={feed} />
-      {Array.from({ length: MAX_TOWERS }, (_, i) => (
-        <Tower key={i} feed={feed} index={i} />
-      ))}
-      {Array.from({ length: MAX_CRATES }, (_, i) => (
-        <Crate key={i} feed={feed} index={i} />
-      ))}
-    </group>
+    <Suspense fallback={null}>
+      <group>
+        <BaseWall />
+        <TownHall feed={feed} />
+        {Array.from({ length: MAX_TOWERS }, (_, i) => (
+          <Tower key={i} feed={feed} index={i} />
+        ))}
+        {Array.from({ length: MAX_CRATES }, (_, i) => (
+          <Crate key={i} feed={feed} index={i} />
+        ))}
+      </group>
+    </Suspense>
   );
+}
+
+/** Stone wall across the far end of the lane. */
+function BaseWall() {
+  const pack = usePack('hall');
+  const mat = useTintedMaterial(pack, 'hall', HALL_TINT);
+  const blocks = Math.ceil((LANE_W + 2) / TILE);
+  const geo = useMemo(() => mergeParts(pack, wallParts(blocks), TILE), [pack, blocks]);
+  return <mesh geometry={geo} material={mat} position={[0, 0, -HALF_L - 1.2]} scale={[1, 1.25, 0.9]} />;
 }
 
 /** Town hall front face sits on the loot line: a dude reaching VAULT_Y is inside it. */
 const HALL_FRONT = wz(VAULT_Y) - 0.4;
-const HALL_W = LANE_W * 0.62;
-const HALL_D = 3.6;
 
 /**
  * The town hall: behind the towers on the last stage, the target of the finale (SPEC v4 §3). Once
@@ -46,10 +73,16 @@ const HALL_D = 3.6;
 function TownHall({ feed }: { feed: MatchFeed }) {
   const root = useRef<Group>(null!);
   const body = useRef<Group>(null!);
-  const door = useRef<Mesh>(null!);
   const label = useRef<Sprite>(null!);
   const hit = useRef(0);
   const shown = useRef(0);
+  const pack = usePack('hall');
+  const mat = useTintedMaterial(pack, 'hall', HALL_TINT);
+  const geo = useMemo(() => mergeParts(pack, hallParts(), TILE), [pack]);
+  const doorMat = useMemo(
+    () => new MeshStandardMaterial({ color: PALETTE.gold, emissive: PALETTE.gold, emissiveIntensity: 0.15, roughness: 0.4 }),
+    [],
+  );
 
   useEffect(
     () =>
@@ -73,8 +106,7 @@ function TownHall({ feed }: { feed: MatchFeed }) {
     const wob = Math.sin(clock.elapsedTime * 40) * h;
     body.current.position.x = wob * 0.25;
     body.current.scale.set(1 + h * 0.04, 1 - h * 0.05, 1 + h * 0.04);
-    const dm = door.current.material as MeshLambertMaterial;
-    dm.emissiveIntensity = raid ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * 6) + h : 0.15;
+    doorMat.emissiveIntensity = raid ? 1.6 + 0.8 * Math.sin(clock.elapsedTime * 6) + 2 * h : 0.2;
     label.current.visible = raid && lane.raidGold > 0;
     if (label.current.visible) {
       shown.current += (lane.raidGold - shown.current) * Math.min(1, dt * 10);
@@ -89,48 +121,15 @@ function TownHall({ feed }: { feed: MatchFeed }) {
   });
 
   return (
-    <group ref={root} visible={false} position={[0, 0, HALL_FRONT - HALL_D / 2]}>
+    <group ref={root} visible={false} position={[0, 0, HALL_FRONT - HALL_FRONT_Z * TILE]}>
       <group ref={body}>
-        {/* Steps */}
-        <mesh position={[0, 0.25, HALL_D / 2 + 0.3]}>
-          <boxGeometry args={[HALL_W * 0.5, 0.5, 1]} />
-          <meshLambertMaterial color={PALETTE.baseTrim} />
-        </mesh>
-        {/* Hall */}
-        <mesh position-y={2.6}>
-          <boxGeometry args={[HALL_W, 5.2, HALL_D]} />
-          <meshLambertMaterial color={PALETTE.hall} />
-        </mesh>
-        {/* Columns */}
-        {[-0.38, -0.13, 0.13, 0.38].map((f) => (
-          <mesh key={f} position={[f * HALL_W, 2.4, HALL_D / 2 + 0.25]}>
-            <cylinderGeometry args={[0.32, 0.38, 4.8, 10]} />
-            <meshLambertMaterial color={PALETTE.baseTrim} />
-          </mesh>
-        ))}
-        {/* Gable roof: two slabs meeting along the ridge. */}
-        {[-1, 1].map((s) => (
-          <mesh key={s} position={[0, 6.15, s * HALL_D * 0.27]} rotation-x={s * 0.62}>
-            <boxGeometry args={[HALL_W + 0.8, 0.35, HALL_D * 0.68]} />
-            <meshLambertMaterial color={PALETTE.base} />
-          </mesh>
-        ))}
-        {/* Door: the vault glow during the finale */}
-        <mesh ref={door} position={[0, 1.7, HALL_D / 2 + 0.02]}>
-          <planeGeometry args={[2.4, 3.2]} />
-          <meshLambertMaterial color={PALETTE.gold} emissive={PALETTE.gold} emissiveIntensity={0.15} />
-        </mesh>
-        {/* Flag */}
-        <mesh position={[0, 9.4, 0]}>
-          <cylinderGeometry args={[0.08, 0.08, 2.4, 6]} />
-          <meshLambertMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[0.6, 10.2, 0]}>
-          <boxGeometry args={[1.2, 0.7, 0.05]} />
-          <meshLambertMaterial color={PALETTE.gold} />
+        <mesh geometry={geo} material={mat} />
+        {/* The vault: a gold glow filling the arched doorway, pulsing during the raid. */}
+        <mesh material={doorMat} position={[0, HALL_DOOR.y * TILE, HALL_DOOR.z * TILE]}>
+          <planeGeometry args={[HALL_DOOR.w * TILE, HALL_DOOR.h * TILE]} />
         </mesh>
       </group>
-      <sprite ref={label} position={[0, 11.5, 0]} scale={[6.4, 2.56, 1]} renderOrder={16} visible={false}>
+      <sprite ref={label} position={[0, (HALL_TOP + 0.9) * TILE, HALL_FRONT_Z * TILE]} scale={[6.4, 2.56, 1]} renderOrder={16} visible={false}>
         <spriteMaterial transparent depthTest={false} />
       </sprite>
     </group>
@@ -139,25 +138,68 @@ function TownHall({ feed }: { feed: MatchFeed }) {
 
 function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
   const root = useRef<Group>(null!);
-  const body = useRef<Mesh>(null!);
+  const body = useRef<Group>(null!);
   const hpLabel = useRef<Sprite>(null!);
   const shown = useRef<number | null>(null);
   const flash = useRef(0);
   const lastHp = useRef(0);
+  const down = useRef(0); // 0 standing … 1 fully sunk
+  const pack = usePack('towers');
+  const shared = useTintedMaterial(pack, 'tower', TOWER_TINT);
+  // Own material per tower so its hit flash doesn't light the others.
+  const mat = useMemo(() => {
+    const m = shared.clone();
+    m.emissive.set('#ffffff');
+    m.emissiveIntensity = 0;
+    return m;
+  }, [shared]);
+  const geo = useMemo(
+    () =>
+      mergeParts(
+        pack,
+        [
+          { piece: 'tower-bottom', x: 0, y: 0, z: 0 },
+          { piece: 'tower-roof', x: 0, y: 0.6, z: 0 },
+        ],
+        TOWER_SCALE,
+      ),
+    [pack],
+  );
 
   useFrame((_, dt) => {
     const t = feed.me?.towers[index];
-    root.current.visible = !!t && t.hp > 0;
-    if (!t || t.hp <= 0) {
+    if (!t) {
+      root.current.visible = false;
       shown.current = null;
+      down.current = 0;
       return;
     }
     root.current.position.set(wx(t.x), 0, wz(t.y));
+    if (t.hp <= 0) {
+      // Knocked down: a quick tilt-and-sink into the ground, then gone.
+      if (lastHp.current > 0 || down.current > 0) down.current = Math.min(1, down.current + dt / TOWER_SINK);
+      else down.current = 1; // already down when we first saw it
+      lastHp.current = 0;
+      const d = down.current;
+      root.current.visible = d < 1;
+      body.current.position.y = -d * d * 7;
+      body.current.rotation.z = d * 0.35 * (index % 2 ? 1 : -1);
+      hpLabel.current.visible = false;
+      shown.current = null;
+      return;
+    }
+    root.current.visible = true;
+    down.current = 0;
+    body.current.position.y = 0;
+    body.current.rotation.z = 0;
+    hpLabel.current.visible = true;
     if (t.hp < lastHp.current) flash.current = 1;
     lastHp.current = t.hp;
     flash.current = Math.max(0, flash.current - dt * 6);
-    const m = body.current.material as MeshLambertMaterial;
-    m.emissiveIntensity = flash.current;
+    mat.emissiveIntensity = flash.current * 0.5;
+    // A little squash on each hit.
+    const f = flash.current;
+    body.current.scale.set(1 + f * 0.04, 1 - f * 0.05, 1 + f * 0.04);
     // HP label ticks smoothly toward the real value (no per-hit numbers).
     shown.current = shown.current === null ? t.hp : shown.current + (t.hp - shown.current) * Math.min(1, dt * 8);
     const tex = labelTexture(shortNum(shown.current), { color: '#ffffff', outline: PALETTE.base, width: 256, height: 112 });
@@ -169,14 +211,9 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
 
   return (
     <group ref={root} visible={false}>
-      <mesh ref={body} position-y={2.2}>
-        <cylinderGeometry args={[1.4, 1.8, 4.4, 10]} />
-        <meshLambertMaterial color={PALETTE.tower} emissive="#ffffff" emissiveIntensity={0} />
-      </mesh>
-      <mesh position-y={4.8}>
-        <coneGeometry args={[1.8, 1.6, 10]} />
-        <meshLambertMaterial color={PALETTE.base} />
-      </mesh>
+      <group ref={body}>
+        <mesh geometry={geo} material={mat} />
+      </group>
       <sprite ref={hpLabel} position={[0, 3, 2.2]} scale={[4.6, 2, 1]} renderOrder={15}>
         <spriteMaterial transparent depthTest={false} />
       </sprite>
@@ -186,15 +223,22 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
 
 function Crate({ feed, index }: { feed: MatchFeed; index: number }) {
   const root = useRef<Group>(null!);
-  const box = useRef<Mesh>(null!);
+  const box = useRef<Group>(null!);
   const label = useRef<Sprite>(null!);
+  const pack = usePack(CRATE_MODEL[0]);
+  const mat = useMemo(() => {
+    const m = pack.material.clone();
+    m.roughness = 0.55;
+    return m;
+  }, [pack]);
 
   useFrame(() => {
     const c = feed.me?.crates[index];
     root.current.visible = !!c && c.hp > 0;
     if (!c || c.hp <= 0) return;
     root.current.position.set(wx(c.x), 0, wz(c.y));
-    box.current.scale.set(c.width * SX, 1, 1);
+    // Same width as the sim's crate: c.width sim units across the lane.
+    box.current.scale.set((c.width * SX) / CRATE_LEN, 1, 1);
     const tex = labelTexture(String(c.hp), { color: '#ffffff', outline: PALETTE.crate, width: 192, height: 112 });
     if (label.current.material.map !== tex) {
       label.current.material.map = tex;
@@ -204,10 +248,10 @@ function Crate({ feed, index }: { feed: MatchFeed; index: number }) {
 
   return (
     <group ref={root} visible={false}>
-      <mesh ref={box} position-y={0.9}>
-        <boxGeometry args={[1, 1.8, 1.6]} />
-        <meshLambertMaterial color={PALETTE.crate} />
-      </mesh>
+      <group ref={box}>
+        {/* Turned a quarter so the long side lies across the lane; ~1.6 deep and ~1.7 tall. */}
+        <mesh geometry={pack.geo[CRATE_MODEL[1]]!} material={mat} rotation-y={Math.PI / 2} scale={[2.9, 4.6, 1]} />
+      </group>
       <sprite ref={label} position={[0, 2.6, 0.8]} scale={[2.6, 1.5, 1]} renderOrder={15}>
         <spriteMaterial transparent depthTest={false} />
       </sprite>
