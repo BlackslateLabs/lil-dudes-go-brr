@@ -4,7 +4,7 @@
 //   either: delegateMatch → both: LiveSource.connect({ matchId, burner }).start()
 // After the end: the Magic Action pays out; if it doesn't within ~20 s, anyone calls settleMatch.
 import { Connection, PublicKey, type Keypair } from '@solana/web3.js';
-import { BASE_RPC, decodeMatch, DELEGATION_PROGRAM, ixs, matchAccounts, newMatchId, PROGRAM_ID, send, Status, TEE_VALIDATOR, type MatchAccount } from './chain';
+import { BASE_RPC, decodeMatch, DELEGATION_PROGRAM, ixs, MATCH_LEN, matchAccounts, newMatchId, PROGRAM_ID, send, Status, TEE_VALIDATOR, type MatchAccount } from './chain';
 import { BASE_EXPLORER, type SettlementInfo, type TxRecord } from '../verify';
 
 export const baseConnection = (rpc = BASE_RPC) => new Connection(rpc, 'confirmed');
@@ -181,7 +181,7 @@ export async function settlementOf(base: Connection, id: bigint, txs?: TxRecord[
 export async function myMatches(base: Connection, player: PublicKey): Promise<MatchAccount[]> {
   const out: MatchAccount[] = [];
   for (const offset of [88, 120]) {
-    const list = await base.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed', filters: [{ dataSize: 8 + 1368 }, { memcmp: { offset, bytes: player.toBase58() } }] });
+    const list = await base.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed', filters: [{ dataSize: MATCH_LEN }, { memcmp: { offset, bytes: player.toBase58() } }] });
     for (const x of list) out.push(decodeMatch(x.account.data));
   }
   return out.sort((a, b) => a.header.createdAt - b.header.createdAt);
