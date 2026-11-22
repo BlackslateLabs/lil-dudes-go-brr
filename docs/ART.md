@@ -30,14 +30,14 @@ table is the copy of record. Change a pick here and in the log together.
 | Enemy towers | Tower-defense towers, recoloured to the enemy team | Kenney · Tower Defense Kit | CC0 |
 | Town hall | The big timbered hall with the archway (the vault door) | Kenney · Fantasy Town Kit | CC0 |
 | Gates | Glowing glass panel (big gates gold), built in code | ours | — |
-| Crates | Block crates (wooden crate, cage, safe) | KayKit · Block Bits (free version) | CC0 |
+| Crates | Block crates (wooden crate, cage, safe). **For now:** Kenney Blaster Kit `crate-wide` until the KayKit pack is downloaded by hand (one constant, `CRATE_MODEL` in `Base.tsx`) | KayKit · Block Bits (free version) | CC0 |
 | Around the lane | Nature Kit + tower-defense ground tiles | Kenney · Nature Kit, Tower Defense Kit | CC0 |
 | Effects | Particle sprites driven by our code | Kenney · Particle Pack | CC0 |
 | Buttons and panels | Our own chunky CSS (thick outlines, drop shadows, bouncy presses) | ours | — |
 | Display font | Lilita One (current) | Google Fonts | OFL |
 | UI text font | Baloo 2 | Google Fonts | OFL |
-| Sound effects | **Undecided** (shortlist: Kenney Impact, Casino, Interface, UI, Digital, RPG, Voiceover; or the code synth) | | |
-| Music | **Undecided** (shortlist: Kevin MacLeod tracks, CC BY; Abstraction loop bundle, CC0; Kenney Music Jingles for stings) | | |
+| Sound effects | Kenney recordings: Impact, Interface, Digital and Casino packs (26 short mono MP3s, ~117 KB) | Kenney | CC0 |
+| Music | **Undecided.** Rejected: widely used stock tracks (too recognisable). Shortlist: lesser-known CC0 loops and stings from OpenGameArt (e.g. Fupi's Wacky Wobblings / Wacky Idlings / Win Jingle) | | CC0 |
 
 ## Where to find assets
 
