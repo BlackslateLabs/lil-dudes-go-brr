@@ -10,6 +10,9 @@ Final accounts, instructions and compute: §4; client: §5; results: `packages/c
 **M4–M5 (2026-11-22): privacy re-check of the real program PASS (§4 Privacy); `reveal()` carries the whole
 result screen (§5); anyone-after-timeout refunds (program upgraded); server faucet, online bot, sweeper,
 hardening and a deploy plan (§9). Web wiring is Suparno's (PROGRESS_LOG handoff).**
+**v3 (PROPOSED 2026-11-22): the rules change to a 1v1 race against the same base (SPEC v3). The chain
+plumbing below carries over unchanged; the rules engine, Match/Secrets layout, codec, payout and bot
+change (§4 notes the v3 sizes once `crates/sim` v3 lands). Client changes: §5.**
 
 ## 1. Decisions
 
@@ -262,10 +265,14 @@ idempotency guard), or use `add_post_undelegate_actions`. The base tx is a **v1 
   Top up and How to play. → Match → Result (payout count-up, full reveal, Verify, explorer links,
   "under the hood" tx log like the RPS app). Rematch and Verify appear ~1.5–2 s after the result lands.
   Screen changes use one short branded wipe (≤ 1.5 s).
-- **HUD (portrait):** the top ≤ 8% holds you (left), the opponent (right), and the timer + stake +
-  phase pips (centre). HP labels sit on the cannons in world space (`2.2K` style, ticking smoothly).
-  Your cannon sits at ~75–80% of screen height; the bottom ~20% is empty drag area. Prompts appear
-  just above your cannon. No per-hit numbers anywhere.
+- **HUD (portrait, v3):** the top ≤ 8% holds you (left: name, gold, stage pips), the opponent (right:
+  name, gold, stage pips or DEAD/DONE) and the timer + stake (centre). HP labels sit on the **towers**
+  in world space (`1.2K` style, ticking smoothly); crate counters on crates. Your cannon sits at
+  ~75–80% of screen height; the bottom ~20% is empty drag area. Prompts appear just above your cannon.
+  No per-hit numbers anywhere.
+- **Opponent mini-view (v3):** a small live map of the opponent's lane in a corner (2D canvas, not a
+  second WebGL scene): their stage, gates (`?`/revealed), crowd and waves as dots, towers with HP, gold.
+  During your plant it enlarges and its gates are tap targets for the rig.
 - **Render loop (M3, `LiveSource`):** raw-websocket `accountSubscribe` on Match + my Peek with the
   burner's TEE token; snapshots are played out at 20 Hz ~3 ticks behind the newest (measured on
   devnet: render gaps p50 50 / p99 51–53 ms, max 101 ms in a 2,049-tick match); events are derived
@@ -286,9 +293,9 @@ idempotency guard), or use `add_post_undelegate_actions`. The base tx is a **v1 
   gate over 0.05–0.25 s (~40/s) with a brighter tint that fades in ~0.15 s. In the clash, units die
   along the contact front over ~0.2–0.5 s with star particles, so the crowds visibly grind.
   Counts: one number per clash front + per-side totals in the HUD (no badge per cohort).
-- **Look:** portrait, **static** perspective camera showing the whole lane cannon to cannon (start at
-  pitch ~44°, FOV ~30°, a telephoto look that packs crowds into a mass). It moves only for re-deals
-  (slight pull-back) and KO (push-in). Low-poly + toon/flat shading, one palette texture, blob shadows
+- **Look:** portrait, **static** perspective camera showing the whole lane from your cannon to the base
+  (pitch ~44°, FOV ~30°, a telephoto look that packs crowds into a mass). It moves only for the stage
+  transit (drive up) and the end (push-in). Your dudes blue, the base's troops red. Low-poly + toon/flat shading, one palette texture, blob shadows
   (no shadow maps), fake glow sprites instead of bloom, bold outlined numbers (SDF text, OFL font).
   Gate text is colour-coded by side and by hint.
 - **Feel:**
