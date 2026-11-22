@@ -900,3 +900,31 @@ face-up), `endgame::finish_publishes_...` (expects a GOTCHA on the gate B fires 
 **Next / handoff:** **Kai:** `anchor build` (IDL should match the committed JSON), the magicsvm + bench feature
 builds, the full MagicSVM suite + `--test bench -- --nocapture` (confirm catch-up caps 8/2 still fit; `finish` now
 also decodes once), redeploy to devnet, re-run the privacy check (account sizes 1,792 / 168 / 56).
+
+## 2026-11-22 16:03 IST · Suparno · client + web v3 · [CONTRACT] [STAGE]
+**Did:**
+- `packages/client` ported to v3 (28 commits): constants + `LAYOUTS` mirrored from Rust (tested), `OfflineSource`
+  decodes the v3 view/events/private view into `MatchView` v3 (`types.ts`), new option **`selfBot`** (bot plays
+  my side too), `MockSource` = bot-vs-bot on the real rules (fixed seeds), codec v2 decoder (on-chain bytes ==
+  offline view at every tick of 4 matches), v3 `dealsFor` / history / `reveal()` / `payoutOf` (death or gold
+  ratio, plain-English `why`), LiveSource: Peek v3 decode (stale stage = nothing this stage), events derived from
+  state diffs (checked against the sim's own events over 7 matches), rig/peek by slot in my own phases.
+  Server bot drives the v3 `Bot`. Tests: client 21/21, server 16/16, smoke = a full v3 match headless.
+- `apps/web` on v3 (12 commits): your lane full size (base + towers with HP labels, crates with counters, gate
+  pool incl. sliding and crate-locked big gates, your dudes vs the base's troops, cannon line), opponent
+  **mini-view** (2D canvas; during your plant it enlarges and you tap a gate there to rig it), top bar with gold +
+  stage pips, stage/RAID/TOWER DOWN banners, GOTCHA, peek, result with gold and the ratio/death line. Home
+  background = bot-vs-bot. Dev params: `?screen=match&autoplay=1&seed=N`.
+- Whole-branch check: sim / sim-wasm / program tests, clippy -D warnings, fmt, MagicSVM compile, client
+  typecheck + tests + smoke, server typecheck + tests, web build: **all pass**.
+
+**Decided:** payout rounding follows the sim (the winner always gets `floor(S·(gw−gl)/(gw+gl))`, floors favour
+the loser). `MatchResult.died` is null when nobody died or both died on the same tick (lanes' phase tells them apart).
+
+**Blocked / risks:** live paths (LiveSource feed, Match/Peek decoders on real accounts, live scripts) compile but
+weren't run (no devnet here). Live event derivation approximates two cases (a merged wave shows as a count
+increase; a feed gap across a stage change loses that stage's last reveals). Web checked on PC via headless
+screenshots only; the result screen's full per-stage reveal (`reveal()`) isn't wired into the UI yet.
+
+**Next / handoff:** PR `web/arena-prototype` → `main` (rebase merge) once Kai has reviewed SPEC v3. **Kai:** the
+build/redeploy/MagicSVM/bench/privacy runs in the program entry above, then a live v3 devnet match.
