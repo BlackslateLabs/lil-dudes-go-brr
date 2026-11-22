@@ -1,14 +1,19 @@
 export * from './constants';
 export * from './types';
 export * from './source';
-export { MockSource, applyOp } from './mock';
+export { layoutDef, stageDef, gateXAt, gateMoving, crateOfGate, fightGold, applyOp, opFromByte, opFromSigned } from './layout';
+export { laneView, lanePhase, matchView, resultOf } from './view';
+export type { LaneState, EnemyState, RawResult } from './view';
+export { MockSource } from './mock';
 export type { MockOptions } from './mock';
 export { OfflineSource, initSim, simConstants, simRulesVersion } from './offline';
 export type { OfflineOptions } from './offline';
-export { decodePublic, toMatchView, phaseAt, statusOf, inPlant, playStart, opOf, PUBLIC_LEN, CODEC_VERSION } from './codec';
+export { decodePublic, toMatchView, matchResultOf, PUBLIC_LEN, CODEC_VERSION } from './codec';
 export type { PublicState, SideState, CohortState } from './codec';
-export { dealsFor, decodeHistory, revealOf, payoutOf, markSprung, BASE_EXPLORER, TEE_EXPLORER, ACCOUNT_EXPLORER } from './verify';
-export type { Deal, PhaseLog, MatchReveal, GotchaLog, PayoutInfo, TxRecord, SettlementInfo } from './verify';
+export {
+  dealsFor, decodeHistory, revealOf, payoutOf, resultFor, markSprung, trueOp, HISTORY_LEN, BASE_EXPLORER, TEE_EXPLORER, ACCOUNT_EXPLORER,
+} from './verify';
+export type { Deals, RigLog, PeekLog, StageLog, GotchaLog, MatchReveal, PayoutInfo, PayoutOptions, TxRecord, SettlementInfo } from './verify';
 export { LiveSource } from './live/source';
 export type { LiveOptions, LiveStage } from './live/source';
 export * as chain from './live/chain';
