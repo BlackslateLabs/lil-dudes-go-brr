@@ -58,7 +58,7 @@ pub const HISTORY_LEN: usize = lil_dudes_sim::codec::HISTORY_LEN;
 /// Secrets/Peek depends on it (a match on a public ER would expose everything).
 pub const TEE_VALIDATOR: Pubkey = pubkey!("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
 
-/// Fees (SPEC §7, 5% of the money moved) go here: the deploy wallet on devnet.
+/// Fees (SPEC §8, 5% of the money moved) go here: the deploy wallet on devnet.
 #[cfg(not(feature = "magicsvm"))]
 pub const TREASURY: Pubkey = pubkey!("FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB");
 /// Test build (feature "magicsvm"): a fixed address the tests fund.
