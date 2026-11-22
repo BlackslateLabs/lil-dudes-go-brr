@@ -18,6 +18,7 @@ import {
   initSim,
   LiveSource,
   waitForStatus,
+  type MatchSource,
 } from '@lil-dudes/client';
 import { Bot } from '@lil-dudes/sim-wasm';
 import { Keypair, type Connection } from '@solana/web3.js';
@@ -86,14 +87,8 @@ export function onlineBot(opts: BotOptions): BotService {
       src = await LiveSource.connect({ matchId: id, burner: wallet, baseRpc: opts.baseRpc });
       const live = src;
       const brain = new Bot(0, BigInt(Date.now()) ^ id);
-      // Rules v3: decide(public bytes) -> [aim, rig slot, peek slot] (-1 = none); LiveSource only
-      // sends a rig in our own plant and a peek in our own fight / raid.
       live.subscribe((view) => {
-        if (view.status !== 'playing') return;
-        const [aim, rig, peek] = brain.decide(live.latestBytes);
-        if (aim! >= 0) live.setAim(aim!);
-        if (rig! >= 0) live.rig(rig!);
-        if (peek! >= 0) live.peek(peek!);
+        if (view.status === 'playing') botTurn(brain, live.latestBytes, live);
       });
       live.start();
       // Closing is left to the sweeper (10 min later): the human's result screen still reads it.
@@ -119,6 +114,23 @@ export function onlineBot(opts: BotOptions): BotService {
       void run(id, opponent);
     },
   };
+}
+
+/** The inputs a match source takes from the bot. */
+export type BotInputs = Pick<MatchSource, 'setAim' | 'rig' | 'peek'>;
+
+/**
+ * One decision of the Warlord on the newest public state (codec bytes), applied to `src`.
+ * Rules v4: decide → [aim, rig slot, peek slot] (-1 = none). The Bot picks its own rig timing
+ * (1-3 s into each of its fights, a face-down gate of its own stage, trapping the opponent's
+ * copy); LiveSource sends a rig only when canRig says the sim would take it, and a peek only in
+ * our own fight / raid.
+ */
+export function botTurn(brain: Pick<Bot, 'decide'>, publicBytes: Uint8Array, src: BotInputs): void {
+  const [aim = -1, rig = -1, peek = -1] = brain.decide(publicBytes);
+  if (aim >= 0) src.setAim(aim);
+  if (rig >= 0) src.rig(rig);
+  if (peek >= 0) src.peek(peek);
 }
 
 /** Resolves with the full reveal once the match finished and settled (or null on timeout). */
