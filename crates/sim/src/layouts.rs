@@ -218,12 +218,12 @@ const ROWS4: [i16; 4] = [1_400, 2_300, 3_200, 4_100];
 /// wave_base). Tuned per layout with `cargo run -p lil-dudes-sim --example balance --release`
 /// so every layout plays about as long and as dangerously as the others.
 const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
-    (370, 38, 200, 13),
-    (120, 28, 120, 13),
-    (190, 27, 290, 15),
-    (70, 20, 250, 25),
-    (140, 17, 150, 6),
-    (190, 13, 90, 7),
+    (370, 40, 200, 11),
+    (120, 30, 120, 12),
+    (190, 45, 290, 38),
+    (70, 17, 250, 24),
+    (140, 19, 150, 7),
+    (190, 52, 90, 26),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
