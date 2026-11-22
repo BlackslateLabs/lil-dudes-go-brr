@@ -14,9 +14,11 @@ pub enum GameError {
     WrongAccount,
     #[msg("too early to cancel or abort")]
     TooEarly,
-    #[msg("the rig was refused (not the plant window, used, gold, revealed or a bad cell)")]
+    #[msg("the rig was refused (not your plant, used this stage, revealed, already rigged or a bad slot)")]
     RigRefused,
-    #[msg("the peek was refused (not during play, used, revealed or a bad cell)")]
+    #[msg(
+        "the peek was refused (not your fight or raid, used this stage, revealed or a bad slot)"
+    )]
     PeekRefused,
     #[msg("the match has no result yet")]
     NotOver,

@@ -1,4 +1,5 @@
-//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4).
+//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4), rules v3 (docs/SPEC.md: both
+//! players race identical copies of one level; rig and peek name a gate slot).
 //!
 //! Base layer: `create_match` → `join_match` → `delegate_match` (Match, Secrets, Peek×2 → the
 //! TEE); `cancel_match` refunds a match that never got there.
@@ -103,10 +104,12 @@ pub mod lil_dudes {
         tee::handle_set_aim(ctx, x)
     }
 
+    // `cell` is a gate slot since rules v3 (name kept so the IDL does not change).
     pub fn plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
         tee::handle_plant_rig(ctx, cell)
     }
 
+    // `cell` is a gate slot since rules v3 (name kept so the IDL does not change).
     pub fn peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
         tee::handle_peek_cell(ctx, cell)
     }
