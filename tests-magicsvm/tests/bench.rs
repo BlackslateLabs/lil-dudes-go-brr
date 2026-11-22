@@ -1,8 +1,10 @@
-//! Compute bench (TECH §4): the new codec (crates/sim) + bucketed clash vs M2's spike build, on
-//! the same worst-case states, in MagicSVM. Needs the bench build of the program:
+//! Compute bench (TECH §4): the v3 codec (crates/sim) and the v3 tick on heavy states, in
+//! MagicSVM. Needs the bench build of the program:
 //!   cargo build-sbf --tools-version v1.52 --manifest-path programs/lil_dudes/Cargo.toml \
 //!     --features bench --sbf-out-dir target/bench
 //! Run: cargo +stable test --manifest-path tests-magicsvm/Cargo.toml --test bench -- --nocapture
+//! (Rules v3 replaced the whole state, so the M2 spike build can no longer run the same states;
+//! TECH §4 keeps its old numbers for reference.)
 
 mod common;
 
@@ -17,8 +19,7 @@ use solana_instruction::{account_meta::AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 
-const NEW_ID: Address = Address::from_str_const("4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa");
-const OLD_ID: Address = Address::from_str_const("7BE2WwiCdz8SHMagZ3YSGWrhJhYwh3HZ9MQSWT277HGM");
+const PROGRAM_ID: Address = Address::from_str_const("4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa");
 const COMPUTE_BUDGET: Address =
     Address::from_str_const("ComputeBudget111111111111111111111111111111");
 
@@ -32,9 +33,10 @@ fn cu_limit(units: u32) -> Instruction {
     }
 }
 
-/// M2's bench state (spike codec.rs `worst_case`): 40 v 40, every pair crossed in y, far apart
-/// in x (nobody dies), cruising past the gates.
-fn m2_worst(seed: u64, x0: i16, x1: i16) -> MatchState {
+/// Both lanes full: COHORT_CAP cohorts of 40 past the gates (homing) and ENEMY_CAP enemy cohorts
+/// of 40, interleaved in y (every pair crossed or about to), `dx` apart in x. With dx just over
+/// CLASH_REACH nobody clashes on the first tick but every pair is checked; small dx clashes.
+fn crowded(seed: u64, dx: i16) -> MatchState {
     let mut m = MatchState::new(
         seed,
         MatchOptions {
@@ -43,32 +45,46 @@ fn m2_worst(seed: u64, x0: i16, x1: i16) -> MatchState {
             tutorial: false,
         },
     );
-    m.public.tick = 100;
-    m.secret.deal = Deal::new(seed, 0);
+    m.public.tick = 400;
+    let rows = layouts::stage(m.public.layout, 0).rows.len() as u8;
     let mut id = 1u32;
-    for (s, side) in m.public.sides.iter_mut().enumerate() {
-        let x = if s == 0 { x0 } else { x1 };
+    for side in m.public.sides.iter_mut() {
+        side.phase = Phase::Fight;
+        side.phase_ticks = 300;
+        side.cannon_x = 1_000;
+        side.aim = 1_000;
+        // Oldest (front-most, highest y) first.
         for (i, c) in side.cohorts.iter_mut().enumerate() {
             *c = Cohort {
                 id,
                 count: 40,
-                x,
-                y: 6_390 - (i as i16) * 10,
+                x: 1_000,
+                y: 6_800 - (i as i16) * 20,
                 age: 50,
-                last_row: 3,
+                last_row: rows,
             };
             id += 1;
         }
         side.cohort_len = COHORT_CAP as u8;
-        side.cannon_x = x;
-        side.aim = x;
+        // Oldest (furthest down, lowest y) first.
+        for (j, e) in side.enemies.iter_mut().enumerate() {
+            *e = Enemy {
+                id,
+                count: 40,
+                x: 1_000 + dx,
+                y: 5_800 + (j as i16) * 60,
+                tower: 0,
+            };
+            id += 1;
+        }
+        side.enemy_len = ENEMY_CAP as u8;
     }
     m.public.next_cohort_id = id;
     m
 }
 
-/// The busiest tick (most live cohorts) of a real bot-vs-bot match, in Surge.
-fn surge_peak(seed: u64) -> MatchState {
+/// The busiest tick (most live cohorts + enemy cohorts) of a real bot-vs-bot match.
+fn busiest(seed: u64) -> MatchState {
     let mut m = MatchState::new(seed, MatchOptions::default());
     let mut bots = [
         Warlord::new(0, mix64(seed ^ 1)),
@@ -80,7 +96,12 @@ fn surge_peak(seed: u64) -> MatchState {
             sides: [bots[0].decide(&m.public), bots[1].decide(&m.public)],
         };
         step(&mut m, &inputs, &mut NoEvents);
-        let live: usize = m.public.sides.iter().map(|s| s.cohort_len as usize).sum();
+        let live: usize = m
+            .public
+            .sides
+            .iter()
+            .map(|s| usize::from(s.cohort_len) + usize::from(s.enemy_len))
+            .sum();
         if live > best.0 {
             best = (live, m);
         }
@@ -88,7 +109,7 @@ fn surge_peak(seed: u64) -> MatchState {
     best.1
 }
 
-fn new_bytes(m: &MatchState) -> Vec<u8> {
+fn bench_bytes(m: &MatchState) -> Vec<u8> {
     let mut p = [0u8; PUBLIC_LEN];
     let mut s = [0u8; SECRET_LEN];
     encode_public(&m.public, &mut p);
@@ -96,133 +117,48 @@ fn new_bytes(m: &MatchState) -> Vec<u8> {
     [p.as_slice(), s.as_slice()].concat()
 }
 
-/// M2's spike layout (spike codec.rs, 1,307 B) inside its zero-copy `Bench { id, state[1312] }`.
-fn old_bytes(m: &MatchState, id: u64) -> Vec<u8> {
-    let mut w: Vec<u8> = Vec::new();
-    let p = &m.public;
-    w.extend(p.tick.to_le_bytes());
-    w.extend(p.options.stake.to_le_bytes());
-    w.extend([
-        u8::from(p.options.bot[0]),
-        u8::from(p.options.bot[1]),
-        u8::from(p.options.tutorial),
-    ]);
-    w.extend(p.next_cohort_id.to_le_bytes());
-    match p.result {
-        None => {
-            w.extend([0, 2, 0]);
-            w.extend([0u8; 16]);
-        }
-        Some(r) => {
-            w.extend([1, r.winner.unwrap_or(2), u8::from(r.ko)]);
-            w.extend(r.moved.to_le_bytes());
-            w.extend(r.fee.to_le_bytes());
-        }
-    }
-    for s in &p.sides {
-        w.extend(s.hp.to_le_bytes());
-        w.extend(s.cannon_x.to_le_bytes());
-        w.extend(s.aim.to_le_bytes());
-        w.extend([s.cohort_len, u8::from(s.rig_used), u8::from(s.peek_used)]);
-        for g in &s.gates {
-            w.extend([g.hint.code(), u8::from(g.gold)]);
-            match g.revealed {
-                None => w.extend([255, 0]),
-                Some(op) => {
-                    let (k, v) = op.code();
-                    w.extend([k, v]);
-                }
-            }
-        }
-        for c in &s.cohorts {
-            w.extend(c.id.to_le_bytes());
-            w.extend(c.count.to_le_bytes());
-            w.extend(c.x.to_le_bytes());
-            w.extend(c.y.to_le_bytes());
-            w.extend([c.age, c.last_row]);
-        }
-    }
-    let x = &m.secret;
-    w.extend(x.seed.to_le_bytes());
-    for op in x.deal.ops {
-        let (k, v) = op.code();
-        w.extend([k, v]);
-    }
-    w.push(x.deal.gold_cell);
-    w.extend(x.deal.hints.iter().flatten().map(|h| h.code()));
-    w.extend(x.rigs.iter().map(|r| r.unwrap_or(255)));
-    for pk in &x.peeks {
-        match pk {
-            None => w.extend([255, 0, 0, 0]),
-            Some(pk) => {
-                let (k, v) = pk.op.code();
-                w.extend([pk.cell, k, v, u8::from(pk.gold)]);
-            }
-        }
-    }
-    assert_eq!(w.len(), 1_307);
-    w.resize(1_312, 0);
-    let mut out = account_disc("Bench").to_vec();
-    out.extend(id.to_le_bytes());
-    out.extend(w);
-    out
-}
-
 struct Bench {
     svm: MagicSVM,
     payer: Keypair,
-    new_acc: Address,
-    old_acc: Address,
-    old_id: u64,
+    acc: Address,
 }
 
 impl Bench {
     fn new() -> Self {
         let mut svm = MagicSVM::new();
-        let root = repo();
-        svm.add_program_from_file(NEW_ID, root.join("target/bench/lil_dudes.so"))
+        svm.add_program_from_file(PROGRAM_ID, repo().join("target/bench/lil_dudes.so"))
             .expect("build the bench program first (see the header of this file)");
-        svm.add_program_from_file(OLD_ID, root.join("spikes/stage0/target/deploy/stage0.so"))
-            .expect("M2 spike build (spikes/stage0/target/deploy/stage0.so)");
         let payer = Keypair::new();
         svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
-        let old_id = 7u64;
-        let old_acc = Address::find_program_address(&[b"bench", &old_id.to_le_bytes()], &OLD_ID).0;
         Self {
             svm,
             payer,
-            new_acc: Address::new_unique(),
-            old_acc,
-            old_id,
+            acc: Address::new_unique(),
         }
     }
 
-    fn set(&mut self, key: Address, owner: Address, data: Vec<u8>) {
+    /// CU phases: [zeroed, decode public, decode secret, n ticks, encode public, encode
+    /// secret]; None if the tx failed (over budget).
+    fn run(&mut self, m: &MatchState, n: u16, bot: bool) -> Option<Vec<u64>> {
         self.svm
             .set_account(
-                key,
+                self.acc,
                 Account {
                     lamports: 1_000_000_000,
-                    data,
-                    owner,
+                    data: bench_bytes(m),
+                    owner: PROGRAM_ID,
                     executable: false,
                     rent_epoch: 0,
                 },
             )
             .unwrap();
-    }
-
-    /// CU phases of the new build: [zeroed, decode public, decode secret, n ticks, encode
-    /// public, encode secret]; None if the tx failed (over budget).
-    fn run_new(&mut self, m: &MatchState, n: u16, bot: bool) -> Option<Vec<u64>> {
-        self.set(self.new_acc, NEW_ID, new_bytes(m));
         let mut args = n.to_le_bytes().to_vec();
         args.push(u8::from(bot));
         let bench = ix(
-            NEW_ID,
+            PROGRAM_ID,
             "bench",
             &args,
-            vec![AccountMeta::new(self.new_acc, false)],
+            vec![AccountMeta::new(self.acc, false)],
         );
         self.svm.expire_blockhash_for(TransactionTarget::Base);
         let payer = self.payer.insecure_clone();
@@ -234,35 +170,10 @@ impl Bench {
         ) {
             Ok(logs) => Some(cu_phases(&logs)),
             Err((e, logs)) => {
-                println!("new n={n} failed: {e}\n{}", logs.join("\n"));
+                println!("n={n} failed: {e}\n{}", logs.join("\n"));
                 None
             }
         }
-    }
-
-    /// CU phases of the M2 spike build: [decode, n ticks, encode].
-    fn run_old(&mut self, m: &MatchState, n: u16, bot: bool) -> Option<Vec<u64>> {
-        let data = old_bytes(m, self.old_id);
-        self.set(self.old_acc, OLD_ID, data);
-        let mut args = self.old_id.to_le_bytes().to_vec();
-        args.extend(n.to_le_bytes());
-        args.push(u8::from(bot));
-        let bench = ix(
-            OLD_ID,
-            "bench",
-            &args,
-            vec![AccountMeta::new(self.old_acc, false)],
-        );
-        self.svm.expire_blockhash_for(TransactionTarget::Base);
-        let payer = self.payer.insecure_clone();
-        send(
-            &mut self.svm,
-            TransactionTarget::Base,
-            &[cu_limit(1_400_000), bench],
-            &[&payer],
-        )
-        .ok()
-        .map(|logs| cu_phases(&logs))
     }
 }
 
@@ -276,46 +187,39 @@ fn codec_and_tick_compute() {
     let mut b = Bench::new();
     let states = [
         (
-            "M2 worst (40v40 crossed, x far apart)",
-            m2_worst(7, 150, 2_850),
+            "full lanes, crossed, dx 450 (checked, no clash yet)",
+            crowded(7, 450),
         ),
-        (
-            "near miss (40v40 crossed, dx 700)",
-            m2_worst(7, 1_000, 1_700),
-        ),
-        ("surge peak of a bot match", surge_peak(11)),
+        ("full lanes, crossed, dx 200 (clashing)", crowded(7, 200)),
+        ("busiest tick of a bot match", busiest(11)),
     ];
     println!();
     for (name, m) in &states {
-        let live = [m.public.sides[0].cohort_len, m.public.sides[1].cohort_len];
-        let new1 = b.run_new(m, 1, true).expect("new n=1");
-        let new0 = b.run_new(m, 0, true).expect("new n=0");
-        let new5 = b.run_new(m, 5, true).expect("new n=5");
-        let new5_nobot = b.run_new(m, 5, false).expect("new n=5 no bot");
-        let old1 = b.run_old(m, 1, true).expect("old n=1");
-        let old5 = b.run_old(m, 5, true);
-        let codec_new = new0[1] + new0[2] + new0[4] + new0[5] + new0[0];
-        let codec_old = old1[0] + old1[2];
-        let tick_new = new5[3] / 5;
-        let tick_old = old5.as_ref().map_or(old1[1], |o| o[1] / 5);
-        println!("{name}: live {live:?}");
+        let live: Vec<[u8; 2]> = m
+            .public
+            .sides
+            .iter()
+            .map(|s| [s.cohort_len, s.enemy_len])
+            .collect();
+        let zero = b.run(m, 0, true).expect("n=0");
+        let five = b.run(m, 5, true).expect("n=5");
+        let five_nobot = b.run(m, 5, false).expect("n=5 no bot");
+        let codec = zero[0] + zero[1] + zero[2] + zero[4] + zero[5];
+        let tick = five[3] / 5;
+        println!("{name}: [cohorts, enemies] per side {live:?}");
         println!(
-            "  codec  new {codec_new:>6} CU (zeroed {} + dec pub {} + dec sec {} + enc pub {} + enc sec {})   M2 {codec_old:>6} CU (dec {} + enc {})",
-            new0[0], new0[1], new0[2], new0[4], new0[5], old1[0], old1[2]
+            "  codec {codec:>6} CU (zeroed {} + dec pub {} + dec sec {} + enc pub {} + enc sec {})",
+            zero[0], zero[1], zero[2], zero[4], zero[5]
         );
         println!(
-            "  tick   new {tick_new:>6} CU/tick (bots on), {:>6} (no bots)              M2 {tick_old:>6} CU/tick (bots on)",
-            new5_nobot[3] / 5
+            "  tick  {tick:>6} CU/tick (bots on), {:>6} (no bots)",
+            five_nobot[3] / 5
         );
         println!(
-            "  ticks per tx (fixed ≈ codec + 6k Anchor): 200k → {} (M2 {}), 400k → {} (M2 {}), 1.4M → {} (M2 {})",
-            ticks_in(200_000, codec_new + 6_000, tick_new),
-            ticks_in(200_000, codec_old + 6_000, tick_old),
-            ticks_in(400_000, codec_new + 6_000, tick_new),
-            ticks_in(400_000, codec_old + 6_000, tick_old),
-            ticks_in(1_400_000, codec_new + 6_000, tick_new),
-            ticks_in(1_400_000, codec_old + 6_000, tick_old),
+            "  ticks per tx (fixed ≈ codec + 6k Anchor): 200k → {}, 400k → {}, 1.4M → {}",
+            ticks_in(200_000, codec + 6_000, tick),
+            ticks_in(400_000, codec + 6_000, tick),
+            ticks_in(1_400_000, codec + 6_000, tick),
         );
-        let _ = new1;
     }
 }
