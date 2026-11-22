@@ -4,6 +4,7 @@
 //! gate 4 (row 2); Fight 2 locks its big gate 2 (x 1,500) behind a crate at y 2,100.
 
 use super::*;
+use crate::constants::GATE_GRACE;
 use crate::deal::RIG_OP;
 use crate::events::Events;
 use crate::layouts::LAYOUTS;
@@ -599,6 +600,37 @@ fn first_pass_reveals_and_every_pass_applies() {
         after: v.apply(2),
         reveal: false
     }));
+}
+
+#[test]
+fn gate_and_crate_edges_count() {
+    // SPEC §6: |x − gate x| · 2 ≤ width + 2 · GATE_GRACE goes through; one unit further misses.
+    // Crates use the same grace.
+    let mut m = fight(0);
+    let def = LAYOUTS[0].stages[0].gates[0];
+    let edge = def.x + (i32::from(def.width) / 2 + GATE_GRACE) as i16;
+    place(&mut m, 0, cohort(900, 3, edge, 1_330, 0));
+    place(&mut m, 0, cohort(901, 3, edge + 1, 1_330, 0));
+    let ev = idle(&mut m);
+    let passed: Vec<u32> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Gate { cohort_id, .. } => Some(*cohort_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(passed, vec![900]);
+    let mut m = new_match(0);
+    enter(&mut m, 0, 1, Phase::Fight);
+    sturdy(&mut m);
+    let lock = LAYOUTS[0].stages[1].crates[0];
+    let edge = lock.x - (i32::from(lock.width) / 2 + GATE_GRACE) as i16;
+    place(&mut m, 0, cohort(902, 4, edge, lock.y - 10, 1));
+    place(&mut m, 0, cohort(903, 4, edge - 1, lock.y - 10, 1));
+    idle(&mut m);
+    assert!(find(&m, 0, 902).is_none());
+    assert_eq!(find(&m, 0, 903).unwrap().count, 4);
+    assert_eq!(m.public.sides[0].crates[0], lock.hp - 4);
 }
 
 #[test]

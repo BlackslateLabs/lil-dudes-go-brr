@@ -8,7 +8,7 @@
 use crate::constants::{
     CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, VOLLEY_SIZE,
 };
-use crate::layouts::{Slot, StageDef};
+use crate::layouts::{covers, Slot, StageDef};
 use crate::rng::SplitMix64;
 use crate::state::{other, PublicSide, PublicState, SideInput};
 use crate::types::{GateOp, Phase};
@@ -171,7 +171,7 @@ pub fn travel_ticks(y: i32) -> u32 {
 
 /// SPEC §10.2: the expected size (in thousandths of a dude) of a volley fired now at `x` once
 /// it has passed every row: revealed values, else the slot's guess; moving gates predicted at
-/// arrival. An unbroken crate in the way absorbs its HP first, so a locked gate only pays once
+/// arrival, edges counted as in the rules (`covers`, nearest centre). An unbroken crate in the way absorbs its HP first, so a locked gate only pays once
 /// its crate is broken.
 pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
     let now = if me.phase.active() {
@@ -179,25 +179,22 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
     } else {
         0
     };
-    let covers = |centre: i16, width: i16| {
-        x.abs_diff(i32::from(centre)).saturating_mul(2) <= u32::from(width.unsigned_abs())
-    };
     let mut score: u64 = u64::from(VOLLEY_SIZE).saturating_mul(1_000);
     let mut below = i32::MIN;
     for (row, &row_y) in (0u8..).zip(st.rows) {
         let row_y = i32::from(row_y);
         for (c, &hp) in st.crates.iter().zip(me.crates.iter()) {
             let cy = i32::from(c.y);
-            if hp > 0 && below < cy && cy < row_y && covers(c.x, c.width) {
+            if hp > 0 && below < cy && cy < row_y && covers(x, i32::from(c.x), c.width) {
                 score = score.saturating_sub(u64::from(hp).saturating_mul(1_000));
             }
         }
         below = row_y;
         let at = now.saturating_add(travel_ticks(row_y));
-        let hit = (0usize..)
-            .zip(st.gates.iter())
-            .find(|(_, g)| g.row == row && covers(g.x_at(at), g.width));
-        let Some((slot, def)) = hit else {
+        let hit = st.gate_at(row, x, |_, g| i32::from(g.x_at(at)));
+        let Some((slot, def)) =
+            hit.and_then(|s| Some((usize::from(s), st.gates.get(usize::from(s))?)))
+        else {
             continue;
         };
         score = match me.gates.get(slot).and_then(|g| g.revealed) {

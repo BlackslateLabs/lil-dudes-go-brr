@@ -9,7 +9,7 @@
 //! layout, the towers of a fight in different columns. `tests::layouts_follow_the_design_rules`
 //! checks all of it, plus the limits the rules rely on.
 
-use crate::constants::{LAYOUT_COUNT, STAGES};
+use crate::constants::{GATE_GRACE, LAYOUT_COUNT, STAGES};
 
 /// What a gate slot can hold (SPEC §6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub struct GateDef {
     pub row: u8,
     /// Centre x at the start of the phase.
     pub x: i16,
-    /// Full width; a cohort passes the gate if `|cohort.x − gate.x| · 2 ≤ width`.
+    /// Full width; a cohort passes the gate if `covers(cohort.x, gate.x, width)`.
     pub width: i16,
     pub slot: Slot,
     /// SPEC §6 moving gates: the centre slides between `x_min` and `x_max` (ping-pong) by
@@ -94,6 +94,33 @@ pub struct StageDef {
     /// Gate slots, sorted by row then x.
     pub gates: &'static [GateDef],
     pub crates: &'static [CrateDef],
+}
+
+impl StageDef {
+    /// SPEC §6: the gate of `row` a cohort at `x` goes through, where `gate_x(slot, def)` is
+    /// that gate's centre right now. Of the gates that cover `x` (edges count, see `covers`),
+    /// the nearest centre wins, the lower slot on ties. `None` in a gap.
+    pub fn gate_at(&self, row: u8, x: i32, gate_x: impl Fn(usize, &GateDef) -> i32) -> Option<u8> {
+        let mut best: Option<(u32, u8)> = None;
+        for (slot, def) in (0u8..).zip(self.gates) {
+            if def.row != row {
+                continue;
+            }
+            let centre = gate_x(usize::from(slot), def);
+            let d = x.abs_diff(centre);
+            if covers(x, centre, def.width) && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, slot));
+            }
+        }
+        best.map(|(_, slot)| slot)
+    }
+}
+
+/// SPEC §6: `x` is inside a gate (or crate) of `width` centred on `centre`, edges included:
+/// `|x − centre| · 2 ≤ width + 2 · GATE_GRACE`.
+pub fn covers(x: i32, centre: i32, width: i16) -> bool {
+    let reach = i32::from(width).saturating_add(GATE_GRACE.saturating_mul(2));
+    x.abs_diff(centre).saturating_mul(2) <= reach.unsigned_abs()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -548,6 +575,35 @@ mod tests {
             assert!(sliding >= 1, "layout {id}: no sliding gate");
             assert!(locked >= 1, "layout {id}: no crate-locked big gate");
         }
+    }
+
+    #[test]
+    fn overlapping_gates_go_to_the_nearest_centre() {
+        // SPEC §6: edges count (GATE_GRACE); where two gates cover x the nearest centre wins,
+        // the lower slot on ties. Spans with the grace: 600..=1,400 and 1,300..=2,100.
+        const GATES: [GateDef; 2] = [gate(0, 1_000), gate(0, 1_700)];
+        let st = StageDef {
+            towers: &[],
+            rows: &[1_400],
+            gates: &GATES,
+            crates: &[],
+        };
+        let at = |x| st.gate_at(0, x, |_, g| i32::from(g.x));
+        assert_eq!(GATE_GRACE, 100);
+        assert_eq!(at(599), None);
+        assert_eq!(at(600), Some(0));
+        assert_eq!(at(1_340), Some(0));
+        assert_eq!(at(1_350), Some(0));
+        assert_eq!(at(1_360), Some(1));
+        assert_eq!(at(2_100), Some(1));
+        assert_eq!(at(2_101), None);
+        assert_eq!(st.gate_at(1, 1_000, |_, g| i32::from(g.x)), None);
+        // The centre can come from elsewhere (a sliding gate's x right now).
+        assert_eq!(
+            st.gate_at(0, 2_400, |slot, g| i32::from(g.x) + 500 * slot as i32),
+            Some(1)
+        );
+        assert!(covers(1_000, 700, 400) && !covers(1_001, 700, 400));
     }
 
     #[test]
