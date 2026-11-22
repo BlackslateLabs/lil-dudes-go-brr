@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Group, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import type { MatchFeed } from '../match/feed';
 import { Base } from './Base';
+import { Cannon } from './Cannon';
 import { Crowds } from './Crowds';
 import { Fx } from './Fx';
 import { Gates } from './Gates';
-import { CAM_FOV, CAM_POS, CAM_TARGET, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, wx, wz } from './layout';
+import { Scenery } from './Scenery';
+import { CAM_FOV, CAM_POS, CAM_TARGET, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, wz } from './layout';
 
 interface ArenaProps {
   feed: MatchFeed;
@@ -32,6 +33,7 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
 
       <Predictor feed={feed} />
       <Ground />
+      <Scenery />
       <Base feed={feed} />
       <Gates feed={feed} interactive={interactive} />
       <Cannon feed={feed} />
@@ -73,41 +75,6 @@ function Ground() {
         <planeGeometry args={[LANE_W, 1.2]} />
         <meshBasicMaterial color={PALETTE.base} transparent opacity={0.25} />
       </mesh>
-    </group>
-  );
-}
-
-function Cannon({ feed }: { feed: MatchFeed }) {
-  const ref = useRef<Group>(null!);
-  const barrel = useRef<Group>(null!);
-  const kick = useRef(0);
-
-  useEffect(
-    () =>
-      feed.onEvent((e) => {
-        if (e.type === 'volley' && e.side === feed.mySide) kick.current = 1;
-      }),
-    [feed],
-  );
-
-  useFrame((_, dt) => {
-    ref.current.position.x = wx(feed.myCannon);
-    kick.current = Math.max(0, kick.current - dt * 6);
-    barrel.current.position.z = kick.current * 0.35;
-  });
-
-  return (
-    <group ref={ref} position={[0, 0, wz(0) + 1.2]}>
-      <mesh position-y={0.9}>
-        <boxGeometry args={[3.4, 1.8, 2.8]} />
-        <meshLambertMaterial color={PALETTE.me} />
-      </mesh>
-      <group ref={barrel}>
-        <mesh position={[0, 2.2, -0.9]} rotation-x={-(Math.PI / 2 - 0.35)}>
-          <cylinderGeometry args={[0.65, 0.85, 2.8, 18]} />
-          <meshLambertMaterial color="#2b2b3a" />
-        </mesh>
-      </group>
     </group>
   );
 }
