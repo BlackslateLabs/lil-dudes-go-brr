@@ -12,6 +12,8 @@ export interface HudState {
   phase: [LanePhase, LanePhase];
   /** Ticks since my current phase started (plant countdown). */
   myPhaseTick: number;
+  /** Ticks since my town hall raid started (0 before it). */
+  raidTicks: number;
   rigUsed: boolean;
   peekUsed: boolean;
   /** Peek mode: the next tap on one of your `?` gates peeks it. */
@@ -35,6 +37,7 @@ export const HUD_RESET: Omit<HudState, 'set'> = {
   stage: [0, 0],
   phase: ['plant', 'plant'],
   myPhaseTick: 0,
+  raidTicks: 0,
   rigUsed: false,
   peekUsed: false,
   peeking: false,

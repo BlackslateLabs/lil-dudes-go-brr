@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group, Mesh, MeshLambertMaterial, Sprite } from 'three';
-import { STAGES, VAULT_Y } from '@lil-dudes/client';
+import { FINAL_STAGE, VAULT_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
@@ -61,7 +61,7 @@ function TownHall({ feed }: { feed: MatchFeed }) {
 
   useFrame(({ clock }, dt) => {
     const lane = feed.me;
-    const last = !!lane && lane.stage === STAGES - 1 && lane.phase !== 'transit';
+    const last = !!lane && lane.stage === FINAL_STAGE && lane.phase !== 'transit';
     root.current.visible = last;
     if (!lane || !last) {
       shown.current = 0;
@@ -108,11 +108,13 @@ function TownHall({ feed }: { feed: MatchFeed }) {
             <meshLambertMaterial color={PALETTE.baseTrim} />
           </mesh>
         ))}
-        {/* Roof */}
-        <mesh position-y={6.6} rotation-y={Math.PI / 4} scale={[HALL_W * 0.75, 1, HALL_D * 0.95]}>
-          <coneGeometry args={[0.75, 2.8, 4]} />
-          <meshLambertMaterial color={PALETTE.base} />
-        </mesh>
+        {/* Gable roof: two slabs meeting along the ridge. */}
+        {[-1, 1].map((s) => (
+          <mesh key={s} position={[0, 6.15, s * HALL_D * 0.27]} rotation-x={s * 0.62}>
+            <boxGeometry args={[HALL_W + 0.8, 0.35, HALL_D * 0.68]} />
+            <meshLambertMaterial color={PALETTE.base} />
+          </mesh>
+        ))}
         {/* Door: the vault glow during the finale */}
         <mesh ref={door} position={[0, 1.7, HALL_D / 2 + 0.02]}>
           <planeGeometry args={[2.4, 3.2]} />

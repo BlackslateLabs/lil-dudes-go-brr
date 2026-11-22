@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent } from 'react';
-import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
+import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, RAID_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
@@ -22,7 +22,10 @@ export function Match() {
     const raw = params.get('seed');
     const seed = raw && /^\d+$/.test(raw) ? BigInt(raw) : undefined;
     const selfBot = params.get('autoplay') === '1';
-    return new OfflineSource(seed === undefined ? { myName: 'You', selfBot } : { myName: 'You', selfBot, seed });
+    // `?speed=4` plays the match faster (testing, screenshots). Clamped to 1–16.
+    const speedRaw = Number(params.get('speed'));
+    const speed = Number.isFinite(speedRaw) && speedRaw >= 1 ? Math.min(16, speedRaw) : 1;
+    return new OfflineSource(seed === undefined ? { myName: 'You', selfBot, speed } : { myName: 'You', selfBot, speed, seed });
   });
   useMatchHud(feed);
 
@@ -100,7 +103,7 @@ function TopBar() {
 
 /** One-line prompts just above your cannon (TECH §5). */
 function Prompts() {
-  const { phase, myPhaseTick, peeking, rigging, names, stage } = useHud();
+  const { phase, myPhaseTick, raidTicks, peeking, rigging, names, stage } = useHud();
   let text: string | null = null;
   if (rigging) {
     text = `Tap a red gate: it becomes a trap on ${names[1]}'s side`;
@@ -110,7 +113,8 @@ function Prompts() {
     const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
     text = `${STAGE_LABELS[stage[0]]}: fire in ${secs}…`;
   } else if (phase[0] === 'raid') {
-    text = 'Into the town hall!';
+    const secs = Math.ceil((RAID_TICKS - raidTicks) / TICKS_PER_SEC);
+    text = secs > 0 ? `Into the town hall! · ${secs}` : 'Into the town hall!';
   } else if (phase[0] === 'transit') {
     text = 'Stage cleared!';
   } else if (phase[0] === 'done') {

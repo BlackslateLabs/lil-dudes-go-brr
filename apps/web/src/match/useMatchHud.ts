@@ -32,6 +32,7 @@ export function useMatchHud(feed: MatchFeed) {
         stage: [a.stage, b.stage],
         phase: [a.phase, b.phase],
         myPhaseTick: a.phaseTick,
+        raidTicks: a.raidTicks,
         rigUsed: a.rigUsed,
         peekUsed: a.peekUsed,
       });
