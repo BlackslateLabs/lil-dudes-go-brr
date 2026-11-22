@@ -86,8 +86,10 @@ export function onlineBot(opts: BotOptions): BotService {
       src = await LiveSource.connect({ matchId: id, burner: wallet, baseRpc: opts.baseRpc });
       const live = src;
       const brain = new Bot(0, BigInt(Date.now()) ^ id);
+      // Rules v3: decide(public bytes) -> [aim, rig slot, peek slot] (-1 = none); LiveSource only
+      // sends a rig in our own plant and a peek in our own fight / raid.
       live.subscribe((view) => {
-        if (view.status !== 'plant' && view.status !== 'playing') return;
+        if (view.status !== 'playing') return;
         const [aim, rig, peek] = brain.decide(live.latestBytes);
         if (aim! >= 0) live.setAim(aim!);
         if (rig! >= 0) live.rig(rig!);
