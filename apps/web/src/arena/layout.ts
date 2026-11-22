@@ -1,14 +1,15 @@
-// Maps sim coordinates (packages/client constants) to world space, plus look constants.
+// Maps lane coordinates (packages/client constants) to world space, plus look constants.
 //
-// Sim: x is absolute across the lane as seen from side 0 (0..LANE_WIDTH); y is measured from each
-// cohort's own cannon (0..LANE_LENGTH). The viewer's side (mySide) is always drawn at the bottom
-// (+Z, near the camera); if mySide = 1, x is mirrored so "left" is the viewer's left.
+// v3: each player has their own lane. x runs across it (0..LANE_WIDTH), y from the cannon line (0)
+// up to the base edge (LANE_LENGTH). The viewer's lane is drawn full size with the cannon near the
+// camera (+Z) and the base at the far end (−Z). No mirroring.
 
-import { COL_WIDTH, LANE_LENGTH, LANE_WIDTH, type GateOp, type Side } from '@lil-dudes/client';
+import { LANE_LENGTH, LANE_WIDTH, type GateOp } from '@lil-dudes/client';
 
 /**
  * World units per sim unit. The lane is drawn 1.5× wider than its sim proportions (3000 × 12000 is
- * 1:4) so it fills a portrait screen under the static telephoto camera. Visual only; rules unchanged.
+ * 1:4) so it fills a portrait screen under the static telephoto camera. One linear scale per axis
+ * for everything (gates, gaps, cohorts, towers), so what you see is what the sim decides.
  */
 export const SX = 18 / LANE_WIDTH;
 export const SY = 48 / LANE_LENGTH;
@@ -17,34 +18,34 @@ export const LANE_L = LANE_LENGTH * SY;
 export const HALF_W = LANE_W / 2;
 export const HALF_L = LANE_L / 2;
 
-export function wx(x: number, mySide: Side): number {
-  const ax = mySide === 0 ? x : LANE_WIDTH - x;
-  return (ax - LANE_WIDTH / 2) * SX;
+export function wx(x: number): number {
+  return (x - LANE_WIDTH / 2) * SX;
 }
 
-export function wz(side: Side, y: number, mySide: Side): number {
-  return side === mySide ? HALF_L - y * SY : -HALF_L + y * SY;
+export function wz(y: number): number {
+  return HALF_L - y * SY;
 }
-
-export const colCenter = (col: number) => col * COL_WIDTH + COL_WIDTH / 2;
 
 /**
- * Static camera (TECH §5): pitch 44°, FOV 30°, whole lane cannon to cannon. Solved so your cannon
- * sits at ~77% of screen height and theirs at ~10% (below the HUD).
+ * Static camera (TECH §5): pitch 44°, FOV 30°, the whole lane from your cannon to the base. Solved
+ * so your cannon sits at ~77% of screen height and the base edge at ~10% (below the HUD).
  */
 export const CAM_FOV = 30;
 export const CAM_POS = [0, 58.35, 68.22] as const;
 export const CAM_TARGET = [0, 0, 7.8] as const;
 
-/** Bright toy world. On your screen you are always blue and they are always red (MVP §5). */
+/** Bright toy world. Your dudes are blue, the base's troops red (MVP §5). */
 export const PALETTE = {
   sky: '#8fd3ff',
   grass: '#79c96a',
   lane: '#ffe9c2',
   laneEdge: '#ffffff',
-  clash: '#ff8fa3',
   me: '#2f7cff',
-  them: '#e8413c',
+  enemy: '#e8413c',
+  base: '#c23b3b',
+  baseTrim: '#ffd9a0',
+  tower: '#d9534f',
+  crate: '#b5763a',
   post: '#ffffff',
   good: '#3aa0ff',
   bad: '#ff4d5e',
@@ -54,21 +55,10 @@ export const PALETTE = {
 } as const;
 
 export function opLabel(op: GateOp): string {
-  switch (op.kind) {
-    case 'mul':
-      return `×${op.value}`;
-    case 'add':
-      return `+${op.value}`;
-    case 'sub':
-      return `−${op.value}`;
-    case 'div':
-      return `÷${op.value}`;
-  }
+  return op.kind === 'mul' ? `×${op.value}` : `÷${op.value}`;
 }
 
-export const isGoodOp = (op: GateOp) => op.kind === 'mul' || op.kind === 'add';
-
-/** `2.2K` style, one decimal above 1,000 (genre-standard HP label). */
+/** `1.2K` style, one decimal above 1,000 (genre-standard HP label). */
 export function shortNum(n: number): string {
   const v = Math.max(0, Math.round(n));
   return v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v);
