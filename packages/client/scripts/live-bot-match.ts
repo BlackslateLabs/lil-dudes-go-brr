@@ -26,8 +26,9 @@ import {
   isOnBase,
   joinMatch,
   LiveSource,
-  phaseAt,
+  matchResultOf,
   settleMatch,
+  trueOp,
   type LiveStage,
   type MatchEvent,
 } from '../src/index';
@@ -184,7 +185,7 @@ async function main() {
           lastTick = view.tick;
         }
       }
-      if (view.status !== 'plant' && view.status !== 'playing') return;
+      if (view.status !== 'playing') return;
       const [aim, rig, peek] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
       if (rig! >= 0) src.rig(rig!);
@@ -204,7 +205,7 @@ async function main() {
     }
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
-      log(`tick ${v.tick} ${v.status} phase ${v.phase} hp ${v.sides[0].hp}:${v.sides[1].hp} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
+      log(`tick ${v.tick} ${v.status} ${v.layoutName} lanes ${v.sides[0].phase} ${v.sides[0].stage + 1}:${v.sides[1].phase} ${v.sides[1].stage + 1} gold ${v.sides[0].gold}:${v.sides[1].gold} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
     }
     if (sources.every((s) => s.currentStage === 'finished')) break;
     if (sources.some((s) => s.currentStage === 'finished' || s.currentStage === 'finishing') && (await isOnBase(base, id))) break;
@@ -215,10 +216,10 @@ async function main() {
   const finalAccount = await sources[0]!.awaitFinal(base);
   if (!finalAccount) throw new Error('no final Match (seed/history) after 60 s');
   const final = finalAccount;
-  const r = final.state.result;
-  log('result', r, 'hp', final.state.sides[0].hp, final.state.sides[1].hp, 'tick', final.state.tick);
+  const r = matchResultOf(final.state);
+  log('result', r, 'tick', final.state.tick);
   const reveal = sources[0]!.reveal();
-  log('seed', reveal?.seed.toString(), 'phase-1 rigs', reveal?.history[0]?.rigs);
+  log('seed', reveal?.seed.toString(), reveal?.layoutName, 'stage-1 rigs', reveal?.history[0]?.rigs);
   // Result-screen data (step 2): waits for the settlement, then has every field.
   const full = await sources[1]!.awaitReveal(90_000);
   const feed = sources.map((s) => ({ ...s.stats }));
@@ -248,21 +249,20 @@ async function main() {
   const expect = !r || r.winner === null ? [STAKE, STAKE] : r.winner === 0 ? [STAKE + r.moved - r.fee, STAKE - r.moved] : [STAKE - r.moved, STAKE + r.moved - r.fee];
   const payoutOk = settledBy === 'fallback' ? 'see fallback' : deltas[0] === expect[0] && deltas[1] === expect[1];
   log('payout deltas', deltas, 'expected', expect, payoutOk === true ? 'OK' : payoutOk);
-  // Verify (MVP §3.8): the published seed + rigs re-derive every gate revealed on the final board.
+  // Verify (MVP §3.8): the published seed + rigs re-derive every gate revealed on the final board
+  // (each lane's current stage), and the seed gives the layout.
   let checked = 0;
   let mismatches = 0;
   if (reveal) {
-    const phase = phaseAt(Math.max(0, final.state.tick - 1));
-    const deal = reveal.deals[phase]!;
+    if (reveal.layout !== final.state.layout) mismatches++;
     for (const side of [0, 1] as const) {
-      final.state.sides[side].gates.forEach((g, cell) => {
+      const stage = final.state.sides[side].stage;
+      final.state.sides[side].gates.forEach((g, slot) => {
         if (!g.revealed) return;
-        const rigged = reveal.history[phase]!.rigs[side === 0 ? 1 : 0] === cell;
-        const want = rigged ? { kind: 'div', value: 2 } : deal.ops[cell]!;
+        const want = trueOp(reveal, side, stage, slot);
         checked++;
         if (want.kind !== g.revealed.kind || want.value !== g.revealed.value) mismatches++;
       });
-      if (final.state.sides[side].gates.findIndex((g) => g.gold) !== deal.goldCell) mismatches++;
     }
   }
   const verified = !!reveal && mismatches === 0;
@@ -275,8 +275,10 @@ async function main() {
     const whats = full.txs!.map((t) => t.what);
     for (const w of ['create_match', 'join_match', 'delegate_match', 'finish', 'request_seed']) revealChecks[`tx ${w}`] = whats.some((x) => x.startsWith(w));
     revealChecks['tx Magic Action'] = STAKE === 0 || whats.some((x) => x.includes('Magic Action')) || settledBy === 'fallback';
-    revealChecks.gotchasMatchRigs = full.gotchas!.every((g) => full.history[g.phase]?.rigs[g.riggedBy] === g.cell && full.history[g.phase]!.sprung[g.riggedBy]);
-    revealChecks.threeDeals = full.deals.length === 3;
+    revealChecks.gotchasMatchRigs = full.gotchas!.every((g) =>
+      full.history.some((h) => h.rigs[g.riggedBy]?.stage === g.stage && h.rigs[g.riggedBy]?.slot === g.slot && h.sprung[g.riggedBy]),
+    );
+    revealChecks.threeStages = full.values.length === 3;
   }
   const revealOk = !!full && Object.values(revealChecks).every(Boolean);
   log('reveal', revealOk ? 'OK' : 'FAILED', JSON.stringify(revealChecks));
@@ -294,7 +296,7 @@ async function main() {
   Object.assign(result, {
     result: r,
     finalTick: final.state.tick,
-    hp: [final.state.sides[0].hp, final.state.sides[1].hp],
+    gold: [final.state.sides[0].gold, final.state.sides[1].gold],
     settledBy,
     payoutDeltas: deltas,
     payoutExpected: expect,
