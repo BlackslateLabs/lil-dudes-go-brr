@@ -25,7 +25,8 @@ pub const CRANK_CATCH_UP: u32 = 8;
 pub const PLAYER_CATCH_UP: u32 = 2;
 /// Crank: one `advance` every 50 ms of wall time. The tick follows ER slots, so if slots run
 /// slower than 10 ms a match outlasts MATCH_TICKS crank runs: schedule 1.5× (covers slots up to
-/// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand).
+/// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand). Rules v3:
+/// MATCH_TICKS = 3,600 (the 3:00 cap), so 5,400 runs.
 pub const CRANK_INTERVAL_MS: i64 = 50;
 pub const CRANK_ITERATIONS: i64 = lil_dudes_sim::MATCH_TICKS as i64 * 3 / 2;
 /// A match that has not started this long after its permissions were made can be aborted
@@ -43,13 +44,13 @@ pub const OPEN_ANYONE_SECS: i64 = 20 * 60;
 pub const JOIN_ANYONE_SECS: i64 = 5 * 60;
 pub const ABORT_ANYONE_SLOTS: u64 = 30_000;
 
-/// Peek fields: no rig / no peek this match yet.
+/// Peek fields: no stage written yet / no rig / no peek.
 pub const NONE: u8 = u8::MAX;
 /// Gotcha record: tick value meaning "none yet".
 pub const NO_TICK: u16 = u16::MAX;
 
-/// Published at `finish`: the codec's history part (3 phases × 2 sides × 5 bytes).
-pub const HISTORY_LEN: usize = 30;
+/// Published at `finish`: the codec's history part (3 stages × 2 sides × 4 bytes).
+pub const HISTORY_LEN: usize = lil_dudes_sim::codec::HISTORY_LEN;
 
 /// The deployed program only ever delegates to MagicBlock's devnet TEE validator: privacy of
 /// Secrets/Peek depends on it (a match on a public ER would expose everything).
