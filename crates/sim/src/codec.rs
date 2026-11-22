@@ -8,7 +8,7 @@
 //! Lossless for every state the rules can reach: ids, tower/crate HP and phase timers fit their
 //! narrower fields (checked at compile time below). Decoding never panics on garbage; it clamps.
 //!
-//! PUBLIC (PUBLIC_LEN = 1,470 bytes)
+//! PUBLIC (PUBLIC_LEN = 1,474 bytes)
 //! ```text
 //!   0  u8   CODEC_VERSION
 //!   1  u8   flags: 1 bot side 0 | 2 bot side 1 | 4 tutorial | 8 has result | 16 ko
@@ -19,7 +19,7 @@
 //!  16  u64  moved
 //!  24  u64  fee
 //!  32  u16  next_cohort_id
-//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 718 each:
+//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 720 each:
 //!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 rig used | 32 peek used
 //!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
 //!       12 u8 cohort_len | 13 u8 enemy_len
@@ -27,14 +27,15 @@
 //!       22 gates 8 × [i16 x, u8 revealed op (0 = face-down)]
 //!       46 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age, u8 last_row]
 //!      526 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 0]
+//!      718 u16 raid_ticks
 //! ```
 //! phase: 0 plant, 1 fight, 2 transit, 3 raid, 4 done. Op byte: `k` = ×k, `0x80 | k` = ÷k.
 //!
-//! SECRET (SECRET_LEN = 56 bytes)
+//! SECRET (SECRET_LEN = 40 bytes)
 //! ```text
 //!   0  u64  seed
-//!   8  values 3 stages × 8 slots × op byte
-//!  32  history 3 stages × 2 sides × [rig stage (255 = none), rig slot, peek slot (255 = none),
+//!   8  values 2 stages × 8 slots × op byte
+//!  24  history 2 stages × 2 sides × [rig stage (255 = none), rig slot, peek slot (255 = none),
 //!        peek op]   (stage = the actor's own stage; the rig names the victim's stage)
 //! ```
 
@@ -47,7 +48,7 @@ use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, Rig,
 use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Bump when either layout changes (the TS decoder checks byte 0 of the public part).
-pub const CODEC_VERSION: u8 = 2;
+pub const CODEC_VERSION: u8 = 3;
 
 pub const HEADER_LEN: usize = 34;
 pub const GATE_LEN: usize = 3;
@@ -57,7 +58,8 @@ pub const SIDE_CRATES: usize = SIDE_TOWERS + TOWERS_MAX * 2;
 pub const SIDE_GATES: usize = SIDE_CRATES + CRATES_MAX * 2;
 pub const SIDE_COHORTS: usize = SIDE_GATES + GATES_MAX * GATE_LEN;
 pub const SIDE_ENEMIES: usize = SIDE_COHORTS + COHORT_CAP * UNIT_LEN;
-pub const SIDE_LEN: usize = SIDE_ENEMIES + ENEMY_CAP * UNIT_LEN;
+pub const SIDE_RAID: usize = SIDE_ENEMIES + ENEMY_CAP * UNIT_LEN;
+pub const SIDE_LEN: usize = SIDE_RAID + 2;
 pub const PUBLIC_LEN: usize = HEADER_LEN + 2 * SIDE_LEN;
 /// Offset of the aim inside a side (the program writes it directly).
 pub const SIDE_AIM: usize = 4;
@@ -80,9 +82,9 @@ const F_RIG: u8 = 16;
 const F_PEEK: u8 = 32;
 
 const _: () = {
-    assert!(PUBLIC_LEN == 1_470);
-    assert!(SECRET_LEN == 56);
-    assert!(HISTORY_LEN == 24);
+    assert!(PUBLIC_LEN == 1_474);
+    assert!(SECRET_LEN == 40);
+    assert!(HISTORY_LEN == 16);
     // The on-chain commit limit is 10,240 bytes including the account header.
     assert!(PUBLIC_LEN + 64 < 10_240);
     // Lossless narrowing: one volley per side every FIRE_TICKS and at most one wave per tower
@@ -225,6 +227,7 @@ fn encode_side(s: &PublicSide, buf: &mut [u8]) {
     if let Some(rest) = enemies.get_mut(foes.len().saturating_mul(UNIT_LEN)..) {
         rest.fill(0);
     }
+    put(buf, SIDE_RAID, s.raid_ticks.to_le_bytes());
 }
 
 /// Reads the public state back. Every field of `p` is overwritten.
@@ -261,6 +264,7 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
     s.cannon_x = i16_at(buf, 2);
     s.aim = i16_at(buf, SIDE_AIM);
     s.phase_ticks = u16_at(buf, 6);
+    s.raid_ticks = u16_at(buf, SIDE_RAID);
     s.gold = u32_at(buf, 8);
     s.cohort_len = byte(buf, 12).min(COHORT_CAP as u8);
     s.enemy_len = byte(buf, 13).min(ENEMY_CAP as u8);
@@ -457,7 +461,10 @@ mod tests {
         decode_secret(&sec_buf, &mut z.secret);
         assert_eq!(z, m);
         assert_eq!(pub_buf[0], CODEC_VERSION);
-        assert_eq!(history_bytes(&sec_buf), &[NONE, 0, NONE, 0].repeat(6)[..]);
+        assert_eq!(
+            history_bytes(&sec_buf),
+            &[NONE, 0, NONE, 0].repeat(STAGES * 2)[..]
+        );
     }
 
     #[test]

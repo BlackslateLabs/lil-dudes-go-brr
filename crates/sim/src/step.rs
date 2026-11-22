@@ -1,21 +1,23 @@
-//! One tick of the match (SPEC v3). For tick `t = public.tick`:
+//! One tick of the match (SPEC v4). For tick `t = public.tick`:
 //!
 //! 1. inputs: aim (always), rig (my Plant), peek (my Fight/Raid)          SPEC §2, §6
 //! 2. per lane (side 0, then side 1), each at its own stage and phase:    SPEC §3
 //!    - the cannon steps toward its aim                                   SPEC §2
-//!    - moving gates slide (timed from the Fight/Raid start)              SPEC §6
+//!    - moving gates slide (timed from the Fight start; the Raid keeps
+//!      the Fight's clock)                                                SPEC §6
 //!    - Fight/Raid only: cohorts move (launch boost), hit crates, cross
 //!      gate rows and home in past the last row; enemy cohorts home in
 //!      and walk down; clash; tower hits, gold, raid loot, losses at the
-//!      base edge; death; all towers down → Transit; waves; a volley      SPEC §4–§7
-//!    - the phase timer: Plant → Fight/Raid, Transit → Plant, Raid over
-//!      and lane empty → Done                                             SPEC §3
+//!      base edge; death; all towers down → Transit (Fight 1) or the
+//!      town hall raid in place (Fight 2); waves; a volley                SPEC §4–§7
+//!    - the phase timer: Plant → Fight, Transit → Plant, raid fire over
+//!      and no dudes left → Done (leftover enemies leave)                 SPEC §3
 //! 3. `tick + 1`; a death, both players done or the time cap ends it      SPEC §3, §8
 
 use crate::constants::{
     CANNON_STEP, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED, DETECT_Y, ENEMY_CAP,
-    FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FIRE_TICKS, FIRST_WAVE_TICKS, LANE_LENGTH,
-    LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RAID_STAGE,
+    FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE, FIRE_TICKS, FIRST_WAVE_TICKS, HALL_X,
+    LANE_LENGTH, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS,
     RAID_TICKS, STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_Y, TRANSIT_TICKS,
     TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
@@ -165,7 +167,8 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
     let st = layouts::stage(layout, side.stage);
     let t = u32::from(side.phase_ticks);
     let active = side.phase.active();
-    // SPEC §6: moving gates are timed from the Fight/Raid start; before it they wait at x.
+    // SPEC §6: moving gates are timed from the Fight start (the Raid keeps counting the Fight's
+    // ticks, so they slide on smoothly); before it they wait at x.
     let gate_t = if active { t } else { 0 };
     for (g, def) in side.gates.iter_mut().zip(st.gates) {
         g.x = def.x_at(gate_t);
@@ -183,8 +186,11 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
             return;
         }
         if side.phase == Phase::Fight && side.towers.iter().all(|&hp| hp == 0) {
-            start_transit(side, layout, s, ev);
-            return;
+            if side.stage < FINAL_STAGE {
+                start_transit(side, layout, s, ev);
+                return;
+            }
+            start_raid(side, s, ev);
         }
         if side.phase == Phase::Fight {
             let pct = if options.tutorial && s == 0 && side.stage == 0 {
@@ -194,7 +200,7 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
             };
             release_waves(side, st, t, pct, next_cohort_id, s, ev);
         }
-        let firing = side.phase == Phase::Fight || t < RAID_TICKS;
+        let firing = side.phase == Phase::Fight || u32::from(side.raid_ticks) < RAID_TICKS;
         if firing && t.checked_rem(FIRE_TICKS) == Some(0) {
             fire(side, next_cohort_id, s, ev);
         }
@@ -227,6 +233,7 @@ fn move_cohorts(
 ) {
     let PublicSide {
         stage,
+        phase,
         cohorts,
         cohort_len,
         gates,
@@ -237,6 +244,7 @@ fn move_cohorts(
         ..
     } = side;
     let stage = *stage;
+    let raid = *phase == Phase::Raid;
     let enemies = enemies.get(..usize::from(*enemy_len)).unwrap_or(&[]);
     for c in cohorts.iter_mut().take(usize::from(*cohort_len)) {
         if c.count == 0 {
@@ -293,9 +301,10 @@ fn move_cohorts(
             }
         }
 
-        // SPEC §4: past the last row, home in on the nearest enemy ahead, else the nearest tower.
+        // SPEC §4: past the last row, home in on the nearest enemy ahead, else the nearest tower
+        // (in the raid: the town hall's centre).
         if usize::from(c.last_row) >= st.rows.len() && c.count > 0 {
-            if let Some(tx) = cohort_target(c, enemies, towers, st) {
+            if let Some(tx) = cohort_target(c, enemies, towers, st, raid) {
                 c.x = toward(c.x, tx, STEER_STEP);
             }
         }
@@ -353,12 +362,13 @@ fn dist2(ax: i16, ay: i16, bx: i16, by: i16) -> i64 {
 }
 
 /// SPEC §4 homing for my cohort: the nearest enemy ahead within DETECT_Y, else the nearest live
-/// tower (none in the Raid: walk straight to the vault). Ties go to the lower index.
+/// tower, or in the raid the town hall's centre (HALL_X). Ties go to the lower index.
 fn cohort_target(
     c: &Cohort,
     enemies: &[Enemy],
     towers: &[u16; TOWERS_MAX],
     st: &StageDef,
+    raid: bool,
 ) -> Option<i16> {
     let mut best: Option<(i64, i16)> = None;
     for e in enemies {
@@ -373,6 +383,9 @@ fn cohort_target(
     }
     if let Some((_, x)) = best {
         return Some(x);
+    }
+    if raid {
+        return Some(HALL_X as i16);
     }
     let mut tower: Option<(u32, i16)> = None;
     for (&hp, def) in towers.iter().zip(st.towers) {
@@ -476,7 +489,8 @@ fn mid(a: i16, b: i16) -> i16 {
 
 /// SPEC §4/§5: a cohort reaching TOWER_Y within TOWER_HALF_W + CLASH_REACH of a live tower
 /// deals its count as damage (gold = damage actually dealt, + TOWER_BONUS for the kill) and is
-/// removed. In the Raid, a cohort reaching VAULT_Y loots LOOT_PER_UNIT per dude. A cohort
+/// removed. In the Raid, a cohort reaching VAULT_Y anywhere across the lane (the town hall spans
+/// the base) loots LOOT_PER_UNIT per dude. A cohort
 /// reaching the base edge without hitting anything is lost.
 fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
     let PublicSide {
@@ -722,7 +736,7 @@ fn fire(side: &mut PublicSide, ids: &mut u32, s: u8, ev: &mut impl EventSink) {
 /// SPEC §3: every tower down → Transit. The field is wiped and the next stage is loaded (its
 /// gates face-down), so a rig placed now lands on the stage the player is driving to.
 fn start_transit(side: &mut PublicSide, layout: u8, s: u8, ev: &mut impl EventSink) {
-    let next = side.stage.saturating_add(1).min(RAID_STAGE);
+    let next = side.stage.saturating_add(1).min(FINAL_STAGE);
     side.load_stage(layout, next);
     side.phase = Phase::Transit;
     ev.push(Event::Phase {
@@ -732,19 +746,36 @@ fn start_transit(side: &mut PublicSide, layout: u8, s: u8, ev: &mut impl EventSi
     });
 }
 
+/// SPEC §3: the final stage's last tower fell → the town hall raid starts where the fight left
+/// off: no wipe (cohorts in flight keep going, leftover enemies keep walking and can still kill),
+/// no new waves, the cannon fires RAID_TICKS more. `phase_ticks` keeps counting, so the gates
+/// slide on without a jump and the volley rhythm is unbroken.
+fn start_raid(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
+    side.phase = Phase::Raid;
+    side.raid_ticks = 0;
+    ev.push(Event::Phase {
+        side: s,
+        stage: side.stage,
+        phase: Phase::Raid,
+    });
+}
+
+/// SPEC §3: the phase timer. Plant → Fight; Transit → Plant; the raid ends (Done) once its fire
+/// is over and no dudes of mine are left, and any leftover enemies leave with it.
 fn advance(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
     side.phase_ticks = side.phase_ticks.saturating_add(1);
+    if side.phase == Phase::Raid {
+        side.raid_ticks = side.raid_ticks.saturating_add(1);
+    }
     let pt = u32::from(side.phase_ticks);
     let next = match side.phase {
-        Phase::Plant if pt >= PLANT_TICKS => {
-            if side.stage >= RAID_STAGE {
-                Phase::Raid
-            } else {
-                Phase::Fight
-            }
-        }
+        Phase::Plant if pt >= PLANT_TICKS => Phase::Fight,
         Phase::Transit if pt >= TRANSIT_TICKS => Phase::Plant,
-        Phase::Raid if pt >= RAID_TICKS && side.cohort_len == 0 => Phase::Done,
+        Phase::Raid if u32::from(side.raid_ticks) >= RAID_TICKS && side.cohort_len == 0 => {
+            side.enemies = [Enemy::default(); ENEMY_CAP];
+            side.enemy_len = 0;
+            Phase::Done
+        }
         _ => return,
     };
     side.phase = next;

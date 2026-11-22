@@ -414,7 +414,7 @@ pub fn constants_json() -> String {
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
         ("STAGES", STAGES.to_string()),
-        ("RAID_STAGE", RAID_STAGE.to_string()),
+        ("FINAL_STAGE", FINAL_STAGE.to_string()),
         ("PLANT_TICKS", PLANT_TICKS.to_string()),
         ("TRANSIT_TICKS", TRANSIT_TICKS.to_string()),
         ("RAID_TICKS", RAID_TICKS.to_string()),
@@ -518,7 +518,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 18_429_965_418_474_846_982;
+const PARITY_DIGEST: u64 = 4_989_600_908_679_031_861;
 
 #[cfg(test)]
 mod tests {

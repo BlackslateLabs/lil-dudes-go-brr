@@ -1,4 +1,4 @@
-//! Starting numbers (docs/SPEC.md v3 §12). Units: 1 tick = 50 ms; distances in "sim units".
+//! Starting numbers (docs/SPEC.md v4 §12). Units: 1 tick = 50 ms; distances in "sim units".
 //! Lane geometry must match the arena in apps/web (scale it, don't change the ratios alone).
 
 /// Ticks per second (1 tick = 5 ER slots ≈ 50 ms).
@@ -6,15 +6,16 @@ pub const TICKS_PER_SEC: u32 = 20;
 /// SPEC §3: the time cap, 3:00.
 pub const MATCH_TICKS: u32 = 180 * TICKS_PER_SEC;
 
-/// SPEC §3: Fight 1, Fight 2, Raid.
-pub const STAGES: usize = 3;
-/// The Raid is the last stage.
-pub const RAID_STAGE: u8 = (STAGES - 1) as u8;
+/// SPEC §3: Fight 1 (one tower) and Fight 2 (two towers, the town hall behind them).
+pub const STAGES: usize = 2;
+/// The last stage: when its towers fall, the town hall raid starts in place (SPEC §3).
+pub const FINAL_STAGE: u8 = (STAGES - 1) as u8;
 
 /// SPEC §3: stage phases.
 pub const PLANT_TICKS: u32 = 3 * TICKS_PER_SEC;
 pub const TRANSIT_TICKS: u32 = 2 * TICKS_PER_SEC;
-/// SPEC §3: the raid fires for this long; dudes already on the way still count.
+/// SPEC §3: the cannon keeps firing for this long once the final stage's last tower falls;
+/// dudes already on the way still count.
 pub const RAID_TICKS: u32 = 8 * TICKS_PER_SEC;
 
 /// SPEC §7: one volley every 8 ticks (0.4 s) of one dude.
@@ -31,8 +32,11 @@ pub const LANE_WIDTH: i32 = 3_000;
 pub const LANE_LENGTH: i32 = 12_000;
 /// SPEC §4: towers sit on this line.
 pub const TOWER_Y: i32 = 11_000;
-/// (impl) The vault spans the whole base: a raid cohort loots when it reaches this line.
+/// (impl) The town hall (the old vault) spans the whole base: a raid cohort loots when it
+/// reaches this line, anywhere across the lane.
 pub const VAULT_Y: i32 = TOWER_Y;
+/// SPEC §4: past the last gate row, raid cohorts steer toward the town hall's centre.
+pub const HALL_X: i32 = LANE_WIDTH / 2;
 pub const TOWER_HALF_W: i32 = 300;
 /// SPEC §6: a cohort is a point in the sim but is drawn as a small crowd, and a gate has posts,
 /// so a cohort this far outside a gate's (or a crate's) edge still goes through it.
@@ -84,7 +88,7 @@ pub const LAYOUT_COUNT: usize = 6;
 // Compile-time checks of the timeline and geometry the rules rely on.
 const _: () = {
     assert!(MATCH_TICKS == 3_600);
-    assert!(STAGES == 3);
+    assert!(STAGES == 2 && FINAL_STAGE == 1);
     // A crossing pair always spends a tick inside the clash band.
     assert!(LAUNCH_SPEED + CRUISE_SPEED < CLASH_BAND);
     assert!(FATIGUE_START < FATIGUE_END);

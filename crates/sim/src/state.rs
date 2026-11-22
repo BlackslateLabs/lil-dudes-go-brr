@@ -33,11 +33,14 @@ pub struct PublicGate {
 /// One player's copy of the level as everyone sees it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PublicSide {
-    /// 0 = Fight 1, 1 = Fight 2, 2 = Raid. In Transit it already names the next stage.
+    /// 0 = Fight 1, 1 = Fight 2 (and its raid). In Transit it already names the next stage.
     pub stage: u8,
     pub phase: Phase,
     /// Ticks of `phase` already played (moving gates and waves are timed from 0 = fight start).
+    /// The Raid keeps counting the Fight's ticks, so sliding gates never jump.
     pub phase_ticks: u16,
+    /// Ticks of the town hall raid played (0 before it): the raid fires while < RAID_TICKS.
+    pub raid_ticks: u16,
     /// An enemy reached the cannon line (SPEC §4).
     pub dead: bool,
     /// Where the cannon is (volleys spawn here, SPEC §2).
@@ -68,6 +71,7 @@ impl PublicSide {
         stage: 0,
         phase: Phase::Plant,
         phase_ticks: 0,
+        raid_ticks: 0,
         dead: false,
         cannon_x: 0,
         aim: 0,
@@ -132,6 +136,7 @@ impl PublicSide {
         let st = layouts::stage(layout, stage);
         self.stage = stage;
         self.phase_ticks = 0;
+        self.raid_ticks = 0;
         self.rig_used = false;
         self.peek_used = false;
         self.towers = [0; TOWERS_MAX];
@@ -373,6 +378,7 @@ impl MatchState {
             h.u8(s.stage);
             h.u8(s.phase.code());
             h.u32(u32::from(s.phase_ticks));
+            h.u32(u32::from(s.raid_ticks));
             h.bool(s.dead);
             h.i16(s.cannon_x);
             h.i16(s.aim);
@@ -532,7 +538,7 @@ mod tests {
         let a = MatchState::new(1, MatchOptions::default());
         let mut b = a;
         assert_eq!(a.digest(), b.digest());
-        b.secret.history[2].peeks[1] = Some(Peek {
+        b.secret.history[1].peeks[1] = Some(Peek {
             slot: 0,
             op: GateOp::Mul(2),
         });
@@ -543,6 +549,9 @@ mod tests {
         let mut d = a;
         d.public.sides[0].gates[7].x = 1;
         assert_ne!(a.digest(), d.digest());
+        let mut e = a;
+        e.public.sides[1].raid_ticks = 1;
+        assert_ne!(a.digest(), e.digest());
         assert_ne!(
             a.digest(),
             MatchState::new(2, MatchOptions::default()).digest()

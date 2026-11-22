@@ -89,9 +89,10 @@ pub enum Phase {
     Fight,
     /// 2 s: field wiped, the next stage's gates are already in place.
     Transit,
-    /// Stage 3: fire for RAID_TICKS, then wait until no dudes are left.
+    /// The final stage after its last tower fell: the town hall raid, started in place (no
+    /// wipe). Fire for RAID_TICKS more, then wait until no dudes of yours are left.
     Raid,
-    /// The raid is over: waiting for the match to end.
+    /// The raid is over (the lane is empty): waiting for the match to end.
     Done,
 }
 

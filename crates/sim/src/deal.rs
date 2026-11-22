@@ -128,7 +128,7 @@ mod tests {
         let differ = (0..60u64)
             .filter(|&s| {
                 let d = Deal::new(s);
-                d.values[0][..2] != d.values[2][..2]
+                d.values[0][..2] != d.values[1][..2]
             })
             .count();
         assert!(differ > 30, "{differ}");
