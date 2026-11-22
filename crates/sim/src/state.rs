@@ -196,7 +196,8 @@ pub const fn other(side: u8) -> u8 {
     }
 }
 
-/// A rig (SPEC §6): the victim's stage and gate slot.
+/// A rig (SPEC §6): the victim's stage and gate slot. Since v4 the victim's stage is always the
+/// rigger's own stage at the time (the same level in the other copy).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rig {
     pub stage: u8,
@@ -214,7 +215,7 @@ pub struct Peek {
 /// victim's). Published with the seed at the end (SPEC §11 Verify).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StageLog {
-    /// `rigs[s]` = the opponent gate side `s` rigged during its plant of this stage.
+    /// `rigs[s]` = the opponent gate side `s` rigged during this stage of its own.
     pub rigs: [Option<Rig>; 2],
     /// `peeks[s]` = side `s`'s peek during this stage.
     pub peeks: [Option<Peek>; 2],
@@ -275,7 +276,7 @@ impl SecretState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrivateView {
     pub stage: u8,
-    /// The opponent gate I rigged during this stage's plant.
+    /// The opponent gate I rigged during this stage (same stage, their copy).
     pub rig: Option<Rig>,
     /// My peek this stage.
     pub peek: Option<Peek>,
@@ -441,8 +442,8 @@ impl MatchState {
 pub struct SideInput {
     /// Target cannon x; clamped to the lane.
     pub aim: Option<i32>,
-    /// Rig this gate slot of the opponent's current (or, in Transit, next) stage. During my
-    /// Plant only, once per stage (SPEC §6).
+    /// Rig this gate slot of my current stage in the opponent's copy. Any time I am alive and
+    /// not done, once per stage (SPEC §6, `step::can_rig`).
     pub rig: Option<u8>,
     /// Peek this gate slot of my current stage. During my Fight/Raid only, once per stage.
     pub peek: Option<u8>,

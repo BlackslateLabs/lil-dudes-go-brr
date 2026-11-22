@@ -1,6 +1,6 @@
 //! One tick of the match (SPEC v4). For tick `t = public.tick`:
 //!
-//! 1. inputs: aim (always), rig (my Plant), peek (my Fight/Raid)          SPEC §2, §6
+//! 1. inputs: aim (always), rig (alive, not done), peek (my Fight/Raid)   SPEC §2, §6
 //! 2. per lane (side 0, then side 1), each at its own stage and phase:    SPEC §3
 //!    - the cannon steps toward its aim                                   SPEC §2
 //!    - moving gates slide (timed from the Fight start; the Raid keeps
@@ -84,30 +84,48 @@ fn apply_side(m: &mut MatchState, s: u8, input: &SideInput) {
     }
 }
 
-/// SPEC §6 Rig: during my Plant, once per stage, one unrevealed gate of the opponent's current
-/// stage (in Transit their `stage` already names the next one). Refused, and not used up, when
-/// the opponent is dead or done, the gate is revealed or missing, or that stage holds a rig.
-fn try_rig(m: &mut MatchState, s: u8, slot: u8) {
-    let MatchState { public, secret } = m;
-    let victim = other(s);
-    let Some(opp) = public.side(victim) else {
-        return;
+/// SPEC §6 Rig: whether side `s` may rig gate `slot` right now. Any time I am alive and not
+/// done (Plant, Fight, Raid or Transit), once per stage of mine, I name a slot of MY current
+/// stage and it rigs the opponent's copy of that same stage and slot (both lanes are the same
+/// level). Refused when the opponent is dead or done, has already moved past that stage, is on
+/// it and has already revealed that gate in their copy, or the slot doesn't exist. A rig on a
+/// stage the opponent hasn't reached yet is fine: it springs when they get there.
+///
+/// Public state is enough: a rig on the opponent's stage `k` can only come from me during my
+/// own stage `k`, so "that stage already holds a rig" is exactly my `rig_used` (the UI and the
+/// bot can ask this without secrets).
+pub fn can_rig(p: &PublicState, s: u8, slot: u8) -> bool {
+    let (Some(me), Some(opp)) = (p.side(s), p.side(other(s))) else {
+        return false;
     };
-    let stage = opp.stage;
+    if p.ended() || me.finished() || me.rig_used || opp.finished() {
+        return false;
+    }
+    let stage = me.stage;
+    let exists = usize::from(slot) < layouts::stage(p.layout, stage).gates.len();
+    let behind = opp.stage < stage;
     let open = opp.gate(slot).is_some_and(|g| g.revealed.is_none());
-    let exists = usize::from(slot) < layouts::stage(public.layout, stage).gates.len();
-    if opp.finished() || !open || !exists || secret.stage_rigged(victim, stage) {
+    exists && (behind || (opp.stage == stage && open))
+}
+
+/// SPEC §6 Rig (see `can_rig`). Recorded under my own stage, naming the victim's stage (the
+/// same stage) and slot. Refused, and not used up, when `can_rig` says no or that opponent
+/// stage already holds a rig.
+fn try_rig(m: &mut MatchState, s: u8, slot: u8) {
+    if !can_rig(&m.public, s, slot) {
         return;
     }
+    let MatchState { public, secret } = m;
     let Some(me) = public.sides.get_mut(usize::from(s)) else {
         return;
     };
-    if me.phase != Phase::Plant || me.rig_used || me.dead {
+    let stage = me.stage;
+    if secret.stage_rigged(other(s), stage) {
         return;
     }
     let Some(rig) = secret
         .history
-        .get_mut(usize::from(me.stage))
+        .get_mut(usize::from(stage))
         .and_then(|log| log.rigs.get_mut(usize::from(s)))
     else {
         return;

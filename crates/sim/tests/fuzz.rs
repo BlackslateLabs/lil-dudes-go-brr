@@ -94,8 +94,10 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
     assert_eq!(deal.values, m.secret.values);
     for s in 0..2usize {
         let mut per_stage = [0; STAGES];
-        for log in &m.secret.history {
+        for (k, log) in m.secret.history.iter().enumerate() {
             if let Some(r) = log.rigs[s] {
+                // v4: a rig names the rigger's own stage (in the other copy).
+                assert_eq!(usize::from(r.stage), k);
                 assert!(usize::from(r.slot) < stage(p.layout, r.stage).gates.len());
                 per_stage[usize::from(r.stage)] += 1;
             }

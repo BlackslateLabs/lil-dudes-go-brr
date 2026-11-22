@@ -518,7 +518,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 4_989_600_908_679_031_861;
+const PARITY_DIGEST: u64 = 12_051_823_066_685_432_968;
 
 #[cfg(test)]
 mod tests {
