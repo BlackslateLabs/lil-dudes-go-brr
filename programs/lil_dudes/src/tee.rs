@@ -453,12 +453,13 @@ fn with_input(
     Ok(())
 }
 
-/// SPEC §6 Rig: during my own Plant, once per stage, turn gate `cell` of the opponent's copy into
-/// a trap, in the stage they are in now (in their Transit: the stage they enter next). `cell`
-/// keeps its v2 name (the IDL is unchanged) but is a gate SLOT now (0..8, the stage's gates in
-/// layout order). Refused (error, nothing spent): not my Plant, already rigged this stage, I am
-/// dead, the opponent is dead or done, the gate is revealed or not in that stage, or that
-/// opponent stage already holds a rig.
+/// SPEC §6 Rig (rules v4): in any phase while I am alive and not done, once per stage of mine,
+/// name gate `cell` of MY current stage; it turns the opponent's copy of that same stage and
+/// slot into a trap (now if they are on it, when they get there if they are behind). `cell`
+/// keeps its v2 name (the IDL is unchanged) but is a gate SLOT (0..8, the stage's gates in
+/// layout order). The sim alone decides (`lil_dudes_sim::can_rig`); refused (error, nothing
+/// spent): already rigged this stage, I am dead or done, the opponent is dead or done or already
+/// past my stage, they are on it and have revealed that gate, or the slot is not in the stage.
 pub fn handle_plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
     with_input(
         ctx,

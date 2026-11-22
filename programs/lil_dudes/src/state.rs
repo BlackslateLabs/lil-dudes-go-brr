@@ -27,10 +27,12 @@ pub const CRANK_CATCH_UP: u32 = 8;
 pub const PLAYER_CATCH_UP: u32 = 2;
 /// Crank: one `advance` every 50 ms of wall time. The tick follows ER slots, so if slots run
 /// slower than 10 ms a match outlasts MATCH_TICKS crank runs: schedule 1.5× (covers slots up to
-/// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand). Rules v3:
-/// MATCH_TICKS = 3,600 (the 3:00 cap), so 5,400 runs.
+/// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand). Rules v4 (as
+/// v3): MATCH_TICKS = 3,600 (the 3:00 cap), so 5,400 runs. Only the match length matters here,
+/// not the stage count (the Raid now runs in place at the end of stage 1).
 pub const CRANK_INTERVAL_MS: i64 = 50;
 pub const CRANK_ITERATIONS: i64 = lil_dudes_sim::MATCH_TICKS as i64 * 3 / 2;
+const _: () = assert!(CRANK_ITERATIONS == 5_400);
 /// A match that has not started this long after its permissions were made can be aborted
 /// (everyone refunded), ~60 s of 10 ms slots.
 pub const ABORT_SLOTS: u64 = 6_000;
@@ -51,7 +53,7 @@ pub const NONE: u8 = u8::MAX;
 /// Gotcha record: tick value meaning "none yet".
 pub const NO_TICK: u16 = u16::MAX;
 
-/// Published at `finish`: the codec's history part (3 stages × 2 sides × 4 bytes).
+/// Published at `finish`: the codec's history part (2 stages × 2 sides × 4 bytes = 16).
 pub const HISTORY_LEN: usize = lil_dudes_sim::codec::HISTORY_LEN;
 
 /// The deployed program only ever delegates to MagicBlock's devnet TEE validator: privacy of
@@ -129,7 +131,9 @@ pub struct Match {
     pub gotcha: [[u8; 4]; 2],
     /// Published at `finish`: every stage's rigs and peeks (codec history layout).
     pub history: [u8; HISTORY_LEN],
-    pub _pad: [u8; 2],
+    /// Rules v4: the history shrank 24 → 16 bytes and the public state grew 1,470 → 1,474, so
+    /// 6 bytes here keep the struct at 1,784 with no padding (Pod) and `history` where it was.
+    pub _pad: [u8; 6],
     /// The sim's public state (crates/sim codec, PUBLIC part).
     pub state: [u8; PUBLIC_LEN],
 }
@@ -175,14 +179,18 @@ pub const PEEK_SPACE: usize = 8 + core::mem::size_of::<Peek>();
 
 const _: () = {
     assert!(core::mem::size_of::<Match>() == 1_784);
-    assert!(core::mem::size_of::<Secrets>() == 160);
+    assert!(core::mem::size_of::<Secrets>() == 144);
     assert!(core::mem::size_of::<Peek>() == 48);
+    // Rules v4 codec sizes the layout below is built for.
+    assert!(PUBLIC_LEN == 1_474);
+    assert!(SECRET_LEN == 40);
+    assert!(HISTORY_LEN == 16);
     // The history is the tail of the secret part (copied as-is at `finish`).
     assert!(SECRET_LEN - HISTORY_LEN == lil_dudes_sim::codec::S_HISTORY);
     // Fixed offsets the TS decoder reads (packages/client), after the 8-byte discriminator.
     assert!(core::mem::offset_of!(Match, gotcha) == 280);
     assert!(core::mem::offset_of!(Match, history) == 288);
-    assert!(core::mem::offset_of!(Match, state) == 314);
+    assert!(core::mem::offset_of!(Match, state) == 310);
     assert!(core::mem::offset_of!(Secrets, state) == 104);
     assert!(core::mem::offset_of!(Peek, stage) == 41);
     assert!(core::mem::offset_of!(Peek, _pad) == 47);
