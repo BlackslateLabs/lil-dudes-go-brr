@@ -8,6 +8,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      // Precache everything the game needs offline: code, WASM, fonts, models, effects and sounds.
+      workbox: { globPatterns: ['**/*.{js,css,html,wasm,svg,png,webp,woff2,ttf,glb,mp3}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
       manifest: {
         name: 'Lil Dudes Go Brr',
         short_name: 'Lil Dudes',
