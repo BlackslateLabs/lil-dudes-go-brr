@@ -31,3 +31,6 @@ dist/
 .DS_Store
 __pycache__/
 *.log
+
+# pwa dev build
+dev-dist/

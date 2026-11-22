@@ -699,3 +699,113 @@ the deploy wallet (now 4.432 SOL, still above the ~2.33 SOL upgrade buffer). Thi
 can run locally (`pnpm --filter server start`, key paths in the gitignored `apps/server/.env`).
 **Left:** deploy the server (TECH §9 "Deploy", not done), then Suparno wires `apps/web` per the
 last [HANDOFF].
+## 2026-11-21 20:01 IST · Suparno · planning · [DECISION] [HANDOFF]
+**Did:**
+- Read IDEA/SPEC/TECH/this log. Started the front-end track on branch `planning/initial-build-plan`.
+- Checked the hackathon pages: no deadline is published (Luma or submit site). The submit form asks for
+  an "Explorer link (integration proof)" and optional program address, and says "We check recent devnet
+  and mainnet activity". Real devnet matches on our program count.
+
+**Decided:**
+- The docs (IDEA/SPEC/TECH) are the source of truth for the game. Confirmed as-is: Rig (free, once per
+  phase), HP + KO/timer, margin payout, all unrevealed gates private, PWA only (no APK).
+- Spectator betting: cut (roadmap line only). Spectator view stays a stretch goal.
+- Calendar: code freeze end of **Wed Nov 26 IST**; Nov 27 = demo video, README, submit. Will confirm
+  the real deadline in the Telegram Builders group.
+- Suparno works the front-end track now against a mock `MatchView` and does not wait for the back end.
+
+**Blocked / risks:** none for the front end.
+
+**Next / handoff:** **Kai, one question: should Double-or-Toll (SPEC §8) be cut from the MVP entirely?**
+If yes, escrow per player becomes S instead of 2S (SPEC §7). Suparno is unsure. For cutting: a mid-match
+handshake + timer + UI, and little demo value. It touches your settle/escrow code, so it's your call.
+Reply with an entry here.
+
+## 2026-11-21 20:35 IST · Suparno · web · [DECISION] [HANDOFF]
+**Did:**
+- Branch renamed to `web/arena-prototype` (all front-end work goes here; nothing to `main`).
+- pnpm workspace root (`package.json` with `packageManager: pnpm@10.34.9`, `pnpm-workspace.yaml` for
+  `apps/*` + `packages/*`). Cargo workspace, `programs/`, `crates/`, `packages/client` untouched (Kai's).
+- `apps/web`: Vite 8 + React 19.3 + TS 5.9 + three 0.187 + R3F 9 + drei 10 + zustand 5 + vite-plugin-pwa 2.
+  Screens: Home (stake picker, Play vs Bot; Quick Match / Room Code disabled), Match (static arena from
+  code shapes: lane, 2×3×3 `?` gates, clash zone, both cannons, drag to slide your cannon, HUD
+  placeholders), Result (stub). `?screen=match` opens a screen directly. `public/assets/CREDITS.md` started.
+- `pnpm --filter web build` passes (typecheck + build). Checked on PC only; phone testing comes later.
+
+**Decided:**
+- **No TypeScript game sim on the front end.** The arena will be driven by Kai's sim / `MatchView` once it
+  exists. Until then the front end works on look, screens and anything that needs no game state.
+- Website = the app itself (Home → Match → Result), no separate marketing site.
+- Art: code-built shapes now; licence-free (CC0) assets later, every one logged in `CREDITS.md`.
+  Suparno won't model anything.
+- PC browser first, phone later.
+
+**Blocked / risks (waiting on Kai):**
+- **`MatchView` v0 type + a way to get it in the browser** (mock feed or the sim compiled to WASM). Until
+  then crowds, gate reveals, HP, timer and Rig/Peek UI can't show real state.
+- **Double-or-Toll cut or keep?** (question in the entry above.)
+- Deploy wallet still has 0 devnet SOL (from Kai's earlier entry).
+- Toolchain note: Suparno's machine is on Node 22.19 (TECH says ≥24) and runs pnpm via `corepack pnpm`.
+  Vite 8 is fine on Node 22.12+.
+
+**Next / handoff:** Kai: when `MatchView` v0 is ready, log it with `CONTRACT` and say how the web app
+should consume it (import path, a mock emitter, or WASM). Suparno continues the front end.
+
+## 2026-11-21 20:58 IST · Suparno · web · [DECISION]
+**Did:**
+- **Visual model** `apps/web/src/arena/frame.ts` (`ArenaState`): what the renderer reads (cohorts as
+  count + normalised x + progress p, 2×9 gate views with hint/revealed, HP, cannon x, events). It is
+  front-end only, **not** a proposal for `MatchView`; a small adapter will map `MatchView` into it.
+- **Showcase** `apps/web/src/showcase/showcase.ts`: a scripted ~26 s loop (fixed board, scripted cannons,
+  both GOTCHAs in the first second, KO + slow-mo, restart) that fills `ArenaState`. Not the game sim: no
+  deals, phases, Rig/Peek choices, hidden info, bot or payout. Your cannon follows your drag.
+- Arena: instanced crowds (cap 1,500/side, sub-linear units for big counts), one count badge per column
+  on the leading group, gates with hint colours / reveal flip / gold / rigged, number pops, camera shake,
+  GOTCHA + K.O. overlays, synthesised sound (WebAudio, no audio files), bright toy palette, Lilita One
+  font (OFL, credited). Home has the showcase looping behind the menu; Result shows **sample** data:
+  payout + why (SPEC §7 integer maths), all 3 deals revealed with rigs/peeks/gold, Verify + explorer
+  links (disabled until the chain exists).
+- Bot matches are labelled free; the stake picker sits only under Quick Match / Room Code (SPEC §9).
+- Dev params: `?screen=match|result`, `?t=12` fast-forwards the showcase.
+
+**Decided:** Asset survey (all CC0, verify formats on download): units → Quaternius *Cube World Kit*
+(glTF) or Kenney *Blocky Characters*; arena dressing → Quaternius *Stylized Nature MegaKit* (glTF);
+gates stay code-built; no good bright cannon pack found yet (Quaternius turrets are steampunk, FBX only).
+
+**Blocked / risks:** same as before (MatchView v0, Double-or-Toll answer, deploy SOL). Bundle is ~1.1 MB
+(three.js); code-split later.
+
+**Next / handoff:** none for Kai beyond the open questions above.
+
+## 2026-11-21 21:55 IST · Suparno · web · [DECISION] [HANDOFF]
+**Did:**
+- Rebased `web/arena-prototype` onto `main` (all merges are **rebase merges** from now on, linear history).
+  Took main's root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`; kept the `dev-dist/` ignore line.
+- `apps/web` now depends on `@lil-dudes/client` and extends `tsconfig.base.json`. **The arena is driven by
+  `MockSource`** through a small `MatchFeed` (`apps/web/src/match/feed.ts`): keeps the last two 20 Hz
+  snapshots and renders one tick behind (interpolated), predicts your cannon locally, fans out events.
+  Swapping to `OfflineSource`/`LiveSource` is one line in `screens/Match.tsx`.
+- **Removed** my scripted showcase and private visual model (superseded by MockSource and SPEC v2.1;
+  ignore my two earlier web entries' notes about them).
+- Brought the client in line with SPEC v2.1 / TECH §5 / MVP §3: static camera pitch 44° FOV 30° showing the
+  whole lane (your cannon ~77% down, bottom ~20% free), geometry from `constants.ts` (rows 1500/2500/3500,
+  gates 75% wide with gaps, clash zone 3600–8400), you blue / them red, **no per-cohort badges** (per-side
+  totals in the top bar), HP labels on the cannons (`2.2K`, ticking smoothly), top bar ≤ 8% (you | timer,
+  stake, phase pips | them), relative drag, plant prompt + tap-to-rig, peek button (one per phase) with
+  private markers, GOTCHA / SURGE / K.O. overlays, shake only on hits to you (≤ 1 per 0.5 s) and KO,
+  Result from the real `MatchResult` (count-up, why-line, Rematch/Verify after ~1.8 s), Home = big Play vs
+  Bot + PvP stakes + How to play, with a silent mock match looping behind.
+- `pnpm --filter web build` passes (typecheck + build). Checked on PC via headless screenshots only.
+
+**Decided:**
+- The lane is **drawn 1.5× wider than its sim proportions** (sim 3000 × 12000 is 1:4; drawn 18 × 48 world
+  units). At true proportions under the 44°/30° camera the lane filled only ~55% of a portrait screen near
+  you and ~37% far away. Visual only; no rule changes.
+
+**Blocked / risks:**
+- Result reveal of all 3 deals uses **sample boards**: `MatchView` only carries the current deal.
+
+**Next / handoff:** **Kai:** (1) is drawing the lane wider than the sim OK, or do you want to change
+`LANE_WIDTH`/`LANE_LENGTH` instead? (2) For the Result screen's full reveal, can the contract expose every
+deal's final board + both rigs + my peeks at match end (e.g. `MatchResult.deals`)? Suparno next: clash front
++ pour + launch ease, then the MVP §5 OPEN art items.
