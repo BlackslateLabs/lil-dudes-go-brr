@@ -58,6 +58,7 @@ function tone(freq: number, dur: number, type: OscillatorType, gain: number, sli
 }
 
 let lastClash = 0;
+let lastLoot = 0;
 
 export const sfx = {
   /** Your own volley: a soft pop (every 0.4 s, so keep it quiet). */
@@ -82,6 +83,17 @@ export const sfx = {
     if (now - lastHit < 90) return;
     lastHit = now;
     tone(mine ? 110 : 160, 0.09, 'triangle', 0.12, 60);
+  },
+  /** A tower releases a wave in your lane: a low warning thump. */
+  wave() {
+    tone(90, 0.25, 'square', 0.06, 60);
+  },
+  /** Raid loot landing in the vault: a bright chirp. Throttled. */
+  loot() {
+    const now = performance.now();
+    if (now - lastLoot < 80) return;
+    lastLoot = now;
+    tone(1200 + Math.random() * 600, 0.06, 'sine', 0.05, 2400);
   },
   gotcha() {
     tone(880, 0.12, 'sawtooth', 0.07, 440);

@@ -1,40 +1,43 @@
 import { create } from 'zustand';
-import type { MatchStatus } from '@lil-dudes/client';
+import type { LanePhase, MatchStatus } from '@lil-dudes/client';
 
-/** Low-rate HUD state (≤ 10 updates/s), so React doesn't re-render every frame. */
+/** Low-rate HUD state (≤ 10 updates/s), so React doesn't re-render every frame. [me, them] pairs. */
 export interface HudState {
   tick: number;
   status: MatchStatus;
-  phase: number;
-  surge: boolean;
   stake: number;
   names: [string, string];
-  /** Dudes on the field, [you, them]. */
-  totals: [number, number];
+  gold: [number, number];
+  stage: [number, number];
+  phase: [LanePhase, LanePhase];
+  /** Ticks since my current phase started (plant countdown). */
+  myPhaseTick: number;
   rigUsed: boolean;
   peekUsed: boolean;
   /** Peek mode: the next tap on one of your `?` gates peeks it. */
   peeking: boolean;
-  /** Last GOTCHA: whether it hit you, and when (performance.now()) to restart the animation. */
+  /** Last GOTCHA: whether it hit me, and when (performance.now()) to restart the animation. */
   gotcha: { onMe: boolean; at: number } | null;
-  surgeAt: number | null;
-  ended: { ko: boolean; won: boolean | null } | null;
+  /** A short centre banner ("STAGE 2", "RAID!", "TOWER DOWN"). */
+  banner: { text: string; tone: 'good' | 'bad' | 'gold'; at: number } | null;
+  ended: { won: boolean | null; died: 'me' | 'them' | null } | null;
   set: (patch: Partial<Omit<HudState, 'set'>>) => void;
 }
 
 export const HUD_RESET: Omit<HudState, 'set'> = {
   tick: 0,
-  status: 'plant',
-  phase: 0,
-  surge: false,
+  status: 'waiting',
   stake: 0,
   names: ['You', 'Opponent'],
-  totals: [0, 0],
+  gold: [0, 0],
+  stage: [0, 0],
+  phase: ['plant', 'plant'],
+  myPhaseTick: 0,
   rigUsed: false,
   peekUsed: false,
   peeking: false,
   gotcha: null,
-  surgeAt: null,
+  banner: null,
   ended: null,
 };
 
