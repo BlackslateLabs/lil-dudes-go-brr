@@ -5,7 +5,7 @@ mod common;
 
 use common::game::*;
 use common::*;
-use lil_dudes_sim::{LANE_WIDTH, MATCH_TICKS};
+use lil_dudes_sim::{MatchOptions, MatchState, LANE_WIDTH, MATCH_TICKS};
 use magicsvm::TransactionTarget::Ephemeral;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -28,6 +28,12 @@ fn seed_needs_permissions_both_salts_and_mixes_them() {
     // No salts before the permissions exist (Secrets would still be public).
     assert!(g.er(g.request_seed_ix(a.pubkey(), [1; 32]), &[&a]).is_err());
     g.er(g.init_permissions_ix(a.pubkey()), &[&a]).unwrap();
+    // Before the seed: empty sides, cannons centred, no layout dealt.
+    let p = g.public(Ephemeral);
+    assert!(p
+        .sides
+        .iter()
+        .all(|s| s.cannon_x == 1_500 && s.towers == [0; 2]));
     // Not a player.
     let stranger = Keypair::new();
     assert!(g
@@ -54,11 +60,18 @@ fn seed_needs_permissions_both_salts_and_mixes_them() {
     let seed = u64::from_le_bytes(h[..8].try_into().unwrap());
     let secret = g.secret_raw(Ephemeral);
     assert_eq!(secret.seed, seed);
-    assert_eq!(secret.deal, lil_dudes_sim::Deal::new(seed, 0));
-    // The public state shows only the gold gate, at full HP, and not the seed.
+    assert_eq!(secret.values, lil_dudes_sim::Deal::new(seed).values);
+    // The initial state is exactly the sim's: the seed's layout, both players in the Plant of
+    // Fight 1. The public part shows every gate face-down and not the seed.
+    let fresh = MatchState::new(seed, MatchOptions::default());
+    assert_eq!(secret, fresh.secret);
     let p = g.public(Ephemeral);
-    assert_eq!(p.sides[0].hp, lil_dudes_sim::HP_MAX);
-    assert_eq!(p.sides[0].gates.iter().filter(|x| x.gold).count(), 1);
+    assert_eq!(p, fresh.public);
+    assert_eq!(p.layout, lil_dudes_sim::layout_for(seed));
+    assert!(p
+        .sides
+        .iter()
+        .all(|s| s.gates.iter().all(|x| x.revealed.is_none())));
     assert_eq!(u64_at(&g.match_data(Ephemeral), off::SEED), 0);
     // Only the VRF program identity may call the callback.
     let fake = g.idl.ix(
@@ -160,18 +173,29 @@ fn match_runs_to_the_end_on_the_crank_and_advance_stops() {
     let results = g.svm.warp_to_slot(s + 5 * (MATCH_TICKS as u64 + 50));
     assert!(results.iter().all(|r| r.is_ok()));
     let a = g.burner(0);
+    // Up to (3,600 − 5,400 crank runs / 5) / 8 ≈ 315 calls if nobody dies first.
     let mut guard = 0;
     while g.public(Ephemeral).result.is_none() {
         g.er(g.advance_ix(), &[&a]).unwrap();
         guard += 1;
-        assert!(guard < 400, "advance did not reach the end");
+        assert!(guard < 600, "advance did not reach the end");
     }
     let p = g.public(Ephemeral);
     let r = p.result.expect("match ended");
+    assert_eq!(
+        r,
+        lil_dudes_sim::payout(
+            0,
+            [p.sides[0].dead, p.sides[1].dead],
+            [p.sides[0].gold, p.sides[1].gold]
+        )
+    );
     println!(
-        "ended at tick {} hp {:?} result {:?}",
+        "ended at tick {} stage {:?} dead {:?} gold {:?} result {:?}",
         p.tick,
-        [p.sides[0].hp, p.sides[1].hp],
+        [p.sides[0].stage, p.sides[1].stage],
+        [p.sides[0].dead, p.sides[1].dead],
+        [p.sides[0].gold, p.sides[1].gold],
         r
     );
     // After the end advance is a no-op and set_aim is refused.
