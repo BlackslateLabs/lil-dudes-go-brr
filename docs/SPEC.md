@@ -49,6 +49,7 @@ have rigged your gate."
 - **Proportions (genre-measured):** a fresh volley reaches the first gate row in ~0.3 s; gates sit in
   the third of the lane nearest the cannon; a dude needs ~7–8 s from the cannon to a tower on an
   empty lane, so the long walk up is where the fight happens.
+- **(impl)** A done player's cannon still follows the aim; nothing else happens in that lane.
 
 ## 3. A level: stages and the race
 
@@ -68,6 +69,13 @@ move on; your opponent may be ahead or behind.
   (c) the **time cap** `MATCH_TICKS` (3:00) is reached: whatever each player has earned so far counts.
 - Typical match: plant 3 s + fight 1 ~25–40 s + transit 2 s + plant 3 s + fight 2 ~30–45 s + transit
   2 s + plant 3 s + raid ~10 s ≈ 1:20–1:50. The cap only bites if someone stalls.
+- **(impl)** Each phase has its own per-player tick counter (`phase_ticks`, 0 on its first tick).
+  The cannon fires on fight/raid ticks 0, 8, 16, … (the first volley on the first Fight tick).
+- **(impl)** When the last tower falls the player enters Transit and their `stage` moves on at once:
+  the field is wiped and the next stage's towers, crates and face-down gates are loaded, so Transit
+  already shows (and a rig already targets) the next stage. Plant and Transit have no units.
+- **(impl)** The raid's travel tail (8 s of fire + ~6 s for the last volley to reach the vault)
+  makes the raid ~14 s. Done = firing over and no dudes of yours left on the lane.
 
 ## 4. Towers, waves, death
 
@@ -84,25 +92,37 @@ over time so every fight ends.
     45 s, and 100‰ after. Stalemates can't last. (The genre also resizes waves to how you're doing;
     we **don't**: it would make an identical-copies race unfair.)
   - A destroyed tower releases nothing more.
+  - **(impl)** Waves spawn at the tower's `x` on `TOWER_Y`. All live towers of a fight share the
+    one schedule (Fight 2's two towers release together, down their own columns).
 - **Enemy troops** walk down at the same cruise speed as your dudes, toward your cannon line.
   They are not affected by gates.
 - **Death:** if any enemy cohort reaches `y ≤ 0` (your cannon line), you **die** instantly.
   Both players dying on the same tick = draw.
+- **(impl)** The death check runs after movement, clash and tower hits, so a volley at the line can
+  still stop an enemy; a death beats a tower falling on the same tick.
 - **Clash:** your cohorts and enemy cohorts that meet cancel 1:1 (`min(a, b)` from both). They meet
   once they've crossed each other in `y` and their `x` differ by at most `CLASH_REACH`. Front-most
   pairs resolve first.
+  **(impl)** "Crossed" = your cohort's `y` is at or above the enemy's by at most `CLASH_BAND`
+  (400, more than the fastest closing speed per tick, so no crossing pair skips it); pairs further
+  past each other have missed. Front-most = stored order (oldest first) on both sides.
 - **Targeting (genre: units home in):**
   - An enemy cohort steers sideways (`STEER_STEP` per tick) toward the nearest of your cohorts in
     front of it within `DETECT_Y`; otherwise it walks straight down.
   - Your cohort walks straight while it is still among the gate rows (aiming is your job). Past the
     last gate row it steers toward the nearest enemy cohort in front within `DETECT_Y`, else toward
     the nearest live tower.
+  - **(impl)** "Nearest" enemy/cohort = smallest squared distance (ties: the older one); nearest
+    tower = smallest `|dx|`. In the Raid there are no towers: cohorts walk straight to the vault.
 - **Hitting a tower:** a cohort that reaches `TOWER_Y` within `TOWER_HALF_W + CLASH_REACH` of a live
   tower's `x` deals damage = its count and is removed (kamikaze, as in the genre). A cohort that
   reaches the base edge without hitting anything is lost.
+  **(impl)** The whole cohort is removed even on overkill.
 - **Crates (locks):** some big gates sit behind a crate with a counter. A cohort crossing the crate's
   row inside its span is absorbed into it (`min(count, crate hp)` units are spent); at 0 the crate
   breaks and the gate behind it is open. Crates are part of the layout, identical for both.
+  **(impl)** A crate sits 300 below the row of the big gate it locks and covers that gate's span
+  (700); a locked gate never moves. A cohort that breaks a crate goes on with what is left.
 
 ## 5. Gold
 
@@ -113,6 +133,8 @@ Gold is the "loot" of the genre: you earn it by hurting the base.
 | Damage to a tower | 1 per point of damage actually dealt (overkill earns nothing) |
 | Tower destroyed | `TOWER_BONUS` (50) |
 | Raid: a dude reaches the vault | `LOOT_PER_UNIT` (2) per dude |
+
+**(impl)** The vault spans the whole base: a raid cohort loots when it reaches `VAULT_Y = TOWER_Y`.
 
 The tower part is roughly the same for two players who clear both fights, so **the raid decides
 most close matches**: arrive at the vault with the biggest crowd you can build, like the genre's
@@ -128,18 +150,28 @@ most close matches**: arrive at the vault with the biggest crowd you can build, 
   - **Big slot** (usually behind a crate): ×6 30%, ×8 40%, ×10 30%.
   - **Op:** `×k → c·k`. Integer, saturating. A gate row applies **once per cohort** (track the last
     row passed). A cohort in a gap passes unchanged.
+  - **(impl)** Gate **slots** = a stage's gates in layout order (by row, then `x`); Rig and Peek
+    name a slot. Normal gates are 600 wide (some layouts use 500 or 700), big gates 700. A cohort
+    passes a gate if `|x − gate x| · 2 ≤ width`, judged at the gate's `x` on the crossing tick.
 - **Moving gates:** a gate with `speed ≠ 0` slides between `x_min` and `x_max` and back (ping-pong),
   `speed` sim units per tick, measured from the start of that player's Fight/Raid phase. Its `x` is
   public at every tick.
+  **(impl)** Before that (Plant, Transit) it waits at its start `x`; it starts toward +x if
+  `speed > 0`, else toward −x.
 - **Rig (once per stage, during your Plant):** pick one gate of your opponent's copy, in the stage
   they are in now (or the one they enter next, if they are in Transit). It becomes a **trap** with the
   same `?` face. When their first cohort passes it: both screens flash **GOTCHA**, and from then on
   it acts as `÷2` for the rest of that stage (`÷k → floor(c/k)`). Refused (and not used up): the
   opponent is done/dead, the gate is already revealed, or that opponent stage already holds a rig.
   An unused rig is lost when your plant ends.
+  **(impl)** The trap applies from the moment the rig is placed (so the first pass already gets
+  `÷2`; rigs can't land on revealed gates, so no shown value ever changes). The rig is recorded
+  under the rigger's own stage, naming the victim's stage and slot. The public state shows only
+  "rig used this stage" (as in v2.1), never which gate.
 - **Peek (once per stage, during your Fight or Raid):** privately see the true value of one of your
   own unrevealed gates in your current stage. A rigged gate peeks as `÷2`. Refused on a revealed
   gate (and not used up).
+  **(impl)** The result is frozen when you peek (a rig placed later doesn't update it).
 - **Privacy:** gate values, the seed, rigs and peeks live in the private Secrets/Peek accounts (TECH
   §4). The public Match account holds only revealed values, gate positions and everything else.
 
@@ -151,6 +183,8 @@ most close matches**: arrive at the vault with the biggest crowd you can build, 
   then at `CRUISE_SPEED`.
 - Caps: `COHORT_CAP = 40` live cohorts of yours, `ENEMY_CAP = 16` enemy cohorts per lane (a wave
   that would exceed it merges into the newest enemy cohort of that tower).
+- **(impl)** At `COHORT_CAP` a volley is skipped. Without an enemy cohort of that tower the merging
+  wave joins the newest enemy cohort of any tower. Cohort and enemy ids share one counter.
 
 ## 8. Ending and payout
 
@@ -176,6 +210,12 @@ most close matches**: arrive at the vault with the biggest crowd you can build, 
   gate rows (`y`) with 1–3 gates each (`x`, `width`, slot type, optional movement), and crates.
   Layouts are hand-designed in `crates/sim/src/layouts.rs` (a pool of 6 for the MVP); the VRF seed
   picks one per match (`layout = seed % LAYOUTS`, public once seeded).
+- **(impl)** The MVP pool: 0 Twin Lanes (two clean side lanes, a sliding / locked middle),
+  1 Conveyor (almost everything slides), 2 Long Shot (a locked big gate far off to the side vs a
+  safe middle path), 3 Funnel (everything through the middle, towers on the flanks), 4 Zigzag (rows
+  alternate sides), 5 Stairway (a diagonal staircase of single gates). Rows at 1,400 / 2,400 /
+  3,400 (or 1,400 / 2,300 / 3,200 / 4,100). Tower HP and `wave_base` are set per layout by the
+  balance runner so every layout plays about as long and as dangerously.
 - Design rules (genre-measured): rows hold **mostly 1–2 gates** with open lane between (a miss is a
   real miss); the first row sits ~1,400 units from the cannon, rows ~900–1,100 apart; the best
   multiplier is front-loaded; at least one sliding row per layout; at least one big gate behind a
@@ -193,6 +233,12 @@ most close matches**: arrive at the vault with the biggest crowd you can build, 
   arrival time, locked gates count only once the crate is broken); (3) alternate between ties every
   20–60 ticks. It rigs a random unrevealed gate of the opponent's stage at the start of each of its
   plants and peeks a random own `?` at the start of each fight.
+- **(impl)** Candidate aims every 100 across the lane. An unrevealed gate counts ×2 (normal slot)
+  or ×8 (big slot). The estimate follows the volley's actual count: an unbroken crate in the way
+  absorbs its HP first, so the bot never aims through a crate (and never breaks one on purpose).
+  Defend aims at the lowest enemy within `DEFEND_Y`. Among tied spots it aims at a random point of
+  the tied run (so two bots don't play identically) and moves to the next tied run every 20–60
+  ticks. It never rigs a finished opponent.
 - **Tutorial / holding back:** in the tutorial the bot's waves are irrelevant (it is a race, not a
   duel): instead the **player's** fight 1 waves are at 50% so a newcomer can't die early. Free only.
 - Bot matches are free. The bot never takes stakes.
@@ -224,6 +270,15 @@ most close matches**: arrive at the vault with the biggest crowd you can build, 
 | `TOWER_BONUS` / `LOOT_PER_UNIT` | 50 / 2 | |
 | `DEFEND_Y` (bot) | 3,000 | |
 | `FEE_BPS` | 500 | |
+| `CLASH_BAND` **(impl)** | 400 | how far past each other a crossing pair still meets |
+| `VAULT_Y` **(impl)** | 11,000 | = `TOWER_Y` |
+| Tutorial waves **(impl)** | 50% | side 0, Fight 1 |
+| Limits **(impl)** | 4 rows, 8 gates, 2 towers, 2 crates per stage | fixed-size state |
+
+**(impl) Balance (bot vs bot, 2,000 matches per layout, `cargo run -p lil-dudes-sim --example
+balance --release`):** deaths 13–20% per layout (14.7% overall, about a third in Fight 1), matches
+~1:28–1:36, Fight 1 ~30 s, Fight 2 ~35 s, raid ~14 s, the raid ~26–40% of all gold. Two bots on
+identical copies often tie on gold (~58% draws); people won't play identically.
 
 ## 13. MVP scope
 
