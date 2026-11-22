@@ -1,11 +1,11 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CapsuleGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import type { Side } from '@lil-dudes/client';
+import type { CohortView } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { HALF_W, PALETTE, wx, wz } from './layout';
 
-/** Per-side instance cap (TECH §5: ~1,500 per side on a phone). */
+/** Instance cap per crowd (TECH §5: ~1,500 on a phone). */
 const MAX_UNITS = 1500;
 const SPACING = 0.32;
 
@@ -23,38 +23,38 @@ const q = new Quaternion();
 const pos = new Vector3();
 const one = new Vector3(1, 1, 1);
 
-/** Crowds are drawn from cohorts; no number badge per crowd (SPEC §6). */
+/** Your dudes (blue) and the base's troops (red) in your lane. No number badge per crowd (SPEC v3 §7). */
 export function Crowds({ feed }: { feed: MatchFeed }) {
   return (
     <>
-      <Crowd feed={feed} side={0} />
-      <Crowd feed={feed} side={1} />
+      <Crowd feed={feed} enemy={false} />
+      <Crowd feed={feed} enemy />
     </>
   );
 }
 
-function Crowd({ feed, side }: { feed: MatchFeed; side: Side }) {
+function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
   const ref = useRef<InstancedMesh>(null!);
-  const color = side === feed.mySide ? PALETTE.me : PALETTE.them;
 
   useFrame(({ clock }) => {
     const mesh = ref.current;
-    const cur = feed.cur;
-    if (!cur) return;
+    const lane = feed.me;
+    if (!lane) return;
     const a = feed.alpha();
-    const prevById = feed.prevCohorts[side];
+    const list: CohortView[] = enemy ? lane.enemies : lane.cohorts;
+    const prevById = enemy ? feed.prevEnemies : feed.prevCohorts;
     const time = clock.elapsedTime;
     let n = 0;
-    for (const c of cur.sides[side].cohorts) {
+    for (const c of list) {
       if (c.count <= 0) continue;
       const p = prevById.get(c.id);
       const x = p ? p.x + (c.x - p.x) * a : c.x;
-      const y = p ? p.y + (c.y - p.y) * a : c.y * a;
-      const cx = wx(x, feed.mySide);
-      const cz = wz(side, y, feed.mySide);
+      const y = p ? p.y + (c.y - p.y) * a : c.y;
+      const cx = wx(x);
+      const cz = wz(y);
       const units = unitsFor(c.count);
       for (let i = 0; i < units && n < MAX_UNITS; i++) {
-        // Sunflower spiral blob; jitter is cosmetic (SPEC §6).
+        // Sunflower spiral blob; jitter is cosmetic.
         const r = SPACING * Math.sqrt(i + 0.5);
         const ang = i * 2.39996 + c.id * 0.7;
         const ux = Math.max(-HALF_W + 0.3, Math.min(HALF_W - 0.3, cx + r * Math.cos(ang)));
@@ -71,7 +71,7 @@ function Crowd({ feed, side }: { feed: MatchFeed; side: Side }) {
 
   return (
     <instancedMesh ref={ref} args={[unitGeo, undefined, MAX_UNITS]} frustumCulled={false}>
-      <meshLambertMaterial color={color} />
+      <meshLambertMaterial color={enemy ? PALETTE.enemy : PALETTE.me} />
     </instancedMesh>
   );
 }
