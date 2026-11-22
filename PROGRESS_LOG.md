@@ -928,3 +928,42 @@ screenshots only; the result screen's full per-stage reveal (`reveal()`) isn't w
 
 **Next / handoff:** PR `web/arena-prototype` → `main` (rebase merge) once Kai has reviewed SPEC v3. **Kai:** the
 build/redeploy/MagicSVM/bench/privacy runs in the program entry above, then a live v3 devnet match.
+
+## 2026-11-22 19:45 IST · Suparno · rules v4 (sim, program, client, server, web) + art decisions · [DECISION] [CONTRACT] [HANDOFF]
+**Did:**
+- **Rules v4** (`docs/SPEC.md` v4, `crates/sim`, WASM pkg rebuilt): two stages. Fight 2 has the **town hall**
+  behind its towers; when the last tower falls the raid starts **in place** (no wipe, no plant): the mob
+  rolls on into the hall, the cannon fires 8 s more (`raid_ticks`), loot as before. Gate edges count
+  (`GATE_GRACE` 100, nearest centre wins, crates too); big gates 700 → 1000 wide, layouts re-authored,
+  `wave_base` retuned. **Rig from your own lane**: any phase, once per stage, a slot of *your* current
+  stage rigs the opponent's copy of it (refused if they passed that stage or opened that gate);
+  `can_rig` in the sim/WASM. Bot rigs 1–3 s into each fight. Balance (2,000 bot matches per layout):
+  deaths 14.5%, avg match 74.8 s (was 91 s), raid ≈ 55% of gold, gold ties 47.5%.
+- **Program** (`programs/lil_dudes`): Match still 1,792 B; history 16 B at 296; `_pad` 6; **state at
+  318** (was 322). Secrets 152 B (state at 112). Peek unchanged. `plant_rig` docs/RigRefused message
+  follow the any-phase rule (no instruction/IDL name changes). IDL JSON layouts updated. MagicSVM rig
+  tests flipped + a new "rig ahead but not behind" test. TECH.md sizes updated.
+- **CONTRACT, `packages/client`**: `STAGES` 2, `FINAL_STAGE` (replaces `RAID_STAGE`), `GATE_GRACE`,
+  `HALL_X`; `LaneView.raidTicks`; `phaseTick` keeps counting into the raid; new
+  `MatchSource.canRig(slot)` (Offline → `sim.can_rig`, Live → `can_rig_bytes`, Mock → false);
+  `rig(slot)` = a slot of MY stage, any phase; codec v3 (PUBLIC_LEN 1,474), `STATE_OFFSET` 318,
+  `SECRETS_LEN` 152, history 16; `covers` / `gateAt` helpers. Server bot exports `botTurn`.
+- **Web**: town hall model (shakes and counts loot), crowds drawn as a narrow column (what touches a
+  gate goes through it), 😈 Rig button + tap your own gate (red pulse on valid gates, red frame on the
+  one you rigged), mini-map view only, raid countdown, `?speed=N` for test runs. `docs/ART.md`: glow-up
+  plan, asset sources and the **art decisions** table.
+
+**Decided:** (Suparno) town hall finale in Fight 2 instead of a separate raid stage; rig from your own
+lane; big gates visibly bigger; art picks in `docs/ART.md` (Kenney Mini Characters / villains, Blaster
+Kit cannon, Tower Defense towers, Fantasy Town hall, KayKit Block Bits crates, Nature Kit, Kenney
+particles, glass gates and chunky CSS in code, Lilita One + Baloo 2, "candy platformer" lighting).
+Sound effects and music still open.
+
+**Blocked / risks:** Not verified here (no SBF toolchain/devnet; the MagicSVM test binaries also fail to
+link with the mingw toolchain on this machine, same as before these changes): anchor/SBF build, MagicSVM
+run, compute re-bench (the raid in place may raise worst-case tick cost), redeploy (Secrets shrank, so v3
+accounts are unreadable by v4), live devnet scripts. Bots still tie on gold often (47.5%; Zigzag/Stairway
+84–88%); leftover enemies are cleared when a lane finishes (you can't die after your last loot).
+
+**Next / handoff:** Kai: please review SPEC v4 §3/§6 and the program diff, then SBF build, MagicSVM run,
+bench and redeploy. Suparno/Claude: start the glow-up (lighting and materials first, then the picked packs).
