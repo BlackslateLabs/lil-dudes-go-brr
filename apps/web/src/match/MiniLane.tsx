@@ -45,8 +45,14 @@ function drawLane(ctx: CanvasRenderingContext2D, w: number, h: number, lane: Lan
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = PALETTE.lane;
   ctx.fillRect(0, 0, w, h);
+  // Faint tiles, like the big lane.
+  ctx.fillStyle = PALETTE.laneTile;
+  const tile = w / 6;
+  ctx.globalAlpha = 0.6;
+  for (let ty = 0; ty * tile < h; ty++) for (let tx = 0; tx < 6; tx++) if ((tx + ty) % 2) ctx.fillRect(tx * tile, h - (ty + 1) * tile, tile, tile);
+  ctx.globalAlpha = 1;
   ctx.fillStyle = PALETTE.base;
-  ctx.fillRect(0, 0, w, Math.max(3, h * 0.03));
+  ctx.fillRect(0, 0, w, Math.max(4, h * 0.035));
   // Gates
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -56,7 +62,12 @@ function drawLane(ctx: CanvasRenderingContext2D, w: number, h: number, lane: Lan
     const x = sx(g.x) - gw / 2;
     const y = sy(g.y) - 5;
     ctx.fillStyle = g.revealed ? (g.revealed.kind === 'div' ? PALETTE.bad : g.big ? PALETTE.gold : PALETTE.good) : g.big ? PALETTE.gold : PALETTE.unknown;
-    ctx.fillRect(x, y, gw, 10);
+    ctx.beginPath();
+    ctx.roundRect(x, y, gw, 10, 3);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.outline;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.fillText(g.revealed ? opLabel(g.revealed) : '?', sx(g.x), sy(g.y));
     if (rigSlot === g.slot) {
@@ -72,7 +83,12 @@ function drawLane(ctx: CanvasRenderingContext2D, w: number, h: number, lane: Lan
   for (const t of lane.towers) {
     if (t.hp <= 0) continue;
     ctx.fillStyle = PALETTE.tower;
-    ctx.fillRect(sx(t.x) - 6, sy(t.y) - 6, 12, 12);
+    ctx.beginPath();
+    ctx.roundRect(sx(t.x) - 6, sy(t.y) - 6, 12, 12, 3);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.outline;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.fillRect(sx(t.x) - 6, sy(t.y) + 8, 12, 2);
     ctx.fillStyle = '#3c3';
@@ -81,20 +97,31 @@ function drawLane(ctx: CanvasRenderingContext2D, w: number, h: number, lane: Lan
   // Crowds
   const dot = (x: number, y: number, n: number, color: string) => {
     ctx.fillStyle = color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(sx(x), sy(y), Math.min(7, 1.5 + Math.sqrt(n) * 0.6), 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   };
   for (const c of lane.cohorts) dot(c.x, c.y, c.count, PALETTE.me);
   for (const c of lane.enemies) dot(c.x, c.y, c.count, PALETTE.enemy);
   // Cannon
+  ctx.fillStyle = PALETTE.enemy;
+  ctx.fillRect(0, h - 9, w, 1.5);
   ctx.fillStyle = PALETTE.me;
-  ctx.fillRect(sx(lane.cannonX) - 5, h - 6, 10, 6);
+  ctx.beginPath();
+  ctx.roundRect(sx(lane.cannonX) - 6, h - 7, 12, 7, [3, 3, 0, 0]);
+  ctx.fill();
   if (lane.phase === 'dead' || lane.phase === 'done') {
-    ctx.fillStyle = '#0008';
+    ctx.fillStyle = '#1b1530aa';
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#fff';
     ctx.font = `${Math.round(w / 5)}px "Lilita One", sans-serif`;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = PALETTE.outline;
+    ctx.strokeText(lane.phase === 'dead' ? 'DEAD' : 'DONE', w / 2, h / 2);
+    ctx.fillStyle = lane.phase === 'dead' ? PALETTE.bad : PALETTE.gold;
     ctx.fillText(lane.phase === 'dead' ? 'DEAD' : 'DONE', w / 2, h / 2);
   }
 }
