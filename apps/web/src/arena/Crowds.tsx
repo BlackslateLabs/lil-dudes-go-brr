@@ -8,6 +8,8 @@ import { HALF_W, PALETTE, wx, wz } from './layout';
 /** Instance cap per crowd (TECH §5: ~1,500 on a phone). */
 const MAX_UNITS = 1500;
 const SPACING = 0.32;
+/** Widest a crowd is drawn either side of its centre: about the sim's gate grace (100 units). */
+const MAX_HALF_SPREAD = 0.6;
 
 /** Visible units for a cohort: 1:1 when small, then sub-linear so big crowds stay affordable. */
 function unitsFor(count: number): number {
@@ -53,12 +55,18 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
       const cx = wx(x);
       const cz = wz(y);
       const units = unitsFor(c.count);
+      // The sim treats a cohort as a point (plus a small gate grace), so keep the drawn crowd
+      // narrow across the lane and let big crowds stretch along it instead. Then a crowd that
+      // looks like it touches a gate really does go through it.
+      const rMax = SPACING * Math.sqrt(units + 0.5);
+      const kx = Math.min(1, MAX_HALF_SPREAD / rMax);
+      const kz = Math.min(2, 0.7 / kx);
       for (let i = 0; i < units && n < MAX_UNITS; i++) {
         // Sunflower spiral blob; jitter is cosmetic.
         const r = SPACING * Math.sqrt(i + 0.5);
         const ang = i * 2.39996 + c.id * 0.7;
-        const ux = Math.max(-HALF_W + 0.3, Math.min(HALF_W - 0.3, cx + r * Math.cos(ang)));
-        const uz = cz + r * Math.sin(ang) * 0.7;
+        const ux = Math.max(-HALF_W + 0.3, Math.min(HALF_W - 0.3, cx + r * Math.cos(ang) * kx));
+        const uz = cz + r * Math.sin(ang) * kz;
         const bob = Math.abs(Math.sin(time * 13 + i * 1.7 + c.id)) * 0.18;
         pos.set(ux, bob, uz);
         m4.compose(pos, q, one);
