@@ -1,44 +1,48 @@
-//! The Warlord bot (SPEC §9).
+//! The Warlord bot (SPEC §10).
 //!
 //! It is handed `&PublicState` only. Hidden gate values, rigs, peeks and the match seed live in
 //! `SecretState`, which it never receives, so it cannot read secrets by construction. Its own
-//! randomness comes from its own seed, which the caller must supply independently of the match seed.
-//! It also ignores its own peek results (they are private state it is not given).
+//! randomness comes from its own seed, which the caller must supply independently of the match
+//! seed. It also ignores its own peek results (they are private state it is not given).
 
-use crate::constants::{CELLS, COLS, COL_WIDTH, LANE_LENGTH, ROWS, VOLLEY_SIZE};
+use crate::constants::{
+    CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, VOLLEY_SIZE,
+};
+use crate::layouts::{Slot, StageDef};
 use crate::rng::SplitMix64;
-use crate::state::{other, PublicGate, PublicSide, PublicState, SideInput};
-use crate::types::{GateOp, Hint, Status};
+use crate::state::{other, PublicSide, PublicState, SideInput};
+use crate::types::{GateOp, Phase};
 
-/// SPEC §9: pick a target every 2 ticks.
+/// SPEC §10: pick a target every 2 ticks.
 pub const THINK_TICKS: u32 = 2;
-/// SPEC §9: an enemy cohort this close to the bot's cannon is a threat (~1.5 s at cruise).
-pub const DEFEND_DIST: i32 = 3_000;
-/// SPEC §9: alternate between equal options every 20–60 ticks.
+/// SPEC §10: alternate between equal options every 20–60 ticks.
 pub const SWITCH_MIN: u32 = 20;
 pub const SWITCH_MAX: u32 = 60;
-/// SPEC §9 tutorial: holding back = aiming into the gap between columns 0 and 1, so the bot's
-/// volleys pass no gates and stay at VOLLEY_SIZE (it cannot KO anyone in phase 1).
-pub const HOLD_BACK_X: i32 = COL_WIDTH;
+/// Candidate aim points: every AIM_STEP across the lane.
+pub const AIM_STEP: i32 = 100;
+const CANDIDATES: usize = (LANE_WIDTH / AIM_STEP) as usize - 1;
+/// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10), big ×8.
+pub const GUESS_NORMAL_PM: u64 = 2_000;
+pub const GUESS_BIG_PM: u64 = 8_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Warlord {
     side: u8,
     rng: SplitMix64,
-    /// The column it is going for.
-    col: u8,
-    /// When it may switch to another equally good column.
+    /// The x it is going for.
+    target: i32,
+    /// When it may switch to another equally good spot.
     switch_at: u32,
 }
 
 impl Warlord {
     /// `seed` must not be derived from the match seed by anything the opponent can't see either;
-    /// it only drives tie-breaks and the random rig/peek cells.
+    /// it only drives tie-breaks and the random rig/peek slots.
     pub fn new(side: u8, seed: u64) -> Self {
         Self {
             side,
             rng: SplitMix64::new(seed),
-            col: 1,
+            target: LANE_WIDTH / 2,
             switch_at: 0,
         }
     }
@@ -53,126 +57,162 @@ impl Warlord {
         let (Some(me), Some(enemy)) = (view.side(self.side), view.side(other(self.side))) else {
             return input;
         };
-        let status = view.status();
-        // SPEC §9 tutorial: in phase 1 the bot holds back (no rig, no peek, no gates).
-        let hold_back = view.options.tutorial && view.phase() == 0;
-
-        // SPEC §9: it rigs and peeks at random cells.
-        if status == Status::Plant && !me.rig_used && !hold_back {
-            input.rig = self.random_cell(&enemy.gates, |g| !g.gold && g.revealed.is_none());
-        }
-        if status == Status::Playing && !me.peek_used && !hold_back {
-            input.peek = self.random_cell(&me.gates, |g| g.revealed.is_none());
-        }
-
-        if status == Status::Ended || view.tick.checked_rem(THINK_TICKS) != Some(0) {
+        if view.ended() || me.finished() {
             return input;
         }
-        input.aim = Some(if hold_back {
-            HOLD_BACK_X
-        } else if let Some(x) = threat(enemy) {
-            // SPEC §9.1: defend if an enemy cohort is close to its cannon.
-            x
-        } else {
-            // SPEC §9.2–4: best known column; alternate between ties; with nothing known all
-            // columns tie, so it drifts between them.
-            col_centre(self.pick_column(view.tick, me))
+        // SPEC §10: a random unrevealed gate of the opponent's stage in each of its plants, and
+        // a random own `?` in each fight.
+        if me.phase == Phase::Plant && !me.rig_used && !enemy.finished() {
+            let n = view.stage_def(other(self.side)).gates.len();
+            input.rig = self.random_hidden(enemy, n);
+        }
+        if me.phase.active() && !me.peek_used {
+            let n = view.stage_def(self.side).gates.len();
+            input.peek = self.random_hidden(me, n);
+        }
+        if view.tick.checked_rem(THINK_TICKS) != Some(0) {
+            return input;
+        }
+        input.aim = Some(match threat(me) {
+            // SPEC §10.1: defend.
+            Some(x) => x,
+            // SPEC §10.2–3: the best expected product; alternate between ties.
+            None => self.pick(view.tick, me, view.stage_def(self.side)),
         });
         input
     }
 
-    fn random_cell(
-        &mut self,
-        gates: &[PublicGate; CELLS],
-        ok: impl Fn(&PublicGate) -> bool,
-    ) -> Option<u8> {
-        let mut cells = [0u8; CELLS];
+    fn random_hidden(&mut self, side: &PublicSide, n: usize) -> Option<u8> {
+        let mut slots = [0u8; GATES_MAX];
+        let mut k = 0usize;
+        for (slot, g) in (0u8..).zip(side.gates.iter().take(n)) {
+            if let (None, Some(dst)) = (g.revealed, slots.get_mut(k)) {
+                *dst = slot;
+                k = k.saturating_add(1);
+            }
+        }
+        let pick = self.rng.below(k as u64) as usize;
+        (k > 0).then(|| slots.get(pick).copied()).flatten()
+    }
+
+    fn pick(&mut self, tick: u32, me: &PublicSide, st: &StageDef) -> i32 {
+        let mut scores = [0u64; CANDIDATES];
+        for (i, score) in scores.iter_mut().enumerate() {
+            *score = path_score(me, st, candidate(i));
+        }
+        let best = scores.iter().copied().max().unwrap_or(0);
+        // Runs of equally good candidates: aim somewhere inside one.
+        let mut runs = [(0i32, 0i32); CANDIDATES];
         let mut n = 0usize;
-        for (cell, g) in (0u8..).zip(gates.iter()) {
-            if let (true, Some(slot)) = (ok(g), cells.get_mut(n)) {
-                *slot = cell;
+        let mut i = 0usize;
+        while i < CANDIDATES {
+            if scores.get(i) != Some(&best) {
+                i = i.saturating_add(1);
+                continue;
+            }
+            let start = i;
+            while scores.get(i) == Some(&best) {
+                i = i.saturating_add(1);
+            }
+            if let Some(r) = runs.get_mut(n) {
+                *r = (candidate(start), candidate(i.saturating_sub(1)));
                 n = n.saturating_add(1);
             }
         }
-        let pick = self.rng.below(n as u64) as usize;
-        (n > 0).then(|| cells.get(pick).copied()).flatten()
-    }
-
-    fn pick_column(&mut self, tick: u32, me: &PublicSide) -> u8 {
-        let mut scores = [0u32; COLS];
-        for (col, score) in (0u8..).zip(scores.iter_mut()) {
-            *score = column_score(me, col);
-        }
-        let best = scores.iter().copied().max().unwrap_or(0);
-        let is_best = |c: u8| scores.get(usize::from(c)) == Some(&best);
-        let n_best = scores.iter().filter(|&&s| s == best).count();
-
-        let switch = if !is_best(self.col) {
-            true
-        } else {
-            tick >= self.switch_at && n_best > 1
+        let mids = runs.get(..n).unwrap_or(&[]);
+        let current = mids.iter().position(|r| (r.0..=r.1).contains(&self.target));
+        let switch = match current {
+            None => true,
+            Some(_) => tick >= self.switch_at && n > 1,
         };
         if switch {
-            // Next best column after the current one (round robin), or a random best one if the
-            // current column is no longer among the best.
-            let start = if is_best(self.col) {
-                self.col
-            } else {
-                self.rng.below(COLS as u64) as u8
+            let next = match current {
+                // Round robin to the next tied run.
+                Some(c) => c.saturating_add(1).checked_rem(n).unwrap_or(0),
+                None => self.rng.below(n as u64) as usize,
             };
-            for k in 1..=COLS as u8 {
-                let c = start.saturating_add(k).checked_rem(COLS as u8).unwrap_or(0);
-                if is_best(c) {
-                    self.col = c;
-                    break;
-                }
+            if let Some(&(lo, hi)) = mids.get(next) {
+                // Any point of the run: the same choice, played a little differently each time.
+                let steps = hi.saturating_sub(lo).checked_div(AIM_STEP).unwrap_or(0);
+                let pick = self
+                    .rng
+                    .below(u64::from(steps.unsigned_abs()).saturating_add(1));
+                self.target = lo.saturating_add((pick as i32).saturating_mul(AIM_STEP));
             }
             self.switch_at = tick.saturating_add(self.rng.range_inclusive(SWITCH_MIN, SWITCH_MAX));
         }
-        self.col
+        self.target
     }
 }
 
-/// The biggest enemy cohort (grown past a raw volley) within DEFEND_DIST of my cannon; the
-/// front-most wins ties. Returns its x.
-fn threat(enemy: &PublicSide) -> Option<i32> {
-    let mut best: Option<(u32, i32)> = None;
-    for c in enemy.cohorts() {
-        let dist = LANE_LENGTH.saturating_sub(i32::from(c.y));
-        let bigger = best.is_none_or(|(n, _)| c.count > n);
-        if dist <= DEFEND_DIST && c.count > VOLLEY_SIZE && bigger {
-            best = Some((c.count, i32::from(c.x)));
+fn candidate(i: usize) -> i32 {
+    (i as i32).saturating_add(1).saturating_mul(AIM_STEP)
+}
+
+/// SPEC §10.1: the lowest enemy cohort within DEFEND_Y of the cannon line. Returns its x.
+fn threat(me: &PublicSide) -> Option<i32> {
+    me.enemies()
+        .iter()
+        .filter(|e| i32::from(e.y) <= DEFEND_Y)
+        .min_by_key(|e| e.y)
+        .map(|e| i32::from(e.x))
+}
+
+/// Ticks a fresh volley needs to reach `y` (launch boost, then cruise).
+pub fn travel_ticks(y: i32) -> u32 {
+    let boost = LAUNCH_SPEED.saturating_mul(LAUNCH_TICKS as i32);
+    if y <= boost {
+        (y.saturating_add(LAUNCH_SPEED - 1) / LAUNCH_SPEED) as u32
+    } else {
+        let rest = y.saturating_sub(boost);
+        LAUNCH_TICKS.saturating_add((rest.saturating_add(CRUISE_SPEED - 1) / CRUISE_SPEED) as u32)
+    }
+}
+
+/// SPEC §10.2: the expected size (in thousandths of a dude) of a volley fired now at `x` once
+/// it has passed every row: revealed values, else the slot's guess; moving gates predicted at
+/// arrival. An unbroken crate in the way absorbs its HP first, so a locked gate only pays once
+/// its crate is broken.
+pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
+    let now = if me.phase.active() {
+        u32::from(me.phase_ticks)
+    } else {
+        0
+    };
+    let covers = |centre: i16, width: i16| {
+        x.abs_diff(i32::from(centre)).saturating_mul(2) <= u32::from(width.unsigned_abs())
+    };
+    let mut score: u64 = u64::from(VOLLEY_SIZE).saturating_mul(1_000);
+    let mut below = i32::MIN;
+    for (row, &row_y) in (0u8..).zip(st.rows) {
+        let row_y = i32::from(row_y);
+        for (c, &hp) in st.crates.iter().zip(me.crates.iter()) {
+            let cy = i32::from(c.y);
+            if hp > 0 && below < cy && cy < row_y && covers(c.x, c.width) {
+                score = score.saturating_sub(u64::from(hp).saturating_mul(1_000));
+            }
         }
-    }
-    best.map(|(_, x)| x)
-}
-
-/// SPEC §9.2: what a fresh volley would become going straight up column `col`, using revealed
-/// values where known and the hint colour otherwise (blue/gold ≈ ×2, grey ≈ ×1, red ≈ ÷2).
-pub fn column_score(me: &PublicSide, col: u8) -> u32 {
-    let mut count = VOLLEY_SIZE;
-    for row in 0..ROWS as u8 {
-        let cell = row.saturating_mul(COLS as u8).saturating_add(col);
-        let op = match me.gate(cell) {
-            Some(PublicGate {
-                revealed: Some(op), ..
-            }) => *op,
-            Some(PublicGate { hint, .. }) => match hint {
-                Hint::Good | Hint::Gold => GateOp::Mul(2),
-                Hint::None => GateOp::Mul(1),
-                Hint::Bad => GateOp::Div(2),
-            },
-            None => GateOp::Mul(1),
+        below = row_y;
+        let at = now.saturating_add(travel_ticks(row_y));
+        let hit = (0usize..)
+            .zip(st.gates.iter())
+            .find(|(_, g)| g.row == row && covers(g.x_at(at), g.width));
+        let Some((slot, def)) = hit else {
+            continue;
         };
-        count = op.apply(count);
+        score = match me.gates.get(slot).and_then(|g| g.revealed) {
+            Some(GateOp::Mul(k)) => score.saturating_mul(u64::from(k)),
+            Some(GateOp::Div(k)) => score.checked_div(u64::from(k)).unwrap_or(0),
+            None => {
+                let guess = match def.slot {
+                    Slot::Normal => GUESS_NORMAL_PM,
+                    Slot::Big => GUESS_BIG_PM,
+                };
+                score.saturating_mul(guess) / 1_000
+            }
+        };
     }
-    count
-}
-
-fn col_centre(col: u8) -> i32 {
-    i32::from(col)
-        .saturating_mul(COL_WIDTH)
-        .saturating_add(COL_WIDTH / 2)
+    score
 }
 
 #[cfg(test)]
