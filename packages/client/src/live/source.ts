@@ -176,14 +176,11 @@ export class LiveSource implements MatchSource {
     this.pendingAim = Math.round(Math.max(0, Math.min(C.LANE_WIDTH - 1, x)));
   }
 
-  /** Rig gate `slot` of the opponent's current stage: only during my own Plant, once per stage
-   *  (the program refuses the rest: revealed gate, opponent finished, stage already rigged). */
+  /** Rig from my own lane: gate `slot` of my current stage, trapped in the opponent's copy of it.
+   *  Any phase while alive and not done, once per stage of mine; sent only when `canRig(slot)`
+   *  says yes on the newest state (the program re-checks with the same sim rule). */
   rig(slot: number): void {
-    const v = this.newest.view;
-    const me = v.sides[this.mySide];
-    const them = v.sides[this.mySide === 0 ? 1 : 0];
-    if (!Number.isInteger(slot) || slot < 0 || slot >= them.gates.length) return;
-    if (this.inflight.rig || me.rigUsed || me.phase !== 'plant' || v.status !== 'playing') return;
+    if (this.inflight.rig || !this.canRig(slot)) return;
     this.inflight.rig = true;
     void this.tx('plant_rig', ixs.plantRig(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
       this.inflight.rig = false;

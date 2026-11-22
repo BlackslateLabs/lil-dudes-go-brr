@@ -1,5 +1,5 @@
 // Decoder for the PUBLIC part of the match state, as stored in the on-chain Match account
-// (crates/sim/src/codec.rs documents the layout, codec v2 / rules v3; a parity test checks this
+// (crates/sim/src/codec.rs documents the layout, codec v3 / rules v4; a parity test checks this
 // file against the WASM build). The secret part never reaches a client during a match.
 import * as C from './constants';
 import { opFromByte } from './layout';
@@ -7,7 +7,7 @@ import { matchView, resultOf, sideOf, type LaneState, type RawResult } from './v
 import type { CohortView, MatchResult, MatchStatus, MatchView } from './types';
 
 /** Must equal crates/sim CODEC_VERSION (byte 0 of the public part). */
-export const CODEC_VERSION = 2;
+export const CODEC_VERSION = 3;
 export const HEADER_LEN = 34;
 export const GATE_LEN = 3;
 export const UNIT_LEN = 12;
@@ -16,7 +16,11 @@ const SIDE_CRATES = SIDE_TOWERS + C.TOWERS_MAX * 2;
 const SIDE_GATES = SIDE_CRATES + C.CRATES_MAX * 2;
 const SIDE_COHORTS = SIDE_GATES + C.GATES_MAX * GATE_LEN;
 const SIDE_ENEMIES = SIDE_COHORTS + C.COHORT_CAP * UNIT_LEN;
-export const SIDE_LEN = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
+/** u16 raid ticks (codec v3), after the enemies. */
+const SIDE_RAID = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
+/** 720 bytes per side. */
+export const SIDE_LEN = SIDE_RAID + 2;
+/** 1,474 bytes. */
 export const PUBLIC_LEN = HEADER_LEN + 2 * SIDE_LEN;
 /** Offset of a side's aim inside its record (the program writes it directly). */
 export const SIDE_AIM = 4;
@@ -82,6 +86,7 @@ export function decodePublic(data: Uint8Array, offset = 0): PublicState {
       stage: u8(base),
       phase: sflags & F_PHASE,
       phaseTicks: u16(6),
+      raidTicks: u16(SIDE_RAID),
       dead: (sflags & F_DEAD) !== 0,
       cannonX: i16(2),
       aimX: i16(SIDE_AIM),
