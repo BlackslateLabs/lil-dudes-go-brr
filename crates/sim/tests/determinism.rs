@@ -35,7 +35,7 @@ fn run(seed: u64) -> (MatchState, Vec<u64>, Vec<Event>) {
 
 #[test]
 fn same_seed_and_inputs_give_identical_state_every_tick() {
-    for seed in [0, 1, 42, 0xDEAD_BEEF, u64::MAX] {
+    for seed in [0, 1, 2, 3, 4, 5, 42, 0xDEAD_BEEF, u64::MAX] {
         let (m1, d1, e1) = run(seed);
         let (m2, d2, e2) = run(seed);
         // Structural equality over every field (all plain integers / enums, no padding semantics).
