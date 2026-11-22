@@ -36,9 +36,10 @@ impl SplitMix64 {
     }
 }
 
-/// The RNG for the deal of phase `phase` (SPEC §4: "shuffled by VRF"; TECH §4: deal = f(seed, p)).
-pub const fn deal_rng(seed: u64, phase: u8) -> SplitMix64 {
-    SplitMix64::new(mix64(seed ^ mix64(phase as u64 + 1)))
+/// The RNG for the gate values of stage `stage` (SPEC §6: dealt per stage from the VRF seed;
+/// TECH §4: values = f(seed, stage)).
+pub const fn deal_rng(seed: u64, stage: u8) -> SplitMix64 {
+    SplitMix64::new(mix64(seed ^ mix64(stage as u64 + 1)))
 }
 
 #[cfg(test)]
@@ -69,7 +70,7 @@ mod tests {
     }
 
     #[test]
-    fn deal_rngs_differ_by_phase() {
+    fn deal_rngs_differ_by_stage() {
         let a = deal_rng(7, 0).next_u64();
         let b = deal_rng(7, 1).next_u64();
         let c = deal_rng(8, 0).next_u64();
