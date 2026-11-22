@@ -137,12 +137,12 @@ test('a player rigs in their plant and peeks in their fight (private view by sta
   src.peek(0);
   src.step();
   assert.equal(src.view.sides[0].peekUsed, true);
-  assert.equal(priv.myPeek?.stage, 0);
-  assert.equal(priv.myPeek?.slot, 0);
-  assert.equal(priv.myPeek?.op.kind, 'mul');
+  const peek = (priv as PrivateView).myPeek;
+  assert.deepEqual(src.priv.myPeek, peek);
+  assert.equal(peek?.stage, 0);
+  assert.equal(peek?.slot, 0);
   // The peeked value is the dealt one.
-  const values = src.reveal().values;
-  assert.deepEqual(priv.myPeek?.op, values[0]![0]);
+  assert.deepEqual(peek?.op, src.reveal().values[0]![0]);
   src.dispose();
 });
 
