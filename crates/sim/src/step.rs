@@ -20,7 +20,7 @@ use crate::constants::{
     TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
-use crate::layouts::{self, StageDef};
+use crate::layouts::{self, covers, StageDef};
 use crate::payout::payout;
 use crate::state::{
     other, Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, Rig, SecretState,
@@ -216,11 +216,6 @@ fn toward(x: i16, target: i16, step: i32) -> i16 {
         .clamp(0, LANE_WIDTH.saturating_sub(1)) as i16
 }
 
-/// `x` is inside a span of `width` centred on `centre`.
-fn within(x: i16, centre: i16, width: i16) -> bool {
-    i32::from(x).abs_diff(i32::from(centre)).saturating_mul(2) <= u32::from(width.unsigned_abs())
-}
-
 // --- cohorts: movement, crates, gates, homing --------------------------------------------------
 
 fn move_cohorts(
@@ -258,11 +253,12 @@ fn move_cohorts(
         c.y = y.min(i32::from(i16::MAX)) as i16;
         c.age = c.age.saturating_add(1);
 
-        // SPEC §4: a crate absorbs what crosses its row inside its span, until it breaks.
+        // SPEC §4: a crate absorbs what crosses its row inside its span (edges count, as for
+        // gates), until it breaks.
         for (ci, (hp, def)) in (0u8..).zip(crates.iter_mut().zip(st.crates)) {
             let cy = i32::from(def.y);
-            if *hp == 0 || c.count == 0 || prev_y >= cy || y < cy || !within(c.x, def.x, def.width)
-            {
+            let inside = covers(i32::from(c.x), i32::from(def.x), def.width);
+            if *hp == 0 || c.count == 0 || prev_y >= cy || y < cy || !inside {
                 continue;
             }
             let absorbed = c.count.min(u32::from(*hp));
@@ -306,12 +302,12 @@ fn move_cohorts(
     }
 }
 
-/// The gate of `row` whose span contains `x` right now, or `None` in a gap (SPEC §6).
+/// The gate of `row` a cohort at `x` goes through right now, or `None` in a gap (SPEC §6: edges
+/// count; if two gates cover `x`, the nearest centre wins, the lower slot on ties).
 pub fn gate_at(st: &StageDef, gates: &[PublicGate], row: u8, x: i16) -> Option<u8> {
-    (0u8..)
-        .zip(st.gates.iter().zip(gates.iter()))
-        .find(|(_, (def, g))| def.row == row && within(x, g.x, def.width))
-        .map(|(slot, _)| slot)
+    st.gate_at(row, i32::from(x), |slot, def| {
+        gates.get(slot).map_or(i32::from(def.x), |g| i32::from(g.x))
+    })
 }
 
 /// SPEC §6: the first cohort through reveals the gate (and springs a rig: GOTCHA); every cohort

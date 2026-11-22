@@ -1,7 +1,7 @@
 //! Warlord bot (SPEC §10).
 
 use super::*;
-use crate::constants::{ENEMY_CAP, GATES_MAX, PLANT_TICKS, STAGES};
+use crate::constants::{ENEMY_CAP, GATES_MAX, GATE_GRACE, PLANT_TICKS, STAGES};
 use crate::deal::NO_GATE;
 use crate::events::NoEvents;
 use crate::layouts::{self, LAYOUTS};
@@ -143,7 +143,7 @@ fn predicts_where_a_sliding_gate_will_be() {
     let now = i32::from(def.x_at(50));
     assert_ne!(arrive, now);
     assert_eq!(path_score(&me, st, arrive), 2_000);
-    if (arrive - now).abs() > i32::from(def.width) / 2 {
+    if (arrive - now).abs() > i32::from(def.width) / 2 + GATE_GRACE {
         assert_eq!(path_score(&me, st, now), 1_000);
     }
 }

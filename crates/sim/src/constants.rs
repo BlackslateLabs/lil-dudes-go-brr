@@ -34,6 +34,9 @@ pub const TOWER_Y: i32 = 11_000;
 /// (impl) The vault spans the whole base: a raid cohort loots when it reaches this line.
 pub const VAULT_Y: i32 = TOWER_Y;
 pub const TOWER_HALF_W: i32 = 300;
+/// SPEC §6: a cohort is a point in the sim but is drawn as a small crowd, and a gate has posts,
+/// so a cohort this far outside a gate's (or a crate's) edge still goes through it.
+pub const GATE_GRACE: i32 = 100;
 /// SPEC §4: opposing cohorts meet within this x distance once crossed in y.
 pub const CLASH_REACH: i32 = 400;
 /// (impl) ...and only while they are at most this far past each other in y. Larger than the
