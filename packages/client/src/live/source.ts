@@ -8,10 +8,12 @@
 // the private salt + VRF seed request, start, a heartbeat `advance` if the crank stalls, and
 // `finish` (commit + undelegate + settlement) when the match has a result. Every step is
 // idempotent on-chain, so both players' sources can race safely.
+import { can_rig_bytes } from '@lil-dudes/sim-wasm';
 import { Connection, Transaction, TransactionInstruction, type Keypair } from '@solana/web3.js';
 import * as C from '../constants';
 import { matchResultOf, PUBLIC_LEN, toMatchView } from '../codec';
 import { layoutDef } from '../layout';
+import { initSim } from '../offline';
 import type { MatchListener, MatchSource } from '../source';
 import type { MatchEvent, MatchStatus, MatchView, PrivateView, Side } from '../types';
 import { ACCOUNT_EXPLORER, markSprung, payoutOf, revealOf, TEE_EXPLORER, type GotchaLog, type MatchReveal, type SettlementInfo, type TxRecord } from '../verify';
@@ -186,6 +188,15 @@ export class LiveSource implements MatchSource {
     void this.tx('plant_rig', ixs.plantRig(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
       this.inflight.rig = false;
     });
+  }
+
+  /** Whether `rig(slot)` would be accepted now: the sim's rule (`can_rig_bytes`) on the newest
+   *  public state (what the program judges by, a few ticks ahead of the rendered view). */
+  canRig(slot: number): boolean {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= C.GATES_MAX) return false;
+    if (this.newest.view.status !== 'playing') return false;
+    initSim();
+    return can_rig_bytes(this.newest.bytes, this.mySide, slot);
   }
 
   /** Peek my unrevealed gate `slot` of my current stage: only during my Fight or Raid, once per stage. */
