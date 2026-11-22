@@ -82,7 +82,7 @@ pub struct Enemy {
 /// Where one player is inside the current stage (SPEC §3).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Phase {
-    /// 3 s: gates face-down, cannon holds fire, rig allowed.
+    /// 3 s: gates face-down, cannon holds fire (rig allowed, as in every phase but Done).
     #[default]
     Plant,
     /// Until every tower is down: firing, waves, peek allowed.
