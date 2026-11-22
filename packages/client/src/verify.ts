@@ -235,7 +235,7 @@ export function payoutOf(stake: number, result: MatchResultLike | null, opts: Pa
 }
 
 /** The MatchResult fields payoutOf reads. */
-export type MatchResultLike = Pick<MatchResult, 'winner' | 'died' | 'gold'>;
+export type MatchResultLike = Pick<MatchResult, 'winner' | 'died' | 'gold'> & Partial<MatchResult>;
 
 // --- the reveal -------------------------------------------------------------------------------
 
