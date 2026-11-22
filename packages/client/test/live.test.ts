@@ -157,6 +157,10 @@ test('decodePeek reads the v3 Peek account and peekPrivateView keeps only my cur
   assert.deepEqual(acc, { side: 1, stage: 1, rig: { stage: 2, slot: 3 }, peek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
   assert.deepEqual(peekPrivateView(acc, 1), { myRig: { stage: 2, slot: 3 }, myPeek: { stage: 1, slot: 4, op: { kind: 'div', value: 2 } } });
   assert.deepEqual(peekPrivateView(acc, 2), { myRig: null, myPeek: null }, 'stale entries');
+  // A Peek left over from an earlier stage (the program can't write it on a stage change).
+  set(41, 0);
+  assert.deepEqual(peekPrivateView(decodePeek(data), 1), { myRig: null, myPeek: null }, 'Peek.stage != my stage');
+  set(41, 1);
   set(46, 6);
   assert.deepEqual(decodePeek(data).peek?.op, { kind: 'mul', value: 6 });
   assert.throws(() => decodePeek(data.subarray(0, 40)));

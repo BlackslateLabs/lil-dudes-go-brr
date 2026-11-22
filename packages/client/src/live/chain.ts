@@ -287,7 +287,7 @@ export function decodeMatch(data: Uint8Array): MatchAccount {
  *  each tagged with the stage it belongs to (an entry from an earlier stage is stale). */
 export interface PeekAccount {
   side: number;
-  /** The owner's stage the rig was planted in (null = never written). */
+  /** The owner's stage when the program last wrote this account (null = never written). */
   stage: number | null;
   /** The opponent gate rigged in `stage`: the victim's stage and slot. */
   rig: { stage: number; slot: number } | null;
@@ -314,11 +314,14 @@ export function decodePeek(data: Uint8Array): PeekAccount {
   };
 }
 
-/** The PrivateView for a player now in their stage `myStage`: only this stage's rig and peek. */
+/** The PrivateView for a player now in their stage `myStage`: only this stage's rig and peek.
+ *  The program writes the Peek only on a rig, a peek or finish (`advance` can't), so after a
+ *  stage change it stays stale until then: `stage` != my stage = nothing this stage yet. */
 export function peekPrivateView(p: PeekAccount | null, myStage: number): PrivateView {
+  if (!p || p.stage !== myStage) return { myRig: null, myPeek: null };
   return {
-    myRig: p?.rig && p.stage === myStage ? { ...p.rig } : null,
-    myPeek: p?.peek && p.peek.stage === myStage ? { stage: p.peek.stage, slot: p.peek.slot, op: p.peek.op } : null,
+    myRig: p.rig ? { ...p.rig } : null,
+    myPeek: p.peek && p.peek.stage === myStage ? { stage: p.peek.stage, slot: p.peek.slot, op: p.peek.op } : null,
   };
 }
 
