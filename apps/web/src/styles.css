@@ -395,6 +395,11 @@ button {
   background: var(--gold);
 }
 
+.round.rig.on {
+  background: var(--bad, #ff4d5e);
+  animation: rig-pulse 0.8s ease-in-out infinite alternate;
+}
+
 .round:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -746,12 +751,6 @@ i.k-peek {
   z-index: 2;
 }
 
-.mini-wrap.rig {
-  width: 44%;
-  box-shadow: 0 0 0 4px var(--gold), 0 3px 0 var(--outline);
-  animation: rig-pulse 1s ease-in-out infinite alternate;
-}
-
 @keyframes rig-pulse {
   to {
     box-shadow: 0 0 0 7px var(--gold), 0 3px 0 var(--outline);
@@ -762,10 +761,6 @@ i.k-peek {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.mini-lane.rig {
-  cursor: crosshair;
 }
 
 .who .pill.gold {

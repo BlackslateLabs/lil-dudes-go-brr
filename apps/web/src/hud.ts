@@ -16,6 +16,8 @@ export interface HudState {
   peekUsed: boolean;
   /** Peek mode: the next tap on one of your `?` gates peeks it. */
   peeking: boolean;
+  /** Rig mode: the next tap on one of your gates rigs the opponent's copy of it (SPEC v4 §6). */
+  rigging: boolean;
   /** Last GOTCHA: whether it hit me, and when (performance.now()) to restart the animation. */
   gotcha: { onMe: boolean; at: number } | null;
   /** A short centre banner ("STAGE 2", "RAID!", "TOWER DOWN"). */
@@ -36,6 +38,7 @@ export const HUD_RESET: Omit<HudState, 'set'> = {
   rigUsed: false,
   peekUsed: false,
   peeking: false,
+  rigging: false,
   gotcha: null,
   banner: null,
   ended: null,

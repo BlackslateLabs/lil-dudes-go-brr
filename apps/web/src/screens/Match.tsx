@@ -1,15 +1,17 @@
 import { useRef, useState, type PointerEvent } from 'react';
-import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, TICKS_PER_SEC } from '@lil-dudes/client';
+import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
 import { MiniLane } from '../match/MiniLane';
+import type { MatchFeed } from '../match/feed';
+import { canRig } from '../match/rig';
 import { useFeed } from '../match/useFeed';
 import { useMatchHud } from '../match/useMatchHud';
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
 const DRAG_SPAN = 0.7;
-const STAGE_LABELS = ['Fight 1', 'Fight 2', 'Raid'];
+const STAGE_LABELS = Array.from({ length: STAGES }, (_, i) => `Fight ${i + 1}`);
 
 /** Match screen (MVP §3.6, v3): your lane full size, the opponent's lane as a mini-view. */
 export function Match() {
@@ -23,8 +25,6 @@ export function Match() {
     return new OfflineSource(seed === undefined ? { myName: 'You', selfBot } : { myName: 'You', selfBot, seed });
   });
   useMatchHud(feed);
-  const { phase, rigUsed } = useHud();
-  const rigMode = phase[0] === 'plant' && !rigUsed && phase[1] !== 'dead' && phase[1] !== 'done';
 
   const drag = useRef<{ x: number } | null>(null);
   const onDown = (e: PointerEvent) => {
@@ -53,12 +53,12 @@ export function Match() {
     >
       <Arena feed={feed} interactive />
       <TopBar />
-      <div className={`mini-wrap ${rigMode ? 'rig' : ''}`}>
-        <MiniLane feed={feed} rigMode={rigMode} />
+      <div className="mini-wrap">
+        <MiniLane feed={feed} />
       </div>
       <Prompts />
       <Overlays />
-      <ThumbControls />
+      <ThumbControls feed={feed} />
     </div>
   );
 }
@@ -66,7 +66,7 @@ export function Match() {
 function StagePips({ stage, phase }: { stage: number; phase: string }) {
   return (
     <span className="pips" title={STAGE_LABELS[stage]}>
-      {[0, 1, 2].map((i) => (
+      {STAGE_LABELS.map((_, i) => (
         <i key={i} className={i < stage || phase === 'done' ? 'done' : i === stage ? 'on' : ''} />
       ))}
     </span>
@@ -100,14 +100,17 @@ function TopBar() {
 
 /** One-line prompts just above your cannon (TECH §5). */
 function Prompts() {
-  const { phase, myPhaseTick, rigUsed, peeking, names, stage } = useHud();
+  const { phase, myPhaseTick, peeking, rigging, names, stage } = useHud();
   let text: string | null = null;
-  if (phase[0] === 'plant') {
-    const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
-    const canRig = phase[1] !== 'dead' && phase[1] !== 'done';
-    text = rigUsed || !canRig ? `${STAGE_LABELS[stage[0]]}: fire in ${secs}…` : `Tap one of their gates (top right) to rig it · ${secs}`;
+  if (rigging) {
+    text = `Tap a red gate: it becomes a trap on ${names[1]}'s side`;
   } else if (peeking) {
     text = 'Tap one of your ? gates to peek';
+  } else if (phase[0] === 'plant') {
+    const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
+    text = `${STAGE_LABELS[stage[0]]}: fire in ${secs}…`;
+  } else if (phase[0] === 'raid') {
+    text = 'Into the town hall!';
   } else if (phase[0] === 'transit') {
     text = 'Stage cleared!';
   } else if (phase[0] === 'done') {
@@ -140,17 +143,28 @@ function Overlays() {
   );
 }
 
-/** Bottom-right, by the thumb: peek (one per stage) and sound. */
-function ThumbControls() {
-  const { peekUsed, peeking, phase, set } = useHud();
+/** Bottom-right, by the thumb: rig and peek (one each per stage) and sound. */
+function ThumbControls({ feed }: { feed: MatchFeed }) {
+  // The HUD fields re-render this at ≤ 10 Hz, so `canRig` (read from the feed) stays fresh.
+  const { peekUsed, peeking, rigging, phase, set } = useHud();
+  useHud((s) => s.tick);
   const [sound, setSound] = useState(soundEnabled());
   const canPeek = !peekUsed && (phase[0] === 'fight' || phase[0] === 'raid');
+  const rigOk = canRig(feed);
   return (
     <div className="hud thumb" onPointerDown={(e) => e.stopPropagation()}>
       <button
+        className={`round rig ${rigging ? 'on' : ''}`}
+        disabled={!rigOk && !rigging}
+        onClick={() => set({ rigging: !rigging, peeking: false })}
+        title="Rig one of your gates on their side (once per stage)"
+      >
+        😈
+      </button>
+      <button
         className={`round ${peeking ? 'on' : ''}`}
         disabled={!canPeek && !peeking}
-        onClick={() => set({ peeking: !peeking })}
+        onClick={() => set({ peeking: !peeking, rigging: false })}
         title="Peek at one of your gates (once per stage)"
       >
         👁

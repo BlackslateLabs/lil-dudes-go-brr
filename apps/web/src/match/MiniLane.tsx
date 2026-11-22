@@ -1,13 +1,14 @@
-import { useEffect, useRef, type PointerEvent } from 'react';
+import { useEffect, useRef } from 'react';
 import { LANE_LENGTH, LANE_WIDTH, type LaneView } from '@lil-dudes/client';
 import { PALETTE, opLabel } from '../arena/layout';
 import type { MatchFeed } from './feed';
 
 /**
  * A small live map of the opponent's lane (TECH §5, v3): their stage, gates, crowd, waves, towers.
- * A 2D canvas, not a second WebGL scene. In rig mode it's enlarged and its gates are tap targets.
+ * A 2D canvas, not a second WebGL scene. View only: you rig from your own lane (SPEC v4 §6); the
+ * gate you rigged on their side gets a frame here once they reach that stage.
  */
-export function MiniLane({ feed, rigMode }: { feed: MatchFeed; rigMode: boolean }) {
+export function MiniLane({ feed }: { feed: MatchFeed }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -33,34 +34,8 @@ export function MiniLane({ feed, rigMode }: { feed: MatchFeed; rigMode: boolean 
     return () => cancelAnimationFrame(raf);
   }, [feed]);
 
-  const onTap = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (!rigMode) return;
-    e.stopPropagation();
-    const lane = feed.them;
-    const c = canvas.current;
-    if (!lane || !c) return;
-    const r = c.getBoundingClientRect();
-    const px = e.clientX - r.left;
-    const py = e.clientY - r.top;
-    const sx = (x: number) => (x / LANE_WIDTH) * r.width;
-    const sy = (y: number) => r.height - (y / LANE_LENGTH) * r.height;
-    // Pick the closest unrevealed gate within a generous touch radius.
-    let best: { slot: number; d: number } | null = null;
-    for (const g of lane.gates) {
-      if (g.revealed) continue;
-      const d = Math.hypot(px - sx(g.x), py - sy(g.y));
-      if (d < 36 && (!best || d < best.d)) best = { slot: g.slot, d };
-    }
-    if (best) feed.source.rig(best.slot);
-  };
-
   return (
-    <canvas
-      ref={canvas}
-      className={`mini-lane ${rigMode ? 'rig' : ''}`}
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerUp={onTap}
-    />
+    <canvas ref={canvas} className="mini-lane" />
   );
 }
 

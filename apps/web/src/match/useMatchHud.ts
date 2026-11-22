@@ -5,7 +5,6 @@ import { useApp } from '../store';
 import type { MatchFeed } from './feed';
 
 const RESULT_DELAY_MS = 2200;
-const STAGE_NAMES = ['FIGHT 1', 'FIGHT 2', 'RAID!'];
 
 /** Drives the HUD store, sound and the end-of-match hand-off from a feed. For the real match only. */
 export function useMatchHud(feed: MatchFeed) {
@@ -71,9 +70,9 @@ export function useMatchHud(feed: MatchFeed) {
           break;
         case 'stage':
           if (mine && (e.phase === 'plant' || e.phase === 'raid')) {
-            hud.set({ peeking: false });
-            if (e.phase === 'plant') banner(STAGE_NAMES[e.stage] ?? 'STAGE', e.stage === 2 ? 'gold' : 'good');
-            if (e.phase === 'raid') banner('RAID!', 'gold');
+            hud.set({ peeking: false, rigging: false });
+            if (e.phase === 'plant') banner(`FIGHT ${e.stage + 1}`, 'good');
+            if (e.phase === 'raid') banner('TOWN HALL!', 'gold');
           }
           if (!mine && e.phase === 'done') banner(`${v.sides[them].name} finished`, 'bad');
           break;

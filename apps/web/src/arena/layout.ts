@@ -50,6 +50,8 @@ export const PALETTE = {
   good: '#3aa0ff',
   bad: '#ff4d5e',
   gold: '#ffc21a',
+  goldDark: '#b07400',
+  hall: '#f3e3c8',
   unknown: '#a9a3c9',
   outline: '#1b1530',
 } as const;
