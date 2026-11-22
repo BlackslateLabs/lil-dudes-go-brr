@@ -4,6 +4,8 @@ import {
   TICK_MS,
   TICKS_PER_SEC,
   type CohortView,
+  type GateView,
+  type LaneView,
   type MatchEvent,
   type MatchSource,
   type MatchView,
@@ -24,8 +26,10 @@ export class MatchFeed {
   cur: MatchView | null = null;
   priv: PrivateView = { myRig: null, myPeek: null };
   curAt = 0;
-  /** Previous snapshot's cohorts by id, per side, for interpolation. */
-  prevCohorts: [Map<number, CohortView>, Map<number, CohortView>] = [new Map(), new Map()];
+  /** Previous snapshot of MY lane, by id/slot, for interpolation. */
+  prevCohorts = new Map<number, CohortView>();
+  prevEnemies = new Map<number, CohortView>();
+  prevGates = new Map<number, GateView>();
   /** Your aim (sim x) and the locally predicted cannon x. */
   aim = LANE_WIDTH / 2;
   myCannon = LANE_WIDTH / 2;
@@ -41,6 +45,19 @@ export class MatchFeed {
     return this.source.mySide;
   }
 
+  get theirSide(): Side {
+    return (1 - this.source.mySide) as Side;
+  }
+
+  /** My lane in the latest snapshot. */
+  get me(): LaneView | null {
+    return this.cur?.sides[this.mySide] ?? null;
+  }
+
+  get them(): LaneView | null {
+    return this.cur?.sides[this.theirSide] ?? null;
+  }
+
   start() {
     this.off = this.source.subscribe((view, priv, events) => {
       const first = !this.cur;
@@ -48,10 +65,16 @@ export class MatchFeed {
       this.cur = view;
       this.priv = priv;
       this.curAt = performance.now();
-      for (const s of [0, 1] as const) {
-        const m = this.prevCohorts[s];
-        m.clear();
-        for (const c of this.prev.sides[s].cohorts) m.set(c.id, c);
+      const mine = this.prev.sides[this.mySide];
+      // A new stage replaces gates and wipes cohorts: don't interpolate across it.
+      const sameStage = mine.stage === view.sides[this.mySide].stage;
+      this.prevCohorts.clear();
+      this.prevEnemies.clear();
+      this.prevGates.clear();
+      if (sameStage) {
+        for (const c of mine.cohorts) this.prevCohorts.set(c.id, c);
+        for (const c of mine.enemies) this.prevEnemies.set(c.id, c);
+        for (const g of mine.gates) this.prevGates.set(g.slot, g);
       }
       if (first) {
         this.myCannon = view.sides[this.mySide].cannonX;
@@ -92,6 +115,12 @@ export class MatchFeed {
       this.lastAimSent = now;
       this.source.setAim(this.aim);
     }
+  }
+
+  /** Set an absolute aim and send it now (bots / background matches). */
+  setAim(x: number) {
+    this.aim = Math.max(0, Math.min(LANE_WIDTH - 1, x));
+    this.source.setAim(this.aim);
   }
 
   /** Flush the latest aim (pointer up), so the last drag position is never lost to throttling. */
