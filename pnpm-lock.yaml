@@ -13,6 +13,12 @@ importers:
       '@hono/node-server':
         specifier: 2.1.11
         version: 2.1.11(hono@4.13.19)
+      '@lil-dudes/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@lil-dudes/sim-wasm':
+        specifier: workspace:*
+        version: link:../../packages/sim-wasm
       '@solana/web3.js':
         specifier: 1.98.4
         version: 1.98.4(bufferutil@4.2.0)(typescript@5.9.3)(utf-8-validate@6.1.0)
@@ -735,7 +741,7 @@ snapshots:
 
   ieee754@1.2.1: {}
 
-  isomorphic-ws@4.0.1(ws@7.5.14(bufferutil@4.2.0)(utf-8-validate@6.1.0)):
+  isomorphic-ws@4.0.1(ws@7.5.14(bufferutil@4.2.0)):
     dependencies:
       ws: 7.5.14(bufferutil@4.2.0)(utf-8-validate@6.1.0)
 
@@ -748,7 +754,7 @@ snapshots:
       delay: 5.0.0
       es6-promisify: 5.0.0
       eyes: 0.1.8
-      isomorphic-ws: 4.0.1(ws@7.5.14(bufferutil@4.2.0)(utf-8-validate@6.1.0))
+      isomorphic-ws: 4.0.1(ws@7.5.14(bufferutil@4.2.0))
       json-stringify-safe: 5.0.1
       stream-json: 1.9.1
       uuid: 8.3.2

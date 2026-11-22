@@ -19,18 +19,21 @@ export interface Faucet {
   readonly connection?: Connection;
 }
 
-/** Loads the sponsor key from the env (a keypair file path, or the key itself as a JSON array or
- *  base58). Returns null if neither is set. Throws on a malformed key without echoing it. */
-export function loadSponsorKey(env: NodeJS.ProcessEnv = process.env): Keypair | null {
-  const raw = env.SPONSOR_SECRET_KEY?.trim() || (env.SPONSOR_KEYPAIR_PATH ? fs.readFileSync(env.SPONSOR_KEYPAIR_PATH, 'utf8').trim() : '');
+/** Loads a key from the env: `<NAME>_SECRET_KEY` (64-byte JSON array or base58) or a keypair file
+ *  at `<NAME>_KEYPAIR_PATH`. Null if neither is set. Throws on a malformed key without echoing it. */
+export function loadKey(name: 'SPONSOR' | 'BOT', env: NodeJS.ProcessEnv = process.env): Keypair | null {
+  const path = env[`${name}_KEYPAIR_PATH`];
+  const raw = env[`${name}_SECRET_KEY`]?.trim() || (path ? fs.readFileSync(path, 'utf8').trim() : '');
   if (!raw) return null;
   try {
     const bytes = raw.startsWith('[') ? Uint8Array.from(JSON.parse(raw) as number[]) : bs58.decode(raw);
     return Keypair.fromSecretKey(bytes);
   } catch {
-    throw new Error('sponsor key is set but malformed (expected a 64-byte JSON array or base58)');
+    throw new Error(`${name.toLowerCase()} key is set but malformed (expected a 64-byte JSON array or base58)`);
   }
 }
+
+export const loadSponsorKey = (env: NodeJS.ProcessEnv = process.env) => loadKey('SPONSOR', env);
 
 export function solanaFaucet(rpc: string, sponsor: Keypair): Faucet {
   const conn = new Connection(rpc, 'confirmed');

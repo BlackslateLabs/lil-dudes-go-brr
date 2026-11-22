@@ -5,6 +5,7 @@
 // for the hackathon; a restart only drops waiting players).
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import type { BotService } from './bot';
 import type { Faucet } from './faucet';
 import { Budget, RateLimit } from './limits';
 
@@ -30,7 +31,8 @@ interface Ticket {
   player: string;
   stake: number;
   seenAt: number;
-  match?: { id: string; role: Role; opponent: string; matchedAt: number };
+  createdAt: number;
+  match?: { id: string; role: Role; opponent: string; matchedAt: number; bot?: boolean };
 }
 
 export interface ServerOptions {
@@ -42,14 +44,17 @@ export interface ServerOptions {
   trustProxy?: boolean;
   /** Override the faucet policy (tests, env). */
   topup?: Partial<TopupPolicy>;
+  /** The online bot: takes a FREE queue ticket nobody matched within `botAfterMs`. */
+  bot?: BotService | null;
+  botAfterMs?: number;
 }
 
 /** MVP §4 "Faucet abuse": a burner is topped up to `stake + reserve` (≤ maxBalance), once per
  *  `burnerEveryMs`; an IP gets `ipMax` top-ups per `ipWindowMs`; all top-ups together spend at
  *  most `hourlyLamports` per hour. */
 export interface TopupPolicy {
-  /** Lamports on top of the stake: create rent (~0.0153) + delegation deposits (~0.012, back at
-   *  undelegation) + fees. The joiner needs less; one number keeps it simple. */
+  /** Lamports on top of the stake: create rent (~0.0153, back at close) + delegation + commit
+   *  (~0.012, a real cost) + fees. The joiner needs less; one number keeps it simple. */
   reserve: number;
   maxBalance: number;
   burnerEveryMs: number;
@@ -92,6 +97,16 @@ export function createApp(opts: ServerOptions = {}) {
   const perIp = new RateLimit(policy.ipWindowMs, policy.ipMax, now);
   const budget = new Budget(60 * 60_000, policy.hourlyLamports, now);
   const topping = new Set<string>();
+  const bot = opts.bot ?? null;
+  const botAfterMs = opts.botAfterMs ?? 5_000;
+  /** MVP §3.5: nobody on the free tier after ~5 s → the server's bot joins (never staked). */
+  const maybeBot = (k: Ticket) => {
+    if (!bot || k.match || k.stake !== 0 || now() - k.createdAt < botAfterMs || !bot.available()) return;
+    const id = matchId();
+    // The bot creates (and pays the rent); the human only joins.
+    k.match = { id, role: 'join', opponent: bot.address, matchedAt: now(), bot: true };
+    bot.play(BigInt(id), k.player);
+  };
 
   const token = (len: number, alphabet = CODE_ALPHABET) => Array.from({ length: len }, () => alphabet[random(alphabet.length)]).join('');
   const matchId = () => {
@@ -108,7 +123,9 @@ export function createApp(opts: ServerOptions = {}) {
 
   const app = new Hono();
   app.use('*', cors());
-  app.get('/health', (c) => c.json({ ok: true, service: 'lil-dudes-server', rooms: rooms.size, queued: tickets.size }));
+  app.get('/health', (c) =>
+    c.json({ ok: true, service: 'lil-dudes-server', rooms: rooms.size, queued: tickets.size, faucet: !!faucet, bot: bot ? { address: bot.address, ...bot.stats } : null }),
+  );
 
   // --- room codes --------------------------------------------------------------------------
   // The creator makes the match on-chain first, then registers its id here and shares the code.
@@ -149,7 +166,7 @@ export function createApp(opts: ServerOptions = {}) {
         return c.json(ticketView(k));
       }
     }
-    const mine: Ticket = { ticket: token(16, CODE_ALPHABET.toLowerCase() + '0123456789'), player, stake: body.stake, seenAt: now() };
+    const mine: Ticket = { ticket: token(16, CODE_ALPHABET.toLowerCase() + '0123456789'), player, stake: body.stake, seenAt: now(), createdAt: now() };
     const waiting = [...tickets.values()].find((k) => !k.match && k.stake === mine.stake && k.player !== player);
     if (waiting) {
       const id = matchId();
@@ -166,6 +183,7 @@ export function createApp(opts: ServerOptions = {}) {
     const k = tickets.get(c.req.param('ticket'));
     if (!k) return c.json({ error: 'no such ticket (expired?)' }, 404);
     k.seenAt = now();
+    maybeBot(k);
     return c.json(ticketView(k));
   });
 

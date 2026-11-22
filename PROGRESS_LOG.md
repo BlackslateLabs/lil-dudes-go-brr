@@ -575,3 +575,25 @@ capital; the deploy wallet keeps ~4.5 SOL (≥ one 2.33 SOL upgrade buffer).
 **CONTRACT (addition):** `topUp(server, burner, stake?)` → `{ sent, signature?, balance, target }`
 (throws "… (retry in N s)" on a limit). **Suparno:** Wallet sheet "Top up" → `topUp(server,
 burner.publicKey)`; before a staked Quick Match / Room → `topUp(server, burner.publicKey, stake)`.
+
+## 2026-11-22 · Kai · M4/5 step 4 (online bot) · [STAGE] [CONTRACT] [HANDOFF]
+**Did:** M4/5 step 4 done; next: step 5 (money edges).
+`apps/server/src/bot.ts`: a FREE Quick Match ticket alone for 5 s gets the server's bot. The bot
+creates (pays the rent, back at close), the human only joins, the bot delegates and plays through
+a server-side `LiveSource` + the WASM Warlord (public state only). Staked tickets never get the
+bot, and the matched stake is min(picks) = 0 anyway. Cap 2 concurrent; the bot wallet
+(`BOT_KEYPAIR_PATH`, else a fresh key per start) is funded by the sponsor (0.04 SOL float per
+match); nobody joins in 60 s → `cancel_match`. `LiveSource` now aborts a match stuck in READY
+(opponent never sent a salt) ~65 s in: everyone refunded (MVP §4), view `status: 'ended'`,
+`result: null`. 3 new queue tests.
+**Devnet e2e** (`packages/client/scripts/vs-server-bot.ts`, a fresh 0-SOL burner against a local
+server): top-up 1.6 s → matched with the bot 6.7 s → joined 10.9 s → **playing 15.4 s** → KO,
+settled (free) 61 s; the burner spent 10,000 lamports. **Correction to step 3:** the ~0.012 SOL
+of delegation + commit per match is a real cost, not returned at undelegation (bot float 0.04 →
+0.028 after one match with everything closed): each bot match costs the sponsor ~0.012 SOL.
+Bot wallet (persistent key, Kai's machine): `CJbQuVNXhA2ygutqD48ucoHC3wfvawegSDTEL49Y9ogW`.
+
+**CONTRACT (addition):** `QuickMatch.bot: boolean`. **Suparno:** Quick Match on the free tier: if
+`q.bot`, show "Playing the Warlord bot" (the flow is the normal `role: 'join'` one:
+`waitForStatus(OPEN)` → `joinMatch` → `LiveSource.connect`). Before joining, `topUp(server,
+burner.publicKey)` so a fresh burner can pay the join fee.

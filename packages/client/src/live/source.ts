@@ -62,6 +62,8 @@ interface Snap {
 }
 
 const SALT_LEN = 32;
+/** Abort a match stuck before the seed this long after it became READY (program: ABORT_SLOTS ≈ 60 s). */
+const ABORT_AFTER_MS = 65_000;
 /** Offset of the codec public state in the Match account (state.rs). */
 const STATE_OFFSET = 330;
 
@@ -315,8 +317,9 @@ export class LiveSource implements MatchSource {
 
   private snap(account: MatchAccount, raw?: Uint8Array): Snap {
     const h = account.header;
+    const aborted = h.status >= Status.FINISHED && !!(h.flags & Flags.ABORTED);
     const status: MatchStatus | undefined =
-      account.state.result ? 'ended' : h.status < Status.PLAYING || h.startSlot === 0 ? 'waiting' : undefined;
+      account.state.result || aborted ? 'ended' : h.status < Status.PLAYING || h.startSlot === 0 ? 'waiting' : undefined;
     const bytes = raw ? raw.slice(STATE_OFFSET, STATE_OFFSET + PUBLIC_LEN) : new Uint8Array(PUBLIC_LEN);
     return { account, view: toMatchView(account.state, this.matchId.toString(), h.names, status), bytes };
   }
@@ -536,6 +539,14 @@ export class LiveSource implements MatchSource {
           break;
         case Status.READY:
           this.setStage('setup', 'seed');
+          // MVP §4 "a player never shows": the other salt never came. The program lets a player
+          // abort ~60 s (ABORT_SLOTS) after the permissions; everyone is refunded.
+          if (!this.tried.has('ready-at')) this.tried.set('ready-at', Date.now());
+          if (Date.now() - this.tried.get('ready-at')! > ABORT_AFTER_MS && this.due('abort', 5_000)) {
+            this.setStage('setup', 'opponent never showed: aborting (refund)');
+            await this.tx('abort', ixs.finish(a, me), true, 400_000);
+            break;
+          }
           // My salt (private: the tx touches Secrets); re-sent as a VRF retry if the seed is late.
           if (!(header.flags & mySalt) ? this.due('salt', 2_000) : this.due('seed-retry', 4_000) && !!(header.flags & Flags.SEED_REQUESTED)) {
             await this.tx('request_seed', ixs.requestSeed(a, me, randomSalt()), true, 300_000);

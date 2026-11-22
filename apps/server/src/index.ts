@@ -3,12 +3,17 @@
 // read from the env only and never logged.
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
-import { loadSponsorKey, solanaFaucet } from './faucet';
+import { onlineBot } from './bot';
+import { loadKey, loadSponsorKey, solanaFaucet } from './faucet';
 
 const port = Number(process.env.PORT ?? 8787);
 const rpc = process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const sponsor = loadSponsorKey();
 const faucet = sponsor ? solanaFaucet(rpc, sponsor) : null;
-const app = createApp({ faucet, trustProxy: process.env.TRUST_PROXY === '1' });
+// The online bot needs the sponsor (it funds the bot's wallet). BOT=0 turns it off.
+const bot = faucet && process.env.BOT !== '0' ? onlineBot({ faucet, baseRpc: process.env.BASE_RPC_URL, wallet: loadKey('BOT') ?? undefined }) : null;
+const app = createApp({ faucet, bot, trustProxy: process.env.TRUST_PROXY === '1' });
 serve({ fetch: app.fetch, port });
-console.log(`server listening on :${port}; faucet ${faucet ? `on (sponsor ${faucet.address})` : 'off (no SPONSOR_KEYPAIR_PATH / SPONSOR_SECRET_KEY)'}`);
+console.log(
+  `server listening on :${port}; faucet ${faucet ? `on (sponsor ${faucet.address})` : 'off (no SPONSOR_KEYPAIR_PATH / SPONSOR_SECRET_KEY)'}; bot ${bot ? `on (${bot.address})` : 'off'}`,
+);

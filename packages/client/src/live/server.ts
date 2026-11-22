@@ -14,6 +14,8 @@ export interface QuickMatch {
   role: 'create' | 'join';
   opponent: string;
   stake: number;
+  /** The server's own bot (free matches only, after ~5 s with nobody else in the queue). */
+  bot: boolean;
 }
 
 async function call<T>(server: string, method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -42,7 +44,7 @@ export async function findRoom(server: string, code: string): Promise<Room> {
 
 /** Queues `player` for a stake tier and resolves once paired (poll every `pollMs`). Abort to leave the queue. */
 export async function quickMatch(server: string, player: PublicKey, stake: number, opts: { signal?: AbortSignal; pollMs?: number } = {}): Promise<QuickMatch> {
-  type T = { ticket: string; state: 'waiting' | 'matched'; id?: string; role?: 'create' | 'join'; opponent?: string; stake: number };
+  type T = { ticket: string; state: 'waiting' | 'matched'; id?: string; role?: 'create' | 'join'; opponent?: string; stake: number; bot?: boolean };
   let t = await call<T>(server, 'POST', '/queue', { player: player.toBase58(), stake }, opts.signal);
   try {
     while (t.state !== 'matched') {
@@ -54,7 +56,7 @@ export async function quickMatch(server: string, player: PublicKey, stake: numbe
     await call(server, 'DELETE', `/queue/${t.ticket}`).catch(() => undefined);
     throw e;
   }
-  return { id: BigInt(t.id!), role: t.role!, opponent: t.opponent!, stake: t.stake };
+  return { id: BigInt(t.id!), role: t.role!, opponent: t.opponent!, stake: t.stake, bot: !!t.bot };
 }
 
 export interface TopUp {
