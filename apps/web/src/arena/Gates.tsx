@@ -4,6 +4,7 @@ import { Group, Mesh, MeshBasicMaterial, MeshLambertMaterial } from 'three';
 import type { GateView } from '@lil-dudes/client';
 import { useHud } from '../hud';
 import type { MatchFeed } from '../match/feed';
+import { canRigSlot } from '../match/rig';
 import { labelTexture } from './labelTexture';
 import { PALETTE, SX, opLabel, wx, wz } from './layout';
 
@@ -38,6 +39,7 @@ function Gate({ feed, index, interactive }: { feed: MatchFeed; index: number; in
   const label = useRef<Mesh>(null!);
   const posts = useRef<Group>(null!);
   const marker = useRef<Mesh>(null!);
+  const rigFrame = useRef<Mesh>(null!);
   const lastKey = useRef('');
   const flipAt = useRef(-1);
   const slotRef = useRef(-1);
@@ -76,6 +78,17 @@ function Gate({ feed, index, interactive }: { feed: MatchFeed; index: number; in
       marker.current.position.x = width / 2 - 0.4;
     }
     marker.current.visible = !!peek && !g.revealed;
+    // Rig: in rig mode the gates you can rig pulse red; the one you rigged keeps a red frame
+    // (it's their copy that's rigged, shown here so you know where your trap waits).
+    const mine = feed.priv.myRig;
+    const rigged = !!mine && mine.stage === lane.stage && mine.slot === g.slot;
+    const target = useHud.getState().rigging && canRigSlot(feed, g.slot);
+    rigFrame.current.visible = rigged || target;
+    if (rigFrame.current.visible) {
+      rigFrame.current.scale.set(width + 0.7, 1, 1);
+      const fm = rigFrame.current.material as MeshBasicMaterial;
+      fm.opacity = rigged ? 0.9 : 0.45 + 0.45 * Math.abs(Math.sin(clock.elapsedTime * 5));
+    }
     const since = flipAt.current < 0 ? Infinity : clock.elapsedTime - flipAt.current;
     const k = Math.min(1, since / FLIP_TIME);
     const pop = 1 + 0.4 * Math.sin(k * Math.PI);
@@ -86,11 +99,21 @@ function Gate({ feed, index, interactive }: { feed: MatchFeed; index: number; in
     if (!interactive || e.delta > 8) return; // a drag, not a tap
     const lane = feed.me;
     const g = lane?.gates.find((x) => x.slot === slotRef.current);
-    if (!lane || !g || g.revealed) return;
-    if (useHud.getState().peeking && !lane.peekUsed) {
+    if (!lane || !g) return;
+    const hud = useHud.getState();
+    if (hud.rigging) {
+      e.stopPropagation();
+      if (canRigSlot(feed, g.slot)) {
+        feed.source.rig(g.slot);
+        hud.set({ rigging: false });
+      }
+      return;
+    }
+    if (g.revealed) return;
+    if (hud.peeking && !lane.peekUsed) {
       e.stopPropagation();
       feed.source.peek(g.slot);
-      useHud.getState().set({ peeking: false });
+      hud.set({ peeking: false });
     }
   };
 
@@ -106,6 +129,10 @@ function Gate({ feed, index, interactive }: { feed: MatchFeed; index: number; in
       </group>
       <group position={[0, 1.6, 0]} rotation-x={TILT}>
         <group ref={face}>
+          <mesh ref={rigFrame} position-z={-0.12} visible={false}>
+            <boxGeometry args={[1, PANEL_H + 0.7, 0.05]} />
+            <meshBasicMaterial color={PALETTE.bad} transparent opacity={0.9} />
+          </mesh>
           <mesh ref={panel} onClick={onTap}>
             <boxGeometry args={[1, PANEL_H, 0.2]} />
             <meshLambertMaterial color={PALETTE.unknown} transparent opacity={0.6} />

@@ -1,6 +1,7 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group, Mesh, MeshLambertMaterial, Sprite } from 'three';
+import { STAGES, VAULT_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
@@ -8,17 +9,8 @@ import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
 const MAX_TOWERS = 4;
 const MAX_CRATES = 6;
 
-/** The enemy base at the far end: a wall across the lane, its towers, and (in the raid) the open vault. */
+/** The enemy base at the far end: a wall across the lane, its towers, and on the last stage the town hall. */
 export function Base({ feed }: { feed: MatchFeed }) {
-  const vault = useRef<Mesh>(null!);
-  useFrame(({ clock }) => {
-    const raid = feed.me?.phase === 'raid' || (feed.me?.stage === 2 && feed.me?.phase === 'plant');
-    vault.current.visible = !!raid;
-    if (raid) {
-      const m = vault.current.material as MeshLambertMaterial;
-      m.emissiveIntensity = 0.5 + 0.4 * Math.sin(clock.elapsedTime * 6);
-    }
-  });
   return (
     <group>
       {/* Wall across the far end of the lane. */}
@@ -30,17 +22,115 @@ export function Base({ feed }: { feed: MatchFeed }) {
         <boxGeometry args={[LANE_W + 2.4, 0.4, 2.4]} />
         <meshLambertMaterial color={PALETTE.baseTrim} />
       </mesh>
-      {/* The vault: glows open during the raid. */}
-      <mesh ref={vault} position={[0, 1.4, -HALF_L - 0.1]} visible={false}>
-        <boxGeometry args={[LANE_W * 0.8, 2.6, 0.4]} />
-        <meshLambertMaterial color={PALETTE.gold} emissive={PALETTE.gold} emissiveIntensity={0.6} />
-      </mesh>
+      <TownHall feed={feed} />
       {Array.from({ length: MAX_TOWERS }, (_, i) => (
         <Tower key={i} feed={feed} index={i} />
       ))}
       {Array.from({ length: MAX_CRATES }, (_, i) => (
         <Crate key={i} feed={feed} index={i} />
       ))}
+    </group>
+  );
+}
+
+/** Town hall front face sits on the loot line: a dude reaching VAULT_Y is inside it. */
+const HALL_FRONT = wz(VAULT_Y) - 0.4;
+const HALL_W = LANE_W * 0.62;
+const HALL_D = 3.6;
+
+/**
+ * The town hall: behind the towers on the last stage, the target of the finale (SPEC v4 §3). Once
+ * the towers fall the whole mob pours into it; every loot event shakes it and the gold above it
+ * counts up.
+ */
+function TownHall({ feed }: { feed: MatchFeed }) {
+  const root = useRef<Group>(null!);
+  const body = useRef<Group>(null!);
+  const door = useRef<Mesh>(null!);
+  const label = useRef<Sprite>(null!);
+  const hit = useRef(0);
+  const shown = useRef(0);
+
+  useEffect(
+    () =>
+      feed.onEvent((e) => {
+        if (e.type === 'loot' && e.side === feed.mySide) hit.current = Math.min(1, hit.current + 0.35);
+      }),
+    [feed],
+  );
+
+  useFrame(({ clock }, dt) => {
+    const lane = feed.me;
+    const last = !!lane && lane.stage === STAGES - 1 && lane.phase !== 'transit';
+    root.current.visible = last;
+    if (!lane || !last) {
+      shown.current = 0;
+      return;
+    }
+    const raid = lane.phase === 'raid' || lane.phase === 'done';
+    hit.current = Math.max(0, hit.current - dt * 4);
+    const h = hit.current;
+    const wob = Math.sin(clock.elapsedTime * 40) * h;
+    body.current.position.x = wob * 0.25;
+    body.current.scale.set(1 + h * 0.04, 1 - h * 0.05, 1 + h * 0.04);
+    const dm = door.current.material as MeshLambertMaterial;
+    dm.emissiveIntensity = raid ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * 6) + h : 0.15;
+    label.current.visible = raid && lane.raidGold > 0;
+    if (label.current.visible) {
+      shown.current += (lane.raidGold - shown.current) * Math.min(1, dt * 10);
+      const tex = labelTexture(`+${Math.round(shown.current)}`, { color: '#ffffff', outline: PALETTE.goldDark, width: 320, height: 128 });
+      if (label.current.material.map !== tex) {
+        label.current.material.map = tex;
+        label.current.material.needsUpdate = true;
+      }
+      const s = 1 + h * 0.25;
+      label.current.scale.set(6.4 * s, 2.56 * s, 1);
+    }
+  });
+
+  return (
+    <group ref={root} visible={false} position={[0, 0, HALL_FRONT - HALL_D / 2]}>
+      <group ref={body}>
+        {/* Steps */}
+        <mesh position={[0, 0.25, HALL_D / 2 + 0.3]}>
+          <boxGeometry args={[HALL_W * 0.5, 0.5, 1]} />
+          <meshLambertMaterial color={PALETTE.baseTrim} />
+        </mesh>
+        {/* Hall */}
+        <mesh position-y={2.6}>
+          <boxGeometry args={[HALL_W, 5.2, HALL_D]} />
+          <meshLambertMaterial color={PALETTE.hall} />
+        </mesh>
+        {/* Columns */}
+        {[-0.38, -0.13, 0.13, 0.38].map((f) => (
+          <mesh key={f} position={[f * HALL_W, 2.4, HALL_D / 2 + 0.25]}>
+            <cylinderGeometry args={[0.32, 0.38, 4.8, 10]} />
+            <meshLambertMaterial color={PALETTE.baseTrim} />
+          </mesh>
+        ))}
+        {/* Roof */}
+        <mesh position-y={6.6} rotation-y={Math.PI / 4} scale={[HALL_W * 0.75, 1, HALL_D * 0.95]}>
+          <coneGeometry args={[0.75, 2.8, 4]} />
+          <meshLambertMaterial color={PALETTE.base} />
+        </mesh>
+        {/* Door: the vault glow during the finale */}
+        <mesh ref={door} position={[0, 1.7, HALL_D / 2 + 0.02]}>
+          <planeGeometry args={[2.4, 3.2]} />
+          <meshLambertMaterial color={PALETTE.gold} emissive={PALETTE.gold} emissiveIntensity={0.15} />
+        </mesh>
+        {/* Flag */}
+        <mesh position={[0, 9.4, 0]}>
+          <cylinderGeometry args={[0.08, 0.08, 2.4, 6]} />
+          <meshLambertMaterial color="#ffffff" />
+        </mesh>
+        <mesh position={[0.6, 10.2, 0]}>
+          <boxGeometry args={[1.2, 0.7, 0.05]} />
+          <meshLambertMaterial color={PALETTE.gold} />
+        </mesh>
+      </group>
+      <sprite ref={label} position={[0, 11.5, 0]} scale={[6.4, 2.56, 1]} renderOrder={16} visible={false}>
+        <spriteMaterial transparent depthTest={false} />
+      </sprite>
     </group>
   );
 }
