@@ -7,7 +7,7 @@
 // Every payload they receive is decoded (base64 / base58 → hex) and searched for A's salt, the
 // rig/peek instruction data, A's Peek bytes and (after the match, from base) the VRF output and
 // both salts. Positive controls make sure each channel is alive. Public-state invariants are
-// checked on every Match snapshot (no seed / history before finish, no hint during a plant).
+// checked on every Match snapshot (no seed / history before finish, no revealed gate in a plant or transit).
 //   pnpm --filter @lil-dudes/client exec tsx scripts/privacy-check.ts
 // Funds come from the Solana CLI wallet (~/.config/solana/id.json; loaded to sign, never printed).
 import { Bot } from '@lil-dudes/sim-wasm';
@@ -27,7 +27,6 @@ import {
   isOnBase,
   joinMatch,
   LiveSource,
-  statusOf,
   TEE_RPC,
   teeToken,
   waitForStatus,
@@ -168,7 +167,7 @@ async function main() {
   const listeners = { B: listen('B', ws(url.B), subsFor()), C: listen('C', ws(url.C), subsFor()), anon: listen('anon', ws(url.anon), subsFor()) };
 
   // C watches the public Match feed for the invariants.
-  const invariants = { snapshots: 0, plantSnapshots: 0, seedBeforeFinish: 0, historyBeforeFinish: 0, hintDuringPlant: 0 };
+  const invariants = { snapshots: 0, plantSnapshots: 0, seedBeforeFinish: 0, historyBeforeFinish: 0, revealedInPlant: 0 };
   const watcher = new WebSocket(ws(url.C));
   watcher.onopen = () => watcher.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'accountSubscribe', params: [k.match, enc] }));
   watcher.onmessage = (ev) => {
@@ -182,9 +181,13 @@ async function main() {
       if (acc.header.seed !== 0n) invariants.seedBeforeFinish++;
       if (acc.header.history.some((b) => b !== 255)) invariants.historyBeforeFinish++;
     }
-    if (acc.header.status === chain.Status.PLAYING && statusOf(acc.state) === 'plant') {
-      invariants.plantSnapshots++;
-      for (const s of acc.state.sides) for (const g of s.gates) if (!g.gold && g.hint !== 'none') invariants.hintDuringPlant++;
+    if (acc.header.status === chain.Status.PLAYING) {
+      // Plant / Transit (phase codes 0 / 2): a fresh stage, every gate face-down.
+      for (const s of acc.state.sides) {
+        if (s.phase !== 0 && s.phase !== 2) continue;
+        invariants.plantSnapshots++;
+        for (const g of s.gates) if (g.revealed) invariants.revealedInPlant++;
+      }
     }
   };
   await sleep(1_500);
@@ -197,7 +200,7 @@ async function main() {
   sigs.push({ who: 'A', what: 'request_seed', sig: await chain.send(connA, [saltIx], [bA], { cu: 300_000 }), data: hex(saltIx.data) });
   log('A salt sent (tagged)');
 
-  // Two LiveSources + bots; each side rigs and peeks every phase (forced if the bot doesn't).
+  // Two LiveSources + bots; each side rigs and peeks every stage (forced if the bot doesn't).
   const sources: LiveSource[] = [];
   const burners = [bA, bB];
   const wantData = new Map<string, string>(); // sig → instruction data hex (rig/peek)
@@ -218,23 +221,23 @@ async function main() {
   };
   for (const [side, src] of sources.entries()) {
     src.subscribe((view) => {
-      if (view.status !== 'plant' && view.status !== 'playing') return;
+      if (view.status !== 'playing') return;
       const [aim, rig, peek] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
       const me = view.sides[side]!;
       const them = view.sides[side === 0 ? 1 : 0]!;
-      if (view.status === 'plant' && !me.rigUsed) {
-        const cell = rig! >= 0 ? rig! : them.gates.findIndex((g) => !g.gold && !g.revealed);
+      if (me.phase === 'plant' && !me.rigUsed) {
+        const cell = rig! >= 0 ? rig! : them.gates.findIndex((g) => !g.revealed);
         if (cell >= 0) {
           src.rig(cell);
-          note(side, 'rig', cell, view.phase);
+          note(side, 'rig', cell, me.stage);
         }
       }
-      if (view.status === 'playing' && !me.peekUsed && (peek! >= 0 || view.tick % 40 === 0)) {
+      if ((me.phase === 'fight' || me.phase === 'raid') && !me.peekUsed && (peek! >= 0 || view.tick % 40 === 0)) {
         const cell = peek! >= 0 ? peek! : me.gates.findIndex((g) => !g.revealed);
         if (cell >= 0) {
           src.peek(cell);
-          note(side, 'peek', cell, view.phase);
+          note(side, 'peek', cell, me.stage);
         }
       }
     });
@@ -341,7 +344,7 @@ async function main() {
       await txReads('mid-match');
       log('mid-match probes done at tick', sources[0]!.view.tick, 'fails so far', fails.length);
     }
-    if (probed && v.phase === 2 && !probes['accounts phase 3'] && v.status === 'playing') {
+    if (probed && v.sides[0].stage === 2 && !probes['accounts phase 3'] && v.status === 'playing') {
       log('probing in phase 3 at tick', v.tick);
       await accountReads('phase 3');
       await txReads('phase 3');
@@ -386,11 +389,11 @@ async function main() {
     for (const c of cellsSent) {
       const n = ixData(c);
       if (own.has(n)) continue;
-      if (pre.some((x) => x === n)) leaks.push(`${who}: side ${c.side} ${c.what} ix data (phase ${c.phase + 1}, cell ${c.cell})`);
+      if (pre.some((x) => x === n)) leaks.push(`${who}: side ${c.side} ${c.what} ix data (stage ${c.phase + 1}, slot ${c.cell})`);
     }
   }
   for (const l of leaks) fails.push(`leak: ${l}`);
-  if (invariants.seedBeforeFinish || invariants.historyBeforeFinish || invariants.hintDuringPlant) fails.push(`public-state invariant broken ${JSON.stringify(invariants)}`);
+  if (invariants.seedBeforeFinish || invariants.historyBeforeFinish || invariants.revealedInPlant) fails.push(`public-state invariant broken ${JSON.stringify(invariants)}`);
   const subs = Object.fromEntries(Object.entries(listeners).map(([w, l]) => [w, { beforeFinish: l.counts, afterFinish: l.afterFinish, errors: l.errors }]));
   for (const [w, l] of Object.entries(listeners)) {
     for (const [label, n] of Object.entries(l.counts)) {

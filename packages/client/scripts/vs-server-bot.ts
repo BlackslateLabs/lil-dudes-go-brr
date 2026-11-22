@@ -33,7 +33,7 @@ async function main() {
   const brain = new Bot(1, 0x5eedn ^ q.id);
   let playing = 0;
   src.subscribe((view) => {
-    if (view.status !== 'plant' && view.status !== 'playing') return;
+    if (view.status !== 'playing') return;
     if (!playing) playing = Date.now() - t0;
     const [aim, rig, peek] = brain.decide(src.latestBytes);
     if (aim! >= 0) src.setAim(aim!);
