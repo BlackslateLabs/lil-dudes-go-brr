@@ -1,4 +1,4 @@
-//! Browser bindings for the match rules (docs/SPEC.md v3): one `SimMatch` handle per match, with
+//! Browser bindings for the match rules (docs/SPEC.md v4): one `SimMatch` handle per match, with
 //! the Warlord bot built in. Cheap at 20 Hz: the view and events cross into JS as flat
 //! `Float64Array`s, decoded by packages/client/src/offline.ts. Rebuild with
 //! `packages/sim-wasm/build.sh`.
@@ -7,8 +7,9 @@
 //!   header (10): layout version, tick, ended (0/1), layout id, stake, has result (0/1),
 //!           winner (0, 1, -1 = draw or none), ko (0/1), moved, fee
 //!   then per side (0, 1):
-//!           stage (0 fight 1, 1 fight 2, 2 raid), phase (0 plant, 1 fight, 2 transit, 3 raid,
-//!           4 done), phase ticks, dead, cannon x, aim, gold, rig used, peek used, is bot,
+//!           stage (0 fight 1, 1 fight 2), phase (0 plant, 1 fight, 2 transit, 3 raid (the
+//!           town hall raid of fight 2), 4 done), phase ticks (the raid keeps counting the
+//!           fight's), dead, cannon x, aim, gold, rig used, peek used, is bot, raid ticks,
 //!           2 tower hp, 2 crate hp,
 //!           8 gates × [x, op] (op 0 = face-down, +k = ×k, -k = ÷k; slots past the stage's
 //!           gate count are [0, 0]),
@@ -39,10 +40,10 @@ use lil_dudes_sim::*;
 use wasm_bindgen::prelude::*;
 
 /// Bump when any layout above changes (offline.ts refuses a mismatch).
-pub const LAYOUT_VERSION: u32 = 2;
+pub const LAYOUT_VERSION: u32 = 3;
 pub const EVENT_STRIDE: usize = 8;
 pub const HEADER_LEN: usize = 10;
-pub const SIDE_FIXED: usize = 10 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
+pub const SIDE_FIXED: usize = 11 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
 
 #[wasm_bindgen]
 pub struct SimMatch {
@@ -76,8 +77,8 @@ impl SimMatch {
     }
 
     /// Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-    /// `rig` / `peek` are gate slots (rig: of the opponent's current stage). Later calls before
-    /// the step win.
+    /// `rig` / `peek` are gate slots of `side`'s own current stage (the rig lands on the same
+    /// slot of the opponent's copy, see `can_rig`). Later calls before the step win.
     pub fn set_input(&mut self, side: u8, aim: Option<i32>, rig: Option<u8>, peek: Option<u8>) {
         let Some(p) = self.pending.sides.get_mut(usize::from(side)) else {
             return;
@@ -143,6 +144,7 @@ impl SimMatch {
                 flag(side.rig_used),
                 flag(side.peek_used),
                 flag(is_bot),
+                f64::from(side.raid_ticks),
             ]);
             v.extend(side.towers.iter().map(|&hp| f64::from(hp)));
             v.extend(side.crates.iter().map(|&hp| f64::from(hp)));
@@ -194,12 +196,18 @@ impl SimMatch {
         ]
     }
 
+    /// Whether `side` may rig gate `slot` (of its own current stage, in the opponent's copy)
+    /// right now (SPEC §6). The UI greys out the rest; the sim refuses them anyway.
+    pub fn can_rig(&self, side: u8, slot: u8) -> bool {
+        lil_dudes_sim::can_rig(&self.state.public, side, slot)
+    }
+
     /// Digest of the full state (public + secret), for parity checks and Verify.
     pub fn digest(&self) -> u64 {
         self.state.digest()
     }
 
-    /// Every stage's rigs and peeks so far (codec history layout: 3 stages × 2 sides ×
+    /// Every stage's rigs and peeks so far (codec history layout: 2 stages × 2 sides ×
     /// [rig victim stage, rig slot, peek slot, peek op byte], 255 = none; the stage index is
     /// the actor's own stage). The live result screen reads the same bytes from the Match.
     pub fn history(&self) -> Vec<u8> {
@@ -367,7 +375,7 @@ pub fn layout_version() -> u32 {
     LAYOUT_VERSION
 }
 
-/// DEALS LAYOUT (`deals_for(seed)`): [layout id, then 3 stages × 8 slots × value k (×k)];
+/// DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × value k (×k)];
 /// slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
 /// its published seed (Verify and the result screen); rigs come from `history()`.
 #[wasm_bindgen]
@@ -379,14 +387,27 @@ pub fn deals_for(seed: u64) -> Vec<u8> {
     out
 }
 
-/// Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight/Raid
-/// (for smooth drawing of sliding gates between ticks). 0 for a missing gate.
+/// Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight (pass the
+/// side's phase ticks; the Raid keeps counting the Fight's, so this stays smooth through the
+/// switch). For smooth drawing of sliding gates between ticks. 0 for a missing gate.
 #[wasm_bindgen]
 pub fn gate_x_at(layout: u8, stage: u8, slot: u8, t: u32) -> i32 {
     layouts::stage(layout, stage)
         .gates
         .get(usize::from(slot))
         .map_or(0, |g| i32::from(g.x_at(t)))
+}
+
+/// `can_rig` on the on-chain public state (codec bytes), for live matches: whether `side` may
+/// rig gate `slot` of its own current stage right now (SPEC §6). False on garbage input.
+#[wasm_bindgen]
+pub fn can_rig_bytes(public_bytes: &[u8], side: u8, slot: u8) -> bool {
+    let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
+        return false;
+    };
+    let mut view = MatchState::zeroed().public;
+    codec::decode_public(bytes, &mut view);
+    lil_dudes_sim::can_rig(&view, side, slot)
 }
 
 /// crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
@@ -409,7 +430,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 43] = [
+    let pairs: [(&str, String); 45] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -427,7 +448,9 @@ pub fn constants_json() -> String {
         ("LANE_LENGTH", LANE_LENGTH.to_string()),
         ("TOWER_Y", TOWER_Y.to_string()),
         ("VAULT_Y", VAULT_Y.to_string()),
+        ("HALL_X", HALL_X.to_string()),
         ("TOWER_HALF_W", TOWER_HALF_W.to_string()),
+        ("GATE_GRACE", GATE_GRACE.to_string()),
         ("CLASH_REACH", CLASH_REACH.to_string()),
         ("CLASH_BAND", CLASH_BAND.to_string()),
         ("STEER_STEP", STEER_STEP.to_string()),
@@ -524,17 +547,18 @@ const PARITY_DIGEST: u64 = 18_369_198_370_544_550_614;
 mod tests {
     use super::*;
 
+    /// Walks one side of a view starting at `i`; returns where the next side starts.
+    fn walk_side(v: &[f64], mut i: usize) -> usize {
+        i += SIDE_FIXED;
+        let n = v[i] as usize;
+        i += 1 + n * 5;
+        let n = v[i] as usize;
+        i + 1 + n * 5
+    }
+
     /// Walks a view and returns its length, checking the documented structure.
     fn walk(v: &[f64]) -> usize {
-        let mut i = HEADER_LEN;
-        for _ in 0..2 {
-            i += SIDE_FIXED;
-            let n = v[i] as usize;
-            i += 1 + n * 5;
-            let n = v[i] as usize;
-            i += 1 + n * 5;
-        }
-        i
+        walk_side(v, walk_side(v, HEADER_LEN))
     }
 
     #[test]
@@ -556,7 +580,7 @@ mod tests {
         assert_eq!(v[3], f64::from(m.state.public.layout));
         // Side 0's first gate: x and face-down / revealed op.
         let g = m.state.public.sides[0].gates[0];
-        let at = HEADER_LEN + 10 + TOWERS_MAX + CRATES_MAX;
+        let at = HEADER_LEN + 11 + TOWERS_MAX + CRATES_MAX;
         assert_eq!(v[at], f64::from(g.x));
         assert_eq!(v[at + 1], op_num(g.revealed));
     }
@@ -653,12 +677,39 @@ mod tests {
                 assert_eq!(v[1 + s * GATES_MAX + slot], op.to_byte());
             }
         }
-        // History of a played match: the bots rig in their first plant.
+        // History of a played match: the bots rig early in their first fight.
         let mut h = SimMatch::new(5, 6, 0, 0b11, false);
         while h.step() {}
         let hist = h.history();
         assert_eq!(hist.len(), codec::HISTORY_LEN);
         assert_ne!(hist[0], 255);
+    }
+
+    #[test]
+    fn raid_ticks_sit_after_is_bot_in_the_view() {
+        let mut h = SimMatch::new(3, 4, 0, 0b11, false);
+        h.state.public.sides[1].raid_ticks = 77;
+        let v = h.view();
+        let side1 = walk_side(&v, HEADER_LEN);
+        assert_eq!(v[side1 + 10], 77.0);
+        assert_eq!(v[HEADER_LEN + 10], 0.0);
+    }
+
+    #[test]
+    fn can_rig_matches_the_sim() {
+        let mut h = SimMatch::new(5, 6, 0, 0, false);
+        let bytes = h.public_bytes();
+        for slot in 0..10u8 {
+            let want = lil_dudes_sim::can_rig(&h.state.public, 0, slot);
+            assert_eq!(h.can_rig(0, slot), want);
+            assert_eq!(can_rig_bytes(&bytes, 0, slot), want);
+        }
+        assert!(h.can_rig(0, 0));
+        h.set_input(0, None, Some(0), None);
+        h.step();
+        assert!(!h.can_rig(0, 1));
+        assert!(!can_rig_bytes(&h.public_bytes(), 0, 1));
+        assert!(!can_rig_bytes(&[0u8; 3], 0, 0));
     }
 
     #[test]
@@ -674,6 +725,9 @@ mod tests {
         assert!(j.starts_with('{') && j.ends_with('}'));
         assert!(j.contains("\"WAVE_GAPS\":[130,130,80]"));
         assert!(j.contains("\"MATCH_TICKS\":3600"));
+        assert!(j.contains("\"FINAL_STAGE\":1"));
+        assert!(j.contains("\"GATE_GRACE\":100"));
+        assert!(j.contains("\"HALL_X\":1500"));
         assert!(j.contains("\"name\":\"Twin Lanes\""));
         assert!(j.contains("\"NORMAL_ODDS\":[[2,47],[3,34],[4,12],[5,4],[6,3]]"));
         // Balanced braces and brackets (no JSON parser in this crate).

@@ -4,8 +4,9 @@ Prebuilt browser build of the match rules (`crates/sim` via `crates/sim-wasm`, w
 built in). The `pkg/` output is **committed**, so the web app runs the real rules with only Node +
 pnpm. You normally never import this directly: `OfflineSource` in `@lil-dudes/client` wraps it.
 
-- `pkg/sim.js` + `pkg/sim.d.ts`: the wasm-bindgen API (`SimMatch`, `Bot`, `constants_json` with the
-  layout pool, `deals_for`, `gate_x_at`, `rules_version`).
+- `pkg/sim.js` + `pkg/sim.d.ts`: the wasm-bindgen API (`SimMatch` incl. `can_rig`, `Bot`,
+  `constants_json` with the layout pool, `deals_for`, `gate_x_at`, `can_rig_bytes`,
+  `rules_version`, `codec_version`, `layout_version`).
 - `pkg/sim_inline.js`: the `.wasm` as base64, so it loads synchronously (`initSync`) in the browser,
   Vite and Node, with no fetch, asset URL or bundler plugin. ~90 KB.
 - `pkg/sim_bg.wasm`: the raw module (~67 KB).

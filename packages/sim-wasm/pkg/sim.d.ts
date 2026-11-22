@@ -23,6 +23,11 @@ export class SimMatch {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Whether `side` may rig gate `slot` (of its own current stage, in the opponent's copy)
+     * right now (SPEC §6). The UI greys out the rest; the sim refuses them anyway.
+     */
+    can_rig(side: number, slot: number): boolean;
+    /**
      * Digest of the full state (public + secret), for parity checks and Verify.
      */
     digest(): bigint;
@@ -32,7 +37,7 @@ export class SimMatch {
      */
     events(): Float64Array;
     /**
-     * Every stage's rigs and peeks so far (codec history layout: 3 stages × 2 sides ×
+     * Every stage's rigs and peeks so far (codec history layout: 2 stages × 2 sides ×
      * [rig victim stage, rig slot, peek slot, peek op byte], 255 = none; the stage index is
      * the actor's own stage). The live result screen reads the same bytes from the Match.
      */
@@ -53,8 +58,8 @@ export class SimMatch {
     public_bytes(): Uint8Array;
     /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-     * `rig` / `peek` are gate slots (rig: of the opponent's current stage). Later calls before
-     * the step win.
+     * `rig` / `peek` are gate slots of `side`'s own current stage (the rig lands on the same
+     * slot of the opponent's copy, see `can_rig`). Later calls before the step win.
      */
     set_input(side: number, aim?: number | null, rig?: number | null, peek?: number | null): void;
     /**
@@ -70,6 +75,12 @@ export class SimMatch {
 }
 
 /**
+ * `can_rig` on the on-chain public state (codec bytes), for live matches: whether `side` may
+ * rig gate `slot` of its own current stage right now (SPEC §6). False on garbage input.
+ */
+export function can_rig_bytes(public_bytes: Uint8Array | number[], side: number, slot: number): boolean;
+
+/**
  * crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
  */
 export function codec_version(): number;
@@ -83,15 +94,16 @@ export function codec_version(): number;
 export function constants_json(): string;
 
 /**
- * DEALS LAYOUT (`deals_for(seed)`): [layout id, then 3 stages × 8 slots × value k (×k)];
+ * DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × value k (×k)];
  * slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
  * its published seed (Verify and the result screen); rigs come from `history()`.
  */
 export function deals_for(seed: bigint): Uint8Array;
 
 /**
- * Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight/Raid
- * (for smooth drawing of sliding gates between ticks). 0 for a missing gate.
+ * Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight (pass the
+ * side's phase ticks; the Raid keeps counting the Fight's, so this stays smooth through the
+ * switch). For smooth drawing of sliding gates between ticks. 0 for a missing gate.
  */
 export function gate_x_at(layout: number, stage: number, slot: number, t: number): number;
 
@@ -107,12 +119,14 @@ export interface InitOutput {
     readonly __wbg_simmatch_free: (a: number, b: number) => void;
     readonly bot_decide: (a: number, b: number, c: number) => [number, number];
     readonly bot_new: (a: number, b: bigint) => number;
+    readonly can_rig_bytes: (a: number, b: number, c: number, d: number) => number;
     readonly codec_version: () => number;
     readonly constants_json: () => [number, number];
     readonly deals_for: (a: bigint) => [number, number];
     readonly gate_x_at: (a: number, b: number, c: number, d: number) => number;
     readonly layout_version: () => number;
     readonly rules_version: () => number;
+    readonly simmatch_can_rig: (a: number, b: number, c: number) => number;
     readonly simmatch_digest: (a: number) => bigint;
     readonly simmatch_ended: (a: number) => number;
     readonly simmatch_events: (a: number) => [number, number];

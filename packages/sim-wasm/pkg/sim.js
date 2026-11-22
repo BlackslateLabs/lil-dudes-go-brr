@@ -55,6 +55,17 @@ export class SimMatch {
         wasm.__wbg_simmatch_free(ptr, 0);
     }
     /**
+     * Whether `side` may rig gate `slot` (of its own current stage, in the opponent's copy)
+     * right now (SPEC §6). The UI greys out the rest; the sim refuses them anyway.
+     * @param {number} side
+     * @param {number} slot
+     * @returns {boolean}
+     */
+    can_rig(side, slot) {
+        const ret = wasm.simmatch_can_rig(this.__wbg_ptr, side, slot);
+        return ret !== 0;
+    }
+    /**
      * Digest of the full state (public + secret), for parity checks and Verify.
      * @returns {bigint}
      */
@@ -80,7 +91,7 @@ export class SimMatch {
         return v1;
     }
     /**
-     * Every stage's rigs and peeks so far (codec history layout: 3 stages × 2 sides ×
+     * Every stage's rigs and peeks so far (codec history layout: 2 stages × 2 sides ×
      * [rig victim stage, rig slot, peek slot, peek op byte], 255 = none; the stage index is
      * the actor's own stage). The live result screen reads the same bytes from the Match.
      * @returns {Uint8Array}
@@ -130,8 +141,8 @@ export class SimMatch {
     }
     /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-     * `rig` / `peek` are gate slots (rig: of the opponent's current stage). Later calls before
-     * the step win.
+     * `rig` / `peek` are gate slots of `side`'s own current stage (the rig lands on the same
+     * slot of the opponent's copy, see `can_rig`). Later calls before the step win.
      * @param {number} side
      * @param {number | null} [aim]
      * @param {number | null} [rig]
@@ -170,6 +181,23 @@ export class SimMatch {
 if (Symbol.dispose) SimMatch.prototype[Symbol.dispose] = SimMatch.prototype.free;
 
 /**
+ * `can_rig` on the on-chain public state (codec bytes), for live matches: whether `side` may
+ * rig gate `slot` of its own current stage right now (SPEC §6). False on garbage input.
+ * @param {Uint8Array | number[]} public_bytes
+ * @param {number} side
+ * @param {number} slot
+ * @returns {boolean}
+ */
+export function can_rig_bytes(public_bytes, side, slot) {
+    const val2 = +side;
+    const val3 = +slot;
+    const ptr0 = passArray8ToWasm0(public_bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.can_rig_bytes(ptr0, len0, val2, val3);
+    return ret !== 0;
+}
+
+/**
  * crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
  * @returns {number}
  */
@@ -199,7 +227,7 @@ export function constants_json() {
 }
 
 /**
- * DEALS LAYOUT (`deals_for(seed)`): [layout id, then 3 stages × 8 slots × value k (×k)];
+ * DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × value k (×k)];
  * slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
  * its published seed (Verify and the result screen); rigs come from `history()`.
  * @param {bigint} seed
@@ -213,8 +241,9 @@ export function deals_for(seed) {
 }
 
 /**
- * Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight/Raid
- * (for smooth drawing of sliding gates between ticks). 0 for a missing gate.
+ * Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight (pass the
+ * side's phase ticks; the Raid keeps counting the Fight's, so this stays smooth through the
+ * switch). For smooth drawing of sliding gates between ticks. 0 for a missing gate.
  * @param {number} layout
  * @param {number} stage
  * @param {number} slot

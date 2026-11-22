@@ -64,7 +64,7 @@ pub enum Event {
     },
     /// Tower `tower` fell; `gold` = TOWER_BONUS (SPEC §5).
     TowerDestroyed { side: u8, tower: u8, gold: u32 },
-    /// A raid cohort of `units` dudes reached the vault for `gold` (SPEC §5).
+    /// A raid cohort of `units` dudes reached the town hall for `gold` (SPEC §5).
     Loot {
         side: u8,
         cohort_id: u32,
