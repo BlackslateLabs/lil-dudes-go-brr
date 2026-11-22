@@ -13,6 +13,12 @@ importers:
       '@hono/node-server':
         specifier: 2.1.11
         version: 2.1.11(hono@4.13.19)
+      '@solana/web3.js':
+        specifier: 1.98.4
+        version: 1.98.4(bufferutil@4.2.0)(typescript@5.9.3)(utf-8-validate@6.1.0)
+      bs58:
+        specifier: 6.0.0
+        version: 6.0.0
       hono:
         specifier: 4.13.19
         version: 4.13.19

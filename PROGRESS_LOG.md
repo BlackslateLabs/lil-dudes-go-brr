@@ -554,3 +554,24 @@ itself and calls `onStage('finished', 'settled')`. New exports: `payoutOf`, `mar
 **Suparno:** the result screen can read `reveal().payout.why` / `.paid` / `.net` for the count-up
 line, `history[p].sprung` + `gotchas` for the rig marks, `txs[].url` for explorer links, and
 `settlement.state` for "Settling…" (it is `'offline'` for bot matches).
+
+## 2026-11-22 · Kai · M4/5 step 3 (faucet) · [STAGE] [CONTRACT] [HANDOFF]
+**Did:** M4/5 step 3 done; next: step 4 (online bot).
+`apps/server`: `POST /topup { burner, stake? }` tops a burner up to `stake + 0.035 SOL` (create rent
+~0.0153 + delegation deposits ~0.012, returned at undelegation, + fees), capped at 0.3 SOL; no-op
+if it has enough. Limits (in memory): 1 per 10 min per burner, 3 per 10 min per IP
+(`X-Forwarded-For` when `TRUST_PROXY=1`), 3 SOL per hour in total, one in flight per burner.
+Devnet only: refuses to send unless the RPC's genesis hash is devnet's. `GET /faucet` → address,
+balance, policy, spent last hour. Sponsor key from the env only (`SPONSOR_KEYPAIR_PATH` or
+`SPONSOR_SECRET_KEY`, see `.env.example`), never logged. 4 new tests (fake faucet). Devnet e2e
+(deploy wallet as a stand-in sponsor, swept back): 0.085 SOL in 3.0 s, second call no-op, third
+refused "retry in 598 s".
+**Sponsor wallet:** `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr` (key in
+`~/.config/lil-dudes/sponsor.json` on Kai's machine, mode 600, outside the repo). **Kai: fund it
+with 3 SOL from the deploy wallet** (`solana transfer 8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr
+3 --allow-unfunded-recipient -u devnet`): ~35 top-ups at 0.05, plus the online bot's working
+capital; the deploy wallet keeps ~4.5 SOL (≥ one 2.33 SOL upgrade buffer).
+
+**CONTRACT (addition):** `topUp(server, burner, stake?)` → `{ sent, signature?, balance, target }`
+(throws "… (retry in N s)" on a limit). **Suparno:** Wallet sheet "Top up" → `topUp(server,
+burner.publicKey)`; before a staked Quick Match / Room → `topUp(server, burner.publicKey, stake)`.

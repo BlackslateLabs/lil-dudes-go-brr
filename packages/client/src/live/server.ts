@@ -56,3 +56,28 @@ export async function quickMatch(server: string, player: PublicKey, stake: numbe
   }
   return { id: BigInt(t.id!), role: t.role!, opponent: t.opponent!, stake: t.stake };
 }
+
+export interface TopUp {
+  /** Lamports sent now (0 = the burner already had enough). */
+  sent: number;
+  signature?: string;
+  /** The burner's balance after the top-up, and the target (stake + reserve, ≤ 0.3 SOL). */
+  balance: number;
+  target: number;
+}
+
+/**
+ * Wallet sheet "Top up" / before a staked match (MVP §3.9): the server's sponsor wallet tops the
+ * burner up to `stake` + ~0.035 SOL (rent + fees). Devnet only. Limits: once per 10 min per
+ * burner, a few per IP; a 429 error says when to retry ("…retry in N s").
+ */
+export async function topUp(server: string, burner: PublicKey, stake = 0): Promise<TopUp> {
+  const res = await fetch(`${server.replace(/\/$/, '')}/topup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ burner: burner.toBase58(), stake }),
+  });
+  const json = (await res.json()) as TopUp & { error?: string; retryAfterSec?: number };
+  if (!res.ok) throw new Error(`top-up: ${json.error ?? res.status}${json.retryAfterSec ? ` (retry in ${json.retryAfterSec} s)` : ''}`);
+  return json;
+}

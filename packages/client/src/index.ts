@@ -16,6 +16,6 @@ export {
   baseConnection, createMatch, joinMatch, delegateMatch, cancelMatch, settleMatch, closeMatch, fetchMatch, isOnBase, isSettled,
   waitForStatus, matchTxs, settlementOf,
 } from './live/lobby';
-export { createRoom, findRoom, quickMatch } from './live/server';
-export type { Room, QuickMatch } from './live/server';
+export { createRoom, findRoom, quickMatch, topUp } from './live/server';
+export type { Room, QuickMatch, TopUp } from './live/server';
 export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from './live/chain';

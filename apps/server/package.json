@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Matchmaking (room codes, quick-match queue) for live matches; later the burner faucet. Never decides game outcomes.",
+  "description": "Matchmaking (room codes, quick-match queue), the burner faucet and the online bot for live matches. Never decides game outcomes.",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.11",
+    "@solana/web3.js": "1.98.4",
+    "bs58": "6.0.0",
     "hono": "4.13.19"
   },
   "devDependencies": {
