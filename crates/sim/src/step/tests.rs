@@ -1,16 +1,17 @@
-//! One or more tests per rule (SPEC v2.1 section in each name's comment).
+//! One or more tests per rule (SPEC v3 section in each test's comment). Most use layout 0
+//! (Twin Lanes): Fight 1 has one tower at x 1,500, rows at 1,400 / 2,400 / 3,400, gates
+//! 0 (row 0, x 700), 1 (row 0, x 2,300), 2 (row 1, x 700), 3 (row 1, x 2,300) and the sliding
+//! gate 4 (row 2); Fight 2 locks its big gate 2 (x 1,500) behind a crate at y 2,100.
 
 use super::*;
 use crate::deal::RIG_OP;
 use crate::events::Events;
-use crate::state::{in_plant, MatchOptions, SideInput};
+use crate::layouts::LAYOUTS;
+use crate::state::{MatchOptions, SideInput};
 use crate::types::GateOp;
-use crate::{HP_MAX, PLANT_STARTS, PLANT_TICKS};
 
-const M2: GateOp = GateOp::Mul(2);
-
-fn new_match() -> MatchState {
-    MatchState::new(1, MatchOptions::default())
+fn new_match(layout: u8) -> MatchState {
+    MatchState::new(u64::from(layout), MatchOptions::default())
 }
 
 fn tick(m: &mut MatchState, inputs: Inputs) -> Vec<Event> {
@@ -34,913 +35,1019 @@ fn run_to(m: &mut MatchState, t: u32) -> Vec<(u32, Event)> {
     all
 }
 
+/// Like `run_to`, but enemies are cleared before every tick, so nobody dies.
+fn run_safe(m: &mut MatchState, t: u32, inputs: Inputs) -> Vec<(u32, Event)> {
+    let mut all = Vec::new();
+    while m.public.tick < t && m.public.result.is_none() {
+        for s in m.public.sides.iter_mut() {
+            s.enemies = [Enemy::default(); ENEMY_CAP];
+            s.enemy_len = 0;
+        }
+        let at = m.public.tick;
+        all.extend(tick(m, inputs).into_iter().map(|e| (at, e)));
+    }
+    all
+}
+
 fn input(side: usize, i: SideInput) -> Inputs {
     let mut inputs = Inputs::default();
     inputs.sides[side] = i;
     inputs
 }
 
-fn aims(a0: i32, a1: i32) -> Inputs {
-    Inputs {
-        sides: [
-            SideInput {
-                aim: Some(a0),
-                ..SideInput::default()
-            },
-            SideInput {
-                aim: Some(a1),
-                ..SideInput::default()
-            },
-        ],
+fn rig(slot: u8) -> SideInput {
+    SideInput {
+        rig: Some(slot),
+        ..SideInput::default()
     }
 }
 
-fn col_x(col: i32) -> i32 {
-    col * COL_WIDTH + COL_WIDTH / 2
+fn peek(slot: u8) -> SideInput {
+    SideInput {
+        peek: Some(slot),
+        ..SideInput::default()
+    }
 }
 
-/// Put a known layout on both grids (keeps the public gold flags and hints consistent).
-fn set_deal(m: &mut MatchState, ops: [GateOp; CELLS], gold_cell: u8) {
-    m.secret.deal.ops = ops;
-    m.secret.deal.gold_cell = gold_cell;
-    for hints in m.secret.deal.hints.iter_mut() {
-        for (c, (hint, &op)) in hints.iter_mut().zip(ops.iter()).enumerate() {
-            *hint = if c == usize::from(gold_cell) {
-                Hint::Gold
-            } else if op.is_good() {
-                Hint::Good
-            } else {
-                Hint::Bad
-            };
+/// Both players at the first tick of Fight 1 (tick PLANT_TICKS).
+fn fight(layout: u8) -> MatchState {
+    let mut m = new_match(layout);
+    run_to(&mut m, PLANT_TICKS);
+    for s in &m.public.sides {
+        assert_eq!((s.stage, s.phase, s.phase_ticks), (0, Phase::Fight, 0));
+    }
+    m
+}
+
+/// Towers that can't fall (so a test's fight never ends on its own).
+fn sturdy(m: &mut MatchState) {
+    for s in m.public.sides.iter_mut() {
+        for t in s.towers.iter_mut().filter(|t| **t > 0) {
+            *t = u16::MAX;
         }
     }
-    let gates = face_down(&m.secret.deal);
-    for side in m.public.sides.iter_mut() {
-        side.gates = gates;
+}
+
+fn cohort(id: u32, count: u32, x: i16, y: i16, last_row: u8) -> Cohort {
+    Cohort {
+        id,
+        count,
+        x,
+        y,
+        age: 100,
+        last_row,
     }
-    if m.public.status() == Status::Playing {
-        show_hints(m);
+}
+
+fn enemy(id: u32, count: u32, x: i16, y: i16) -> Enemy {
+    Enemy {
+        id,
+        count,
+        x,
+        y,
+        tower: 0,
     }
 }
 
 fn place(m: &mut MatchState, side: usize, c: Cohort) {
     let s = &mut m.public.sides[side];
-    let n = usize::from(s.cohort_len);
-    s.cohorts[n] = c;
+    s.cohorts[usize::from(s.cohort_len)] = c;
     s.cohort_len += 1;
 }
 
-fn cohort(id: u32, count: u32, x: i32, y: i32) -> Cohort {
-    Cohort {
-        id,
-        count,
-        x: x as i16,
-        y: y as i16,
-        age: 50,
-        last_row: 3,
-    }
+fn place_enemy(m: &mut MatchState, side: usize, e: Enemy) {
+    let s = &mut m.public.sides[side];
+    s.enemies[usize::from(s.enemy_len)] = e;
+    s.enemy_len += 1;
 }
 
 fn find(m: &MatchState, side: usize, id: u32) -> Option<Cohort> {
     m.public.sides[side]
         .cohorts()
         .iter()
-        .copied()
         .find(|c| c.id == id)
+        .copied()
 }
 
-// --- timeline (SPEC §3) ------------------------------------------------------------------------
+/// Puts `side` into `stage` / `phase` at phase tick 0 (layout data loaded, field empty).
+fn enter(m: &mut MatchState, side: usize, stage: u8, phase: Phase) {
+    let layout = m.public.layout;
+    let s = &mut m.public.sides[side];
+    s.load_stage(layout, stage);
+    s.phase = phase;
+}
+
+// --- timeline ----------------------------------------------------------------------------------
 
 #[test]
-fn timeline_plants_redeals_surge_and_timer() {
-    // SPEC §3: plants at 0:00, 0:40, 1:20; Surge at 1:45; the timer at 2:00.
-    let mut m = new_match();
-    let ev = run_to(&mut m, MATCH_TICKS);
-    let at = |want: Event| {
-        ev.iter()
-            .filter(|(_, e)| *e == want)
-            .map(|&(t, _)| t)
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(at(Event::Plant { phase: 0 }), vec![0]);
-    // Entering tick 800 / 1600 happens at the end of the step for tick 799 / 1599.
-    assert_eq!(at(Event::Redeal { phase: 1 }), vec![799]);
-    assert_eq!(at(Event::Plant { phase: 1 }), vec![799]);
-    assert_eq!(at(Event::Redeal { phase: 2 }), vec![1599]);
-    assert_eq!(at(Event::Surge), vec![SURGE_TICK - 1]);
-    let ends: Vec<_> = ev
+fn plant_then_fight_and_the_cannon_holds_fire_while_planting() {
+    // SPEC §3: Plant 3 s (no fire), then Fight; volleys every FIRE_TICKS from the fight's start.
+    let mut m = new_match(0);
+    let ev = run_to(&mut m, PLANT_TICKS + 3 * FIRE_TICKS + 1);
+    assert!(ev.iter().any(|(t, e)| *t == 0
+        && *e
+            == Event::Phase {
+                side: 0,
+                stage: 0,
+                phase: Phase::Plant
+            }));
+    let fight_at: Vec<u32> = ev
         .iter()
-        .filter(|(_, e)| matches!(e, Event::End { .. }))
-        .collect();
-    assert_eq!(ends.len(), 1);
-    assert_eq!(ends[0].0, MATCH_TICKS - 1);
-    assert_eq!(m.public.tick, MATCH_TICKS);
-    assert_eq!(m.public.status(), Status::Ended);
-    // Both cannons idle at the centre: mirrored deal, head-on clashes, nobody scores → draw.
-    let r = m.public.result.unwrap();
-    assert_eq!((r.winner, r.ko, r.moved), (None, false, 0));
-    assert_eq!(m.public.sides[0].hp, m.public.sides[1].hp);
-}
-
-#[test]
-fn status_follows_the_plant_windows() {
-    // SPEC §3: the first 3 s of each phase are a plant window.
-    let mut m = new_match();
-    for t in 0..MATCH_TICKS {
-        let phase = phase_at(t);
-        let want = if t < PLANT_STARTS[usize::from(phase)] + PLANT_TICKS {
-            Status::Plant
-        } else {
-            Status::Playing
-        };
-        assert_eq!(m.public.status(), want, "tick {t}");
-        assert_eq!(m.public.phase(), phase);
-        assert_eq!(m.public.surge(), t >= SURGE_TICK);
-        idle(&mut m);
-    }
-}
-
-#[test]
-fn ended_match_is_frozen() {
-    let mut m = new_match();
-    run_to(&mut m, MATCH_TICKS);
-    let before = m;
-    assert!(idle(&mut m).is_empty());
-    assert_eq!(m, before);
-}
-
-// --- fire (SPEC §3, §6) ------------------------------------------------------------------------
-
-fn volley_ticks(ev: &[(u32, Event)], side: u8) -> Vec<u32> {
-    ev.iter()
-        .filter(|(_, e)| matches!(e, Event::Volley { side: s, .. } if *s == side))
-        .map(|&(t, _)| t)
-        .collect()
-}
-
-#[test]
-fn plant_windows_hold_fire_and_play_fires_every_8_ticks() {
-    // SPEC §3/§6: no fire in plant windows; a volley every FIRE_TICKS from the first play tick.
-    let mut m = new_match();
-    let ev = run_to(&mut m, SURGE_TICK);
-    let v = volley_ticks(&ev, 0);
-    assert_eq!(v, volley_ticks(&ev, 1));
-    assert_eq!(v[0], PLANT_TICKS);
-    assert!(v.iter().all(|&t| !in_plant(t)));
-    for w in v.windows(2) {
-        let gap = w[1] - w[0];
-        assert!(
-            gap == FIRE_TICKS || in_plant(w[1] - 1),
-            "gap {gap} at {}",
-            w[1]
-        );
-    }
-    assert!(v.contains(&(PLANT_STARTS[1] + PLANT_TICKS)));
-    assert!(v.contains(&(PLANT_STARTS[2] + PLANT_TICKS)));
-    // 740 play ticks per phase in phases 1–2 → 93 volleys each; 440 ticks before Surge → 55.
-    assert_eq!(v.len(), 93 + 93 + 55);
-}
-
-#[test]
-fn surge_doubles_the_fire_rate() {
-    // SPEC §3: from 1:45 a volley every FIRE_TICKS_SURGE ticks.
-    let mut m = new_match();
-    run_to(&mut m, SURGE_TICK);
-    let mut ev = Vec::new();
-    while m.public.result.is_none() {
-        let at = m.public.tick;
-        ev.extend(idle(&mut m).into_iter().map(|e| (at, e)));
-    }
-    let v = volley_ticks(&ev, 0);
-    assert_eq!(v[0], SURGE_TICK);
-    assert!(v.windows(2).all(|w| w[1] - w[0] == FIRE_TICKS_SURGE));
-    assert_eq!(
-        v.len() as u32,
-        (MATCH_TICKS - SURGE_TICK) / FIRE_TICKS_SURGE
-    );
-}
-
-#[test]
-fn volley_is_one_cohort_of_four_at_the_cannon() {
-    // SPEC §2/§6: one cohort of VOLLEY_SIZE at the sim's x, never the raw aim.
-    let mut m = new_match();
-    run_to(&mut m, PLANT_TICKS);
-    let ev = tick(&mut m, aims(0, 2999));
-    let volleys: Vec<_> = ev
-        .iter()
-        .filter_map(|e| match e {
-            Event::Volley { side, x, count, .. } => Some((*side, *x, *count)),
-            _ => None,
+        .filter(|(_, e)| {
+            matches!(
+                e,
+                Event::Phase {
+                    phase: Phase::Fight,
+                    ..
+                }
+            )
         })
+        .map(|(t, _)| *t)
         .collect();
-    // The cannons started at 1500 and moved one CANNON_STEP this tick.
-    assert_eq!(
-        volleys,
-        vec![
-            (0, 1500 - CANNON_STEP as i16, 4),
-            (1, 1500 + CANNON_STEP as i16, 4)
-        ]
-    );
-    let c = m.public.sides[0].cohorts()[0];
-    assert_eq!((c.count, c.y, c.age, c.last_row), (VOLLEY_SIZE, 0, 0, 0));
+    assert_eq!(fight_at, vec![PLANT_TICKS - 1; 2]);
+    let volleys: Vec<u32> = ev
+        .iter()
+        .filter(|(_, e)| matches!(e, Event::Volley { side: 0, .. }))
+        .map(|(t, _)| *t)
+        .collect();
+    let want: Vec<u32> = (0..4).map(|k| PLANT_TICKS + k * FIRE_TICKS).collect();
+    assert_eq!(volleys, want);
+    assert!(ev
+        .iter()
+        .all(|(_, e)| !matches!(e, Event::Volley { count, .. } if *count != VOLLEY_SIZE)));
 }
 
 #[test]
-fn cohort_cap_skips_volleys() {
-    // SPEC §6: at most COHORT_CAP live cohorts per side.
-    let mut m = new_match();
-    run_to(&mut m, PLANT_TICKS + 1);
-    let n0 = m.public.sides[0].cohort_len;
-    for i in n0 as usize..COHORT_CAP {
-        place(&mut m, 0, cohort(1000 + i as u32, 1, 100, 0));
-    }
-    run_to(&mut m, PLANT_TICKS + FIRE_TICKS + 1);
-    assert_eq!(usize::from(m.public.sides[0].cohort_len), COHORT_CAP);
-    assert_eq!(m.public.sides[1].cohort_len, 2);
-}
-
-// --- cannon (SPEC §2) --------------------------------------------------------------------------
-
-#[test]
-fn cannon_steps_toward_the_aim_and_stops_on_it() {
-    // SPEC §2: at most CANNON_STEP per tick, crossing the lane in ~5 ticks.
-    let mut m = new_match();
-    let mut xs = Vec::new();
-    for _ in 0..4 {
-        tick(&mut m, aims(0, 2999));
-        xs.push((m.public.sides[0].cannon_x, m.public.sides[1].cannon_x));
-    }
-    assert_eq!(xs, vec![(900, 2100), (300, 2700), (0, 2999), (0, 2999)]);
-    tick(&mut m, aims(250, 2999));
-    assert_eq!(m.public.sides[0].cannon_x, 250);
-}
-
-#[test]
-fn aim_is_clamped_to_the_lane() {
-    let mut m = new_match();
-    tick(&mut m, aims(-5000, 99_999));
+fn cannon_chases_the_aim() {
+    // SPEC §2: at most CANNON_STEP per tick, stopping on the aim; aims are clamped to the lane.
+    let mut m = new_match(0);
+    let aim = |x| {
+        input(
+            0,
+            SideInput {
+                aim: Some(x),
+                ..SideInput::default()
+            },
+        )
+    };
+    tick(&mut m, aim(-500));
     assert_eq!(m.public.sides[0].aim, 0);
-    assert_eq!(m.public.sides[1].aim, (LANE_WIDTH - 1) as i16);
-    // No input keeps the aim.
+    assert_eq!(m.public.sides[0].cannon_x, 1_500 - CANNON_STEP as i16);
     idle(&mut m);
-    assert_eq!(m.public.sides[1].aim, (LANE_WIDTH - 1) as i16);
+    assert_eq!(m.public.sides[0].cannon_x, 300);
+    idle(&mut m);
+    assert_eq!(m.public.sides[0].cannon_x, 0);
+    tick(&mut m, aim(99_999));
+    assert_eq!(m.public.sides[0].aim, (LANE_WIDTH - 1) as i16);
+    assert_eq!(m.public.sides[1].cannon_x, 1_500);
 }
-
-// --- movement (SPEC §6) ------------------------------------------------------------------------
 
 #[test]
 fn launch_boost_then_cruise() {
-    // SPEC §6: 3× cruise for LAUNCH_TICKS ticks, then cruise.
-    let mut m = new_match();
-    run_to(&mut m, PLANT_TICKS + 1);
+    // SPEC §7: LAUNCH_SPEED for LAUNCH_TICKS ticks, then CRUISE_SPEED.
+    let mut m = fight(0);
+    idle(&mut m);
     let id = m.public.sides[0].cohorts()[0].id;
-    let mut ys = Vec::new();
-    for _ in 0..8 {
-        ys.push(find(&m, 0, id).unwrap().y);
+    for k in 1..=LAUNCH_TICKS + 3 {
+        let y = find(&m, 0, id).unwrap().y;
         idle(&mut m);
+        let dy = i32::from(find(&m, 0, id).unwrap().y - y);
+        let want = if k <= LAUNCH_TICKS {
+            LAUNCH_SPEED
+        } else {
+            CRUISE_SPEED
+        };
+        assert_eq!(dy, want, "tick {k} of flight");
     }
-    // Fired at y = 0, then 6 boosted ticks of 300, then cruise at 100.
-    assert_eq!(ys, vec![0, 300, 600, 900, 1200, 1500, 1800, 1900]);
 }
 
-// --- gates (SPEC §2, §4) -----------------------------------------------------------------------
+// --- waves -------------------------------------------------------------------------------------
 
 #[test]
-fn gate_spans_and_gaps() {
-    // SPEC §2: gates are GATE_WIDTH (75%) of their column; the rest is a gap.
-    assert_eq!(gate_at(0, 1500), Some(1));
-    assert_eq!(gate_at(0, 125), Some(0));
-    assert_eq!(gate_at(0, 875), Some(0));
-    assert_eq!(gate_at(0, 124), None);
-    assert_eq!(gate_at(0, 876), None);
-    assert_eq!(gate_at(0, 1000), None);
-    assert_eq!(gate_at(1, 2000), None);
-    assert_eq!(gate_at(0, 2999), None);
-    assert_eq!(gate_at(2, 2500), Some(8));
-    assert_eq!(gate_at(1, 1125), Some(4));
-    assert_eq!(gate_at(0, -50), None);
-}
-
-/// Side 0 fires one cohort at `x` (side 1 aims far away so nothing clashes); returns the
-/// Gate events of that cohort.
-fn one_cohort_through(m: &mut MatchState, x: i32) -> Vec<Event> {
-    let away = if x < 1500 { 2999 } else { 0 };
-    for _ in 0..PLANT_TICKS {
-        tick(m, aims(x, away));
-    }
-    let mut ev = tick(m, aims(x, away));
-    for _ in 0..40 {
-        ev.extend(idle(m));
-    }
-    let id = 1; // the first cohort of the match
-    ev.into_iter()
-        .filter(|e| matches!(e, Event::Gate { cohort_id, side: 0, .. } if *cohort_id == id))
-        .collect()
+fn wave_schedule_and_fatigue() {
+    // SPEC §4: first wave at 10, then gaps 130 / 130 / 80; fatigue 1000‰ to 15 s → 100‰ at 45 s.
+    let at: Vec<u32> = (0..2_000).filter(|&t| wave_index(t).is_some()).collect();
+    assert_eq!(&at[..7], &[10, 140, 270, 350, 480, 610, 690]);
+    assert_eq!(wave_index(10), Some(0));
+    assert_eq!(wave_index(350), Some(3));
+    assert_eq!(wave_index(690), Some(6));
+    assert_eq!(wave_index(9), None);
+    assert_eq!(fatigue_pm(0), 1_000);
+    assert_eq!(fatigue_pm(300), 1_000);
+    assert_eq!(fatigue_pm(600), 550);
+    assert_eq!(fatigue_pm(900), 100);
+    assert_eq!(fatigue_pm(5_000), 100);
+    // big → small → medium, at least 1.
+    assert_eq!(wave_size(20, 0, 10, 100), 23);
+    assert_eq!(wave_size(20, 1, 140, 100), 17);
+    assert_eq!(wave_size(20, 2, 270, 100), 20);
+    assert_eq!(wave_size(20, 3, 600, 100), 12); // 23 × 0.55
+    assert_eq!(wave_size(20, 0, 10, 50), 11);
+    assert_eq!(wave_size(1, 1, 2_000, 100), 1);
 }
 
 #[test]
-fn each_row_applies_once_per_cohort() {
-    // SPEC §4: three rows, each applied once (4 → 8 → 16 → 32 through three ×2).
-    let mut m = new_match();
-    set_deal(&mut m, [M2; CELLS], 0);
-    let ev = one_cohort_through(&mut m, col_x(1));
-    let got: Vec<_> = ev
+fn towers_release_waves_on_schedule_at_their_x() {
+    // SPEC §4: each live tower releases a cohort at its x and TOWER_Y.
+    let mut m = fight(0);
+    sturdy(&mut m);
+    let ev = run_safe(&mut m, PLANT_TICKS + 360, Inputs::default());
+    let tower = LAYOUTS[0].stages[0].towers[0];
+    let waves: Vec<(u32, u32)> = ev
         .iter()
-        .map(|e| match e {
-            Event::Gate {
-                cell,
-                before,
-                after,
-                ..
-            } => (*cell, *before, *after),
-            _ => unreachable!(),
-        })
-        .collect();
-    assert_eq!(got, vec![(1, 4, 8), (4, 8, 16), (7, 16, 32)]);
-}
-
-#[test]
-fn a_cohort_in_a_gap_passes_unchanged() {
-    // SPEC §6: none if it's in a gap.
-    let mut m = new_match();
-    set_deal(&mut m, [M2; CELLS], 0);
-    assert!(one_cohort_through(&mut m, COL_WIDTH).is_empty());
-}
-
-#[test]
-fn ops_follow_the_spec_and_reveal_on_first_pass() {
-    // SPEC §4: +6, −6, ÷2 in column 1: 4 → 10 → 4 → 2; the first cohort reveals for both.
-    let mut m = new_match();
-    let mut ops = [M2; CELLS];
-    ops[1] = GateOp::Add(6);
-    ops[4] = GateOp::Sub(6);
-    ops[7] = GateOp::Div(2);
-    set_deal(&mut m, ops, 0);
-    let mut ev = Vec::new();
-    for _ in 0..PLANT_TICKS + 30 {
-        ev.extend(tick(&mut m, aims(col_x(1), col_x(0))));
-    }
-    let reveals: Vec<_> = ev
-        .iter()
-        .filter_map(|e| match e {
-            Event::Reveal {
+        .filter_map(|(t, e)| match e {
+            Event::Wave {
                 side: 0,
-                cell,
-                op,
-                gold,
-            } => Some((*cell, *op, *gold)),
+                tower: 0,
+                x,
+                count,
+                merged: false,
+                ..
+            } => {
+                assert_eq!(*x, tower.x);
+                Some((*t - PLANT_TICKS, *count))
+            }
             _ => None,
         })
         .collect();
-    assert_eq!(
-        reveals,
-        vec![
-            (1, GateOp::Add(6), false),
-            (4, GateOp::Sub(6), false),
-            (7, GateOp::Div(2), false)
-        ]
+    let want: Vec<(u32, u32)> = [(10, 0), (140, 1), (270, 2), (350, 3)]
+        .iter()
+        .map(|&(t, k)| (t, wave_size(tower.wave_base, k, t, 100)))
+        .collect();
+    assert_eq!(waves, want);
+}
+
+#[test]
+fn a_destroyed_tower_releases_nothing() {
+    // SPEC §4: only live towers release. Fight 2 of layout 0 with tower 0 down.
+    let mut m = new_match(0);
+    enter(&mut m, 0, 1, Phase::Fight);
+    m.public.sides[0].towers = [0, u16::MAX];
+    let ev = run_to(&mut m, 20);
+    let towers: Vec<u8> = ev
+        .iter()
+        .filter_map(|(_, e)| match e {
+            Event::Wave { side: 0, tower, .. } => Some(*tower),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(towers, vec![1]);
+}
+
+#[test]
+fn tutorial_halves_side_zeros_first_fight_waves() {
+    // SPEC §10: tutorial = side 0's Fight 1 waves at 50%; side 1 unchanged.
+    let mut m = MatchState::new(
+        0,
+        MatchOptions {
+            tutorial: true,
+            ..MatchOptions::default()
+        },
     );
-    let first: Vec<_> = ev
-        .iter()
-        .filter_map(|e| match e {
-            Event::Gate {
-                side: 0,
-                cohort_id: 1,
-                after,
-                ..
-            } => Some(*after),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(first, vec![10, 4, 2]);
-    let g = m.public.sides[0].gates;
-    assert_eq!(g[1].revealed, Some(GateOp::Add(6)));
-    assert_eq!(g[7].revealed, Some(GateOp::Div(2)));
-    assert_eq!(g[2].revealed, None);
-    // Later cohorts get the same ops without new Reveal events.
-    let reveals_now = ev
-        .iter()
-        .filter(|e| matches!(e, Event::Reveal { side: 0, .. }))
-        .count();
-    let later = run_to(&mut m, PLANT_TICKS + 120);
-    assert!(later.iter().all(|(_, e)| !matches!(
-        e,
-        Event::Reveal {
+    let ev = run_to(&mut m, PLANT_TICKS + 11);
+    let base = LAYOUTS[0].stages[0].towers[0].wave_base;
+    let count = |side: u8| {
+        ev.iter()
+            .find_map(|(_, e)| match e {
+                Event::Wave { side: s, count, .. } if *s == side => Some(*count),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(count(0), wave_size(base, 0, 10, TUTORIAL_WAVE_PCT));
+    assert_eq!(count(1), wave_size(base, 0, 10, 100));
+    assert!(count(0) < count(1));
+}
+
+#[test]
+fn a_full_lane_merges_waves_into_that_towers_newest_cohort() {
+    // SPEC §7: at ENEMY_CAP a wave joins the newest enemy cohort of its tower.
+    let mut m = fight(0);
+    sturdy(&mut m);
+    for i in 0..ENEMY_CAP as u32 {
+        place_enemy(&mut m, 0, enemy(500 + i, 1, 100, 9_000));
+    }
+    m.public.sides[0].enemies[3].tower = 0;
+    for e in m.public.sides[0].enemies.iter_mut().skip(4) {
+        e.tower = 1;
+    }
+    let ev = run_to(&mut m, PLANT_TICKS + 11);
+    let merged = ev.iter().find_map(|(_, e)| match e {
+        Event::Wave {
             side: 0,
-            cell: 1 | 4 | 7,
+            merged: true,
+            enemy_id,
+            count,
+            ..
+        } => Some((*enemy_id, *count)),
+        _ => None,
+    });
+    let (id, count) = merged.expect("merged wave");
+    assert_eq!(id, 503);
+    let e = m.public.sides[0]
+        .enemies()
+        .iter()
+        .find(|e| e.id == 503)
+        .unwrap();
+    assert_eq!(e.count, 1 + count);
+    assert_eq!(usize::from(m.public.sides[0].enemy_len), ENEMY_CAP);
+}
+
+// --- movement and homing -----------------------------------------------------------------------
+
+#[test]
+fn enemies_walk_down_and_home_in_on_cohorts_ahead() {
+    // SPEC §4: steer STEER_STEP toward the nearest cohort below within DETECT_Y, else straight.
+    let mut m = new_match(0);
+    let side = &mut m.public.sides[0];
+    side.cohorts[0] = cohort(1, 5, 1_000, 5_000, 3);
+    side.cohort_len = 1;
+    side.enemies[0] = enemy(2, 5, 2_000, 8_000);
+    side.enemies[1] = enemy(3, 5, 2_000, 9_500); // 4,500 above: too far to see it
+    side.enemies[2] = enemy(4, 5, 1_010, 8_000); // closer than a step: lands on it
+    side.enemy_len = 3;
+    move_enemies(side);
+    let e = side.enemies();
+    assert_eq!(
+        (e[0].x, e[0].y),
+        (2_000 - STEER_STEP as i16, 8_000 - CRUISE_SPEED as i16)
+    );
+    assert_eq!((e[1].x, e[1].y), (2_000, 9_500 - CRUISE_SPEED as i16));
+    assert_eq!(e[2].x, 1_000);
+}
+
+#[test]
+fn cohorts_walk_straight_among_rows_then_home_in() {
+    // SPEC §4: straight while among the gate rows; past the last row, toward the nearest enemy
+    // ahead within DETECT_Y, else the nearest live tower.
+    let m = new_match(0);
+    let st = layouts::stage(0, 0);
+    let mut side = m.public.sides[0];
+    side.cohorts[0] = cohort(1, 5, 1_000, 500, 0); // among the rows
+    side.cohorts[1] = cohort(2, 5, 1_000, 5_000, 3); // past the last row, enemy ahead
+    side.cohorts[2] = cohort(3, 5, 2_900, 5_000, 3); // past the last row, enemy out of sight
+    side.cohort_len = 3;
+    side.enemies[0] = enemy(9, 5, 600, 7_000);
+    side.enemies[1] = enemy(10, 5, 2_900, 9_500);
+    side.enemy_len = 2;
+    move_cohorts(&mut side, st, &m.secret, 0, &mut Events::<64>::new());
+    let c = side.cohorts();
+    assert_eq!(c[0].x, 1_000);
+    assert_eq!(c[1].x, 1_000 - STEER_STEP as i16);
+    // Enemy 10 is 4,420 ahead (> DETECT_Y): go for the tower at 1,500 instead.
+    assert_eq!(c[2].x, 2_900 - STEER_STEP as i16);
+}
+
+// --- clash -------------------------------------------------------------------------------------
+
+#[test]
+fn crossed_pairs_within_reach_cancel_one_for_one() {
+    // SPEC §4: crossed in y (by at most CLASH_BAND) and x within CLASH_REACH → min(a, b) each.
+    let mut m = new_match(0);
+    let side = &mut m.public.sides[0];
+    side.cohorts[0] = cohort(1, 10, 1_000, 5_000, 3);
+    side.cohort_len = 1;
+    side.enemies[0] = enemy(2, 4, 1_000 + CLASH_REACH as i16, 5_000 - CLASH_BAND as i16);
+    side.enemy_len = 1;
+    let mut ev = Events::<16>::new();
+    clash(side, 0, &mut ev);
+    assert_eq!(side.cohorts[0].count, 6);
+    assert_eq!(side.enemies[0].count, 0);
+    assert_eq!(
+        ev.as_slice(),
+        &[Event::Clash {
+            side: 0,
+            x: 1_200,
+            y: 4_800,
+            killed: 4
+        }]
+    );
+}
+
+#[test]
+fn pairs_that_have_not_met_do_not_clash() {
+    // SPEC §4: not yet crossed, too far past each other, or out of reach in x.
+    for (dx, dy) in [(0, -1), (0, CLASH_BAND + 1), (CLASH_REACH + 1, 0)] {
+        let mut m = new_match(0);
+        let side = &mut m.public.sides[0];
+        side.cohorts[0] = cohort(1, 10, 1_000, 5_000, 3);
+        side.cohort_len = 1;
+        side.enemies[0] = enemy(2, 4, (1_000 + dx) as i16, (5_000 - dy) as i16);
+        side.enemy_len = 1;
+        clash(side, 0, &mut Events::<16>::new());
+        assert_eq!(
+            (side.cohorts[0].count, side.enemies[0].count),
+            (10, 4),
+            "{dx} {dy}"
+        );
+    }
+}
+
+#[test]
+fn front_most_pairs_resolve_first() {
+    // SPEC §4: the front-most cohort meets the enemy first.
+    let mut m = new_match(0);
+    let side = &mut m.public.sides[0];
+    side.cohorts[0] = cohort(1, 3, 1_000, 5_100, 3);
+    side.cohorts[1] = cohort(2, 3, 1_000, 5_050, 3);
+    side.cohort_len = 2;
+    side.enemies[0] = enemy(3, 4, 1_000, 5_000);
+    side.enemy_len = 1;
+    clash(side, 0, &mut Events::<16>::new());
+    assert_eq!(
+        (
+            side.cohorts[0].count,
+            side.cohorts[1].count,
+            side.enemies[0].count
+        ),
+        (0, 2, 0)
+    );
+}
+
+// --- towers, gold, losses ----------------------------------------------------------------------
+
+#[test]
+fn tower_hits_deal_damage_and_earn_gold() {
+    // SPEC §4/§5: damage = count (kamikaze), gold = damage dealt, overkill earns nothing,
+    // TOWER_BONUS for the kill; reach = TOWER_HALF_W + CLASH_REACH.
+    let mut m = fight(0);
+    m.public.sides[0].towers[0] = 30;
+    let reach = (TOWER_HALF_W + CLASH_REACH) as i16;
+    place(
+        &mut m,
+        0,
+        cohort(900, 12, 1_500 - reach, (TOWER_Y - 10) as i16, 3),
+    );
+    place(
+        &mut m,
+        0,
+        cohort(901, 7, 1_500 + reach + 50, (TOWER_Y - 10) as i16, 3),
+    );
+    let ev = idle(&mut m);
+    let s = &m.public.sides[0];
+    assert_eq!(s.towers[0], 18);
+    assert_eq!(s.gold, 12);
+    assert!(find(&m, 0, 900).is_none());
+    // Out of reach: it steered 40 closer but still misses this tick, and keeps walking.
+    assert!(find(&m, 0, 901).is_some());
+    assert!(ev.contains(&Event::TowerHit {
+        side: 0,
+        tower: 0,
+        damage: 12,
+        hp: 18,
+        gold: 12
+    }));
+    // Overkill: 50 into 18 HP earns 18 + the bonus, and the fight ends (Transit).
+    place(&mut m, 0, cohort(902, 50, 1_500, (TOWER_Y - 10) as i16, 3));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::TowerDestroyed {
+        side: 0,
+        tower: 0,
+        gold: TOWER_BONUS
+    }));
+    assert_eq!(m.public.sides[0].gold, 12 + 18 + TOWER_BONUS);
+}
+
+#[test]
+fn cohorts_that_hit_nothing_are_lost_at_the_base_edge() {
+    // SPEC §4: reaching LANE_LENGTH without a hit removes the cohort, no gold.
+    let mut m = fight(0);
+    place(&mut m, 0, cohort(900, 9, 100, (LANE_LENGTH - 10) as i16, 3));
+    m.public.sides[0].towers[0] = 0; // no target to steer to... and no transit either:
+    m.public.sides[0].towers[1] = 0;
+    let mut side = m.public.sides[0];
+    side.phase = Phase::Fight;
+    let st = layouts::stage(0, 0);
+    move_cohorts(&mut side, st, &m.secret, 0, &mut Events::<16>::new());
+    hits(&mut side, st, 0, &mut Events::<16>::new());
+    compact(&mut side);
+    assert!(side.cohorts().iter().all(|c| c.id != 900));
+    assert_eq!(side.gold, 0);
+}
+
+// --- crates ------------------------------------------------------------------------------------
+
+#[test]
+fn crates_absorb_until_they_break_then_let_through() {
+    // SPEC §4: min(count, hp) is spent; at 0 the crate breaks and the rest passes on.
+    let mut m = new_match(0);
+    enter(&mut m, 0, 1, Phase::Fight);
+    sturdy(&mut m);
+    let lock = LAYOUTS[0].stages[1].crates[0];
+    assert_eq!(m.public.sides[0].crates[0], lock.hp);
+    let y = lock.y - 10;
+    place(&mut m, 0, cohort(900, 10, lock.x, y, 1));
+    let ev = idle(&mut m);
+    assert!(find(&m, 0, 900).is_none());
+    assert_eq!(m.public.sides[0].crates[0], lock.hp - 10);
+    assert!(ev.contains(&Event::CrateHit {
+        side: 0,
+        crate_ix: 0,
+        cohort_id: 900,
+        absorbed: 10,
+        hp: u32::from(lock.hp - 10)
+    }));
+    let big = u32::from(lock.hp) + 5;
+    place(&mut m, 0, cohort(901, big, lock.x, y, 1));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::CrateBroken {
+        side: 0,
+        crate_ix: 0
+    }));
+    assert_eq!(m.public.sides[0].crates[0], 0);
+    assert_eq!(find(&m, 0, 901).unwrap().count, 15);
+    // Broken: the next cohort walks through untouched and gets the big gate.
+    place(&mut m, 0, cohort(902, 3, lock.x, y, 1));
+    let mut ev = idle(&mut m);
+    for _ in 0..4 {
+        ev.extend(idle(&mut m));
+    }
+    let v = m.secret.values[1][2];
+    assert!(ev.iter().all(|e| !matches!(e, Event::CrateHit { .. })));
+    assert_eq!(find(&m, 0, 902).unwrap().count, v.apply(3));
+}
+
+// --- gates -------------------------------------------------------------------------------------
+
+#[test]
+fn first_pass_reveals_and_every_pass_applies() {
+    // SPEC §6: hidden until the first cohort passes, then shown; ×k on every pass.
+    let mut m = fight(0);
+    let v = m.secret.values[0][0];
+    place(&mut m, 0, cohort(900, 3, 700, 1_330, 0));
+    place(&mut m, 0, cohort(901, 2, 700 + 290, 1_300, 0));
+    assert_eq!(m.public.sides[0].gates[0].revealed, None);
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Gate {
+        side: 0,
+        slot: 0,
+        cohort_id: 900,
+        op: v,
+        before: 3,
+        after: v.apply(3),
+        reveal: true
+    }));
+    assert_eq!(m.public.sides[0].gates[0].revealed, Some(v));
+    assert_eq!(m.public.sides[1].gates[0].revealed, None); // the other copy is untouched
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Gate {
+        side: 0,
+        slot: 0,
+        cohort_id: 901,
+        op: v,
+        before: 2,
+        after: v.apply(2),
+        reveal: false
+    }));
+}
+
+#[test]
+fn a_cohort_in_the_gap_passes_unchanged() {
+    // SPEC §6: between gates nothing happens; the row still counts as passed.
+    let mut m = fight(0);
+    place(&mut m, 0, cohort(900, 3, 1_500, 1_330, 0));
+    let ev = idle(&mut m);
+    assert!(ev.iter().all(|e| !matches!(e, Event::Gate { .. })));
+    let c = find(&m, 0, 900).unwrap();
+    assert_eq!((c.count, c.last_row), (3, 1));
+}
+
+#[test]
+fn a_row_applies_once_per_cohort() {
+    // SPEC §6: `last_row` makes every row apply at most once, in order.
+    let mut m = fight(0);
+    sturdy(&mut m);
+    let aim = input(
+        0,
+        SideInput {
+            aim: Some(700),
+            ..SideInput::default()
+        },
+    );
+    let ev: Vec<Event> = run_safe(&mut m, PLANT_TICKS + 400, aim)
+        .into_iter()
+        .map(|(_, e)| e)
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut gates = 0;
+    for e in &ev {
+        if let Event::Gate {
+            side,
+            cohort_id,
+            slot,
+            ..
+        } = e
+        {
+            let row = LAYOUTS[0].stages[0].gates[usize::from(*slot)].row;
+            assert!(seen.insert((*side, *cohort_id, row)), "row passed twice");
+            gates += 1;
+        }
+    }
+    assert!(gates > 20);
+}
+
+#[test]
+fn sliding_gates_move_from_the_fight_start() {
+    // SPEC §6: ping-pong, timed from the player's Fight start; parked at x before it.
+    let mut m = new_match(0);
+    let def = LAYOUTS[0].stages[0].gates[4];
+    assert!(def.moving());
+    run_to(&mut m, PLANT_TICKS - 1);
+    assert_eq!(m.public.sides[0].gates[4].x, def.x);
+    run_safe(&mut m, PLANT_TICKS + 37, Inputs::default());
+    // Fight ticks 0..=36 are done.
+    assert_eq!(m.public.sides[0].gates[4].x, def.x_at(36));
+    assert_ne!(def.x_at(36), def.x);
+    // A cohort crossing the row is judged against where the gate is that tick.
+    let at = def.x_at(37);
+    place(&mut m, 0, cohort(900, 2, at, 3_390, 2));
+    let ev = idle(&mut m);
+    assert!(ev.iter().any(|e| matches!(
+        e,
+        Event::Gate {
+            slot: 4,
+            cohort_id: 900,
             ..
         }
     )));
-    assert_eq!(reveals_now, 3);
+}
+
+// --- rig ---------------------------------------------------------------------------------------
+
+#[test]
+fn rig_is_planted_on_the_opponents_current_stage() {
+    // SPEC §6: during my Plant, once per stage; recorded under my stage with the victim's stage.
+    let mut m = new_match(0);
+    tick(&mut m, input(0, rig(1)));
+    assert!(m.public.sides[0].rig_used && !m.public.sides[1].rig_used);
+    assert_eq!(m.secret.history[0].rigs[0], Some(Rig { stage: 0, slot: 1 }));
+    assert_eq!(m.secret.true_op(1, 0, 1), RIG_OP);
+    assert_eq!(m.secret.true_op(0, 0, 1), m.secret.values[0][1]);
+    assert_eq!(m.private_view(0).rig, Some(Rig { stage: 0, slot: 1 }));
+    // Once per stage.
+    tick(&mut m, input(0, rig(2)));
+    assert_eq!(m.secret.history[0].rigs[0], Some(Rig { stage: 0, slot: 1 }));
 }
 
 #[test]
-fn a_cohort_reduced_to_zero_dies_at_the_gate() {
-    // SPEC §4: −n → max(0, c − n).
-    let mut m = new_match();
-    let mut ops = [M2; CELLS];
-    ops[1] = GateOp::Sub(6);
-    set_deal(&mut m, ops, 0);
-    let ev = one_cohort_through(&mut m, col_x(1));
-    assert_eq!(ev.len(), 1);
-    assert!(find(&m, 0, 1).is_none());
-}
-
-#[test]
-fn redeal_replaces_every_gate_face_down() {
-    // SPEC §3/§4: revealed gates stay revealed until the next deal.
-    let mut m = new_match();
-    run_to(&mut m, PLANT_STARTS[1] - 1);
-    assert!(m.public.sides[0].gates.iter().any(|g| g.revealed.is_some()));
-    idle(&mut m);
-    assert_eq!(m.secret.deal, Deal::new(1, 1));
-    for s in &m.public.sides {
-        assert!(s.gates.iter().all(|g| g.revealed.is_none()));
-        assert_eq!(s.gates, face_down(&m.secret.deal));
-    }
-}
-
-#[test]
-fn gates_are_inactive_during_plant_windows() {
-    // SPEC §3 (M1 rule): cohorts in flight during a plant pass the face-down deal unchanged.
-    let mut m = new_match();
-    let ev = run_to(&mut m, PLANT_STARTS[1] + PLANT_TICKS);
-    assert!(ev.iter().any(|&(t, e)| t >= PLANT_STARTS[1] - 30
-        && t < PLANT_STARTS[1]
-        && matches!(e, Event::Gate { .. })));
-    for &(t, e) in &ev {
-        if in_plant(t) {
-            assert!(
-                !matches!(e, Event::Gate { .. } | Event::Reveal { .. }),
-                "tick {t}: {e:?}"
-            );
-        }
-    }
-}
-
-// --- hints (SPEC §4) ---------------------------------------------------------------------------
-
-#[test]
-fn hints_hidden_in_plant_and_shown_at_play_start() {
-    // SPEC §3/§4: no hints during a plant window (gold always shows gold); hints at play start.
-    let mut m = new_match();
-    for t in 0..PLANT_STARTS[1] + PLANT_TICKS + 1 {
-        let deal = m.secret.deal;
-        for (s, side) in m.public.sides.iter().enumerate() {
-            for (c, g) in side.gates.iter().enumerate() {
-                let gold = c == usize::from(deal.gold_cell);
-                let want = if gold {
-                    Hint::Gold
-                } else if in_plant(t) {
-                    Hint::None
-                } else {
-                    deal.hints[s][c]
-                };
-                assert_eq!(g.hint, want, "tick {t} side {s} cell {c}");
-                assert_eq!(g.gold, gold);
-            }
-        }
-        idle(&mut m);
-    }
-}
-
-// --- rig (SPEC §5) -----------------------------------------------------------------------------
-
-fn rig(side: usize, cell: u8) -> Inputs {
-    input(
-        side,
-        SideInput {
-            rig: Some(cell),
-            ..SideInput::default()
-        },
-    )
-}
-
-fn peek(side: usize, cell: u8) -> Inputs {
-    input(
-        side,
-        SideInput {
-            peek: Some(cell),
-            ..SideInput::default()
-        },
-    )
-}
-
-#[test]
-fn rig_only_in_plant_once_per_phase_never_gold() {
-    // SPEC §5: one rig per phase, plant window only, any opponent cell except gold.
-    let mut m = new_match();
-    set_deal(&mut m, [M2; CELLS], 4);
-    tick(&mut m, rig(0, 4)); // gold: ignored
-    tick(&mut m, rig(0, 9)); // out of range: ignored
-    tick(&mut m, rig(0, 200));
+fn rig_refusals_do_not_use_it_up() {
+    // SPEC §6: refused outside my Plant, on a missing or revealed gate, on a finished opponent,
+    // or when that opponent stage already holds a rig.
+    let fresh = new_match(0);
+    let refused = |m: &mut MatchState, slot: u8| {
+        tick(m, input(0, rig(slot)));
+        assert!(!m.public.sides[0].rig_used);
+        assert_eq!(
+            m.secret.history[usize::from(m.public.sides[0].stage)].rigs[0],
+            None
+        );
+    };
+    // Missing slot (stage 0 of layout 0 has 5 gates).
+    refused(&mut fresh.clone(), 5);
+    refused(&mut fresh.clone(), 200);
+    // Revealed.
+    let mut m = fresh;
+    m.public.sides[1].gates[1].revealed = Some(GateOp::Mul(2));
+    refused(&mut m, 1);
+    // Opponent done / dead.
+    let mut m = fresh;
+    m.public.sides[1].phase = Phase::Done;
+    refused(&mut m, 1);
+    let mut m = fresh;
+    m.public.sides[1].dead = true;
+    m.public.sides[0].dead = false;
+    apply_input(&mut m, 0, &rig(1));
     assert!(!m.public.sides[0].rig_used);
-    assert_eq!(m.private_view(0).rig, None);
-    tick(&mut m, rig(0, 1));
-    tick(&mut m, rig(0, 2)); // second rig: ignored
-    assert!(m.public.sides[0].rig_used);
-    assert_eq!(m.private_view(0).rig, Some(1));
-    assert_eq!(m.private_view(1).rig, None);
-    assert_eq!(m.secret.rigged_by(1, 1), Some(0));
-    // During play: ignored.
+    // Not in my Plant.
+    let mut m = fight(0);
+    refused(&mut m, 1);
+    // That opponent stage already holds a rig (mine, from an earlier stage).
+    let mut m = fresh;
+    m.secret.history[0].rigs[0] = Some(Rig { stage: 1, slot: 0 });
+    enter(&mut m, 0, 1, Phase::Plant);
+    enter(&mut m, 1, 1, Phase::Fight);
+    refused(&mut m, 3);
+}
+
+#[test]
+fn rig_during_the_opponents_transit_lands_on_their_next_stage() {
+    // SPEC §6: "or the one they enter next, if they are in Transit".
+    let mut m = new_match(0);
+    enter(&mut m, 1, 1, Phase::Transit);
+    tick(&mut m, input(0, rig(2)));
+    assert_eq!(m.secret.history[0].rigs[0], Some(Rig { stage: 1, slot: 2 }));
+    assert_eq!(m.secret.rigged_by(1, 1, 2), Some(0));
+}
+
+#[test]
+fn a_rigged_gate_springs_gotcha_and_halves_for_the_rest_of_the_stage() {
+    // SPEC §6: same `?` face; the first pass flashes GOTCHA, then ÷2 on every pass.
+    let mut m = new_match(0);
+    tick(&mut m, input(0, rig(0)));
     run_to(&mut m, PLANT_TICKS);
-    tick(&mut m, rig(1, 3));
-    assert!(!m.public.sides[1].rig_used);
-    // Re-deal resets rigs.
-    run_to(&mut m, PLANT_STARTS[1]);
-    assert!(!m.public.sides[0].rig_used);
-    assert_eq!(m.private_view(0).rig, None);
-    tick(&mut m, rig(1, 0));
-    assert_eq!(m.private_view(1).rig, Some(0));
-}
-
-#[test]
-fn rigged_gate_shows_fake_blue_then_gotcha_halves() {
-    // SPEC §4/§5: a rigged gate shows a fake blue; the first cohort through flashes GOTCHA and
-    // the trap (÷2) fires, and stays the gate's value for the phase.
-    let mut m = new_match();
-    let mut ops = [M2; CELLS];
-    ops[1] = GateOp::Sub(6); // a red gate, rigged into a "blue" trap
-    set_deal(&mut m, ops, 8);
-    tick(&mut m, rig(1, 1)); // side 1 rigs side 0's cell 1
-    run_to(&mut m, PLANT_TICKS - 1);
-    assert_eq!(m.public.sides[0].gates[1].hint, Hint::None);
-    let mut ev = Vec::new();
-    for _ in 0..40 {
-        ev.extend(tick(&mut m, aims(col_x(1), col_x(0))));
-    }
-    assert_eq!(m.public.sides[0].gates[1].hint, Hint::Good);
-    assert_eq!(m.public.sides[1].gates[1].hint, Hint::Bad);
-    let first = ev
-        .iter()
-        .position(|e| matches!(e, Event::Gotcha { .. }))
-        .unwrap();
-    assert_eq!(
-        ev[first],
-        Event::Gotcha {
-            side: 0,
-            cell: 1,
-            rigged_by: 1
-        }
-    );
-    assert_eq!(
-        ev[first + 1],
-        Event::Reveal {
-            side: 0,
-            cell: 1,
-            op: RIG_OP,
-            gold: false
-        }
-    );
-    assert!(matches!(
-        ev[first + 2],
-        Event::Gate {
-            cell: 1,
-            before: 4,
-            after: 2,
-            ..
-        }
-    ));
+    place(&mut m, 1, cohort(900, 9, 700, 1_330, 0));
+    place(&mut m, 1, cohort(901, 5, 700, 1_300, 0));
+    place(&mut m, 0, cohort(902, 9, 700, 1_330, 0));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Gotcha {
+        side: 1,
+        slot: 0,
+        rigged_by: 0
+    }));
     assert_eq!(
         ev.iter()
             .filter(|e| matches!(e, Event::Gotcha { .. }))
             .count(),
         1
     );
-    assert_eq!(m.public.sides[0].gates[1].revealed, Some(RIG_OP));
+    assert_eq!(m.public.sides[1].gates[0].revealed, Some(RIG_OP));
+    assert_eq!(find(&m, 1, 900).unwrap().count, 4);
+    // The rigger's own copy is untouched.
+    let v = m.secret.values[0][0];
+    assert_eq!(m.public.sides[0].gates[0].revealed, Some(v));
+    let ev = idle(&mut m);
+    assert_eq!(find(&m, 1, 901).unwrap().count, 2);
+    assert!(ev.iter().all(|e| !matches!(e, Event::Gotcha { .. })));
 }
 
-// --- peek (SPEC §5) ----------------------------------------------------------------------------
+#[test]
+fn an_unused_rig_is_lost_when_the_plant_ends() {
+    // SPEC §6: the next stage brings a fresh rig; nothing carries over.
+    let mut m = new_match(0);
+    run_to(&mut m, PLANT_TICKS);
+    m.public.sides[0].towers[0] = 1;
+    place(&mut m, 0, cohort(900, 5, 1_500, (TOWER_Y - 10) as i16, 3));
+    idle(&mut m);
+    assert_eq!(m.public.sides[0].phase, Phase::Transit);
+    assert!(!m.public.sides[0].rig_used);
+    assert!(m.secret.history.iter().all(|l| l.rigs[0].is_none()));
+}
+
+// --- peek --------------------------------------------------------------------------------------
 
 #[test]
-fn peek_only_in_play_once_per_phase_on_my_unrevealed_cell() {
-    // SPEC §5: privately see the true value of one unrevealed cell on your own side.
-    let mut m = new_match();
-    let mut ops = [M2; CELLS];
-    ops[5] = GateOp::Add(10);
-    set_deal(&mut m, ops, 8);
-    tick(&mut m, peek(0, 5)); // plant: ignored
+fn peek_shows_my_true_value_once_per_stage() {
+    // SPEC §6: during my Fight/Raid, one own unrevealed gate; refused in Plant.
+    let mut m = new_match(0);
+    tick(&mut m, input(0, peek(2)));
     assert!(!m.public.sides[0].peek_used);
     run_to(&mut m, PLANT_TICKS);
-    tick(&mut m, peek(0, 9)); // out of range: ignored
-    assert!(!m.public.sides[0].peek_used);
-    tick(&mut m, peek(0, 5));
-    let pv = m.private_view(0).peek.unwrap();
-    assert_eq!((pv.cell, pv.op, pv.gold), (5, GateOp::Add(10), false));
+    tick(&mut m, input(0, peek(2)));
+    let want = Peek {
+        slot: 2,
+        op: m.secret.values[0][2],
+    };
+    assert_eq!(m.private_view(0).peek, Some(want));
+    assert!(m.public.sides[0].peek_used);
     assert_eq!(m.private_view(1).peek, None);
-    tick(&mut m, peek(0, 8)); // second peek: ignored
-    assert_eq!(m.private_view(0).peek.unwrap().cell, 5);
-    // Gold peeks show the real value; re-deal resets the peek.
-    run_to(&mut m, PLANT_STARTS[1]);
-    assert_eq!(m.private_view(0).peek, None);
+    tick(&mut m, input(0, peek(3)));
+    assert_eq!(m.private_view(0).peek, Some(want));
+}
+
+#[test]
+fn peek_refusals_and_rigged_gates() {
+    // SPEC §6: refused (and kept) on a revealed or missing gate; a rigged gate peeks as ÷2.
+    let mut m = fight(0);
+    m.public.sides[0].gates[1].revealed = Some(GateOp::Mul(3));
+    tick(&mut m, input(0, peek(1)));
+    tick(&mut m, input(0, peek(7)));
     assert!(!m.public.sides[0].peek_used);
-}
-
-#[test]
-fn peek_exposes_a_rig_and_refuses_revealed_cells() {
-    // SPEC §5: a peek shows the true value now, so it also exposes a rig.
-    let mut m = new_match();
-    set_deal(&mut m, [M2; CELLS], 8);
-    tick(&mut m, rig(1, 4));
-    run_to(&mut m, PLANT_TICKS);
-    // Side 0's first cohort at column 1 reveals cell 1 within ~6 ticks.
-    for _ in 0..10 {
-        tick(&mut m, aims(col_x(1), col_x(0)));
-    }
-    assert!(m.public.sides[0].gates[1].revealed.is_some());
-    tick(&mut m, peek(0, 1)); // revealed: ignored
-    assert!(!m.public.sides[0].peek_used);
-    tick(&mut m, peek(0, 4));
-    assert_eq!(m.private_view(0).peek.unwrap().op, RIG_OP);
-}
-
-// --- clash (SPEC §6) ---------------------------------------------------------------------------
-
-/// A mid-play tick with no volley on it, and no other cohorts.
-fn quiet_mid_match() -> MatchState {
-    let mut m = new_match();
-    m.public.tick = 101;
-    m
-}
-
-#[test]
-fn clash_subtracts_counts() {
-    // SPEC §6: 120 blue vs 80 red leaves 40 blue.
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 120, 1500, 5950));
-    place(&mut m, 1, cohort(2, 80, 1500, 5950));
-    let ev = idle(&mut m);
-    assert_eq!(find(&m, 0, 1).unwrap().count, 40);
-    assert!(find(&m, 1, 2).is_none());
-    assert!(ev.contains(&Event::Clash {
-        x: 1500,
-        y: 6000,
-        killed: [80, 80]
-    }));
-}
-
-#[test]
-fn equal_cohorts_wipe_each_other_out() {
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 30, 1500, 5950));
-    place(&mut m, 1, cohort(2, 30, 1500, 5950));
-    idle(&mut m);
-    assert_eq!(m.public.sides[0].cohort_len, 0);
-    assert_eq!(m.public.sides[1].cohort_len, 0);
-}
-
-#[test]
-fn streams_a_column_apart_pass_each_other() {
-    // SPEC §6 (M1 rule): they meet only within CLASH_REACH in x.
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 10, 500, 5950));
-    place(&mut m, 1, cohort(2, 10, 1500, 5950));
-    place(&mut m, 0, cohort(3, 10, 1000, 5000));
-    place(&mut m, 1, cohort(4, 10, 1501, 6900));
-    idle(&mut m);
-    assert_eq!(find(&m, 0, 1).unwrap().count, 10);
-    assert_eq!(find(&m, 1, 2).unwrap().count, 10);
-    assert_eq!(find(&m, 0, 3).unwrap().count, 10);
-    assert_eq!(find(&m, 1, 4).unwrap().count, 10);
-    // Exactly CLASH_REACH apart do meet.
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 10, 1000, 5950));
-    place(&mut m, 1, cohort(2, 4, 1500, 5950));
-    idle(&mut m);
-    assert_eq!(find(&m, 0, 1).unwrap().count, 6);
-}
-
-#[test]
-fn a_big_cohort_grinds_through_several() {
-    // Front-most pairs first; the survivor carries on into the next.
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 50, 1500, 6500));
-    place(&mut m, 1, cohort(2, 10, 1500, 5600));
-    place(&mut m, 1, cohort(3, 15, 1500, 5500));
-    place(&mut m, 1, cohort(4, 20, 1500, 1000)); // not met yet
-    idle(&mut m);
-    assert_eq!(find(&m, 0, 1).unwrap().count, 25);
-    assert_eq!(find(&m, 1, 4).unwrap().count, 20);
-    assert_eq!(m.public.sides[1].cohort_len, 1);
-}
-
-#[test]
-fn clashes_happen_wherever_cohorts_meet() {
-    // A fresh volley can block an enemy cohort right at its own cannon (defending).
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 4, 1500, 300));
-    place(&mut m, 1, cohort(2, 10, 1500, 11_650));
-    idle(&mut m);
-    assert!(find(&m, 0, 1).is_none());
-    assert_eq!(find(&m, 1, 2).unwrap().count, 6);
-    assert_eq!(m.public.sides[0].hp, HP_MAX);
-}
-
-// --- hits, KO, timer, payout (SPEC §6, §7) ----------------------------------------------------
-
-#[test]
-fn a_cohort_at_the_enemy_cannon_deals_its_count() {
-    // SPEC §6: damage equal to its count, then removed.
-    let mut m = quiet_mid_match();
-    place(&mut m, 0, cohort(1, 50, 2500, 11_950));
-    let ev = idle(&mut m);
-    assert_eq!(m.public.sides[1].hp, HP_MAX - 50);
-    assert!(find(&m, 0, 1).is_none());
-    assert!(ev.contains(&Event::Hit {
-        side: 1,
-        damage: 50,
-        hp: HP_MAX - 50
-    }));
-}
-
-#[test]
-fn ko_ends_the_match_instantly() {
-    // SPEC §7: KO (HP 0) ends the match instantly; the full level moves.
-    let mut m = quiet_mid_match();
-    m.public.options.stake = 1_000_000;
-    m.public.sides[1].hp = 30;
-    place(&mut m, 0, cohort(1, 50, 2500, 11_950));
-    let ev = idle(&mut m);
-    let r = m.public.result.unwrap();
+    m.secret.history[0].rigs[1] = Some(Rig { stage: 0, slot: 3 });
+    tick(&mut m, input(0, peek(3)));
     assert_eq!(
-        (r.winner, r.ko, r.moved, r.fee),
-        (Some(0), true, 1_000_000, 50_000)
+        m.private_view(0).peek,
+        Some(Peek {
+            slot: 3,
+            op: RIG_OP
+        })
     );
-    assert_eq!(m.public.sides[1].hp, 0);
-    assert_eq!(m.public.tick, 102);
-    assert_eq!(ev.last(), Some(&Event::End { result: r }));
-    assert!(!ev.iter().any(|e| matches!(e, Event::Volley { .. })));
+}
+
+// --- transit, raid, done -----------------------------------------------------------------------
+
+#[test]
+fn clearing_a_fight_wipes_the_field_and_moves_on() {
+    // SPEC §3: all towers down → Transit (2 s, field wiped, next stage's gates face-down) →
+    // Plant (3 s) → Fight 2.
+    let mut m = fight(0);
+    sturdy(&mut m);
+    run_safe(&mut m, PLANT_TICKS + 150, Inputs::default());
+    place_enemy(&mut m, 0, enemy(8_000, 5, 2_000, 9_000));
+    assert!(m.public.sides[0].cohort_len > 0);
+    m.public.sides[0].towers[0] = 1;
+    place(&mut m, 0, cohort(9_000, 5, 1_500, (TOWER_Y - 10) as i16, 3));
+    let t0 = m.public.tick;
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Phase {
+        side: 0,
+        stage: 1,
+        phase: Phase::Transit
+    }));
+    let s = &m.public.sides[0];
+    let st = &LAYOUTS[0].stages[1];
+    assert_eq!((s.stage, s.phase, s.phase_ticks), (1, Phase::Transit, 0));
+    assert!(s.cohorts().is_empty() && s.enemies().is_empty());
+    assert_eq!(s.towers, [st.towers[0].hp, st.towers[1].hp]);
+    assert_eq!(s.crates[0], st.crates[0].hp);
+    assert!(s.gates.iter().all(|g| g.revealed.is_none()));
+    assert_eq!(s.gates[2].x, st.gates[2].x);
+    // The other copy is not affected.
+    assert_eq!(m.public.sides[1].stage, 0);
+    let ev = run_safe(
+        &mut m,
+        t0 + 1 + TRANSIT_TICKS + PLANT_TICKS,
+        Inputs::default(),
+    );
+    let phases: Vec<(u32, Phase)> = ev
+        .iter()
+        .filter_map(|(t, e)| match e {
+            Event::Phase { side: 0, phase, .. } => Some((*t - t0, *phase)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        phases,
+        vec![
+            (TRANSIT_TICKS, Phase::Plant),
+            (TRANSIT_TICKS + PLANT_TICKS, Phase::Fight)
+        ]
+    );
+    // No fire in Transit or Plant.
+    assert!(ev
+        .iter()
+        .filter(|(t, _)| *t < t0 + TRANSIT_TICKS + PLANT_TICKS)
+        .all(|(_, e)| !matches!(e, Event::Volley { side: 0, .. })));
 }
 
 #[test]
-fn double_ko_on_one_tick_is_a_draw() {
-    let mut m = quiet_mid_match();
-    m.public.sides[0].hp = 10;
-    m.public.sides[1].hp = 10;
-    place(&mut m, 0, cohort(1, 50, 500, 11_950));
-    place(&mut m, 1, cohort(2, 50, 2500, 11_950));
+fn raid_fires_for_raid_ticks_loots_and_then_is_done() {
+    // SPEC §3/§5: fire RAID_TICKS, LOOT_PER_UNIT per dude reaching the vault, Done when the
+    // lane is empty.
+    let mut m = new_match(0);
+    enter(&mut m, 0, RAID_STAGE, Phase::Raid);
+    place(&mut m, 0, cohort(9_000, 7, 1_500, (VAULT_Y - 10) as i16, 3));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Loot {
+        side: 0,
+        cohort_id: 9_000,
+        units: 7,
+        gold: 7 * LOOT_PER_UNIT
+    }));
+    assert_eq!(m.public.sides[0].gold, 7 * LOOT_PER_UNIT);
+    let ev = run_safe(&mut m, 600, Inputs::default());
+    let volleys = ev
+        .iter()
+        .filter(|(_, e)| matches!(e, Event::Volley { side: 0, .. }))
+        .count() as u32
+        + 1;
+    assert_eq!(volleys, RAID_TICKS / FIRE_TICKS);
+    let done = ev
+        .iter()
+        .find(|(_, e)| {
+            *e == Event::Phase {
+                side: 0,
+                stage: RAID_STAGE,
+                phase: Phase::Done,
+            }
+        })
+        .map(|(t, _)| *t)
+        .expect("done");
+    let last_loot = ev
+        .iter()
+        .filter(|(_, e)| matches!(e, Event::Loot { side: 0, .. }))
+        .map(|(t, _)| *t)
+        .max()
+        .unwrap_or(0);
+    assert!(done >= RAID_TICKS - 1 && done >= last_loot);
+    assert!(m.public.sides[0].cohorts().is_empty());
+    assert!(m.public.sides[0].gold > 7 * LOOT_PER_UNIT);
+    // A done player's cannon still moves, nothing else happens.
+    let gold = m.public.sides[0].gold;
+    tick(
+        &mut m,
+        input(
+            0,
+            SideInput {
+                aim: Some(0),
+                ..SideInput::default()
+            },
+        ),
+    );
+    assert_eq!(m.public.sides[0].gold, gold);
+    assert_eq!(m.public.sides[0].phase, Phase::Done);
+}
+
+// --- death and the end -------------------------------------------------------------------------
+
+#[test]
+fn an_enemy_at_the_cannon_line_kills_and_ends_the_match() {
+    // SPEC §4/§8: death is instant; the survivor wins the stake.
+    let mut m = MatchState::new(
+        0,
+        MatchOptions {
+            stake: 1_000,
+            ..MatchOptions::default()
+        },
+    );
+    run_to(&mut m, PLANT_TICKS + 1);
+    place_enemy(&mut m, 1, enemy(9_000, 3, 100, CRUISE_SPEED as i16));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Death { side: 1 }));
+    assert!(m.public.sides[1].dead && !m.public.sides[0].dead);
+    let r = m.public.result.unwrap();
+    assert_eq!((r.winner, r.ko, r.moved, r.fee), (Some(0), true, 1_000, 50));
+    assert_eq!(ev.last(), Some(&Event::End { result: r }));
+    // Frozen once ended.
+    let frozen = m;
+    idle(&mut m);
+    assert_eq!(m, frozen);
+}
+
+#[test]
+fn a_volley_at_the_line_can_still_stop_it() {
+    // SPEC §4: the clash runs before the death check.
+    let mut m = fight(0);
+    place(
+        &mut m,
+        0,
+        Cohort {
+            age: 0,
+            ..cohort(9_000, 1, 1_500, 0, 0)
+        },
+    );
+    place_enemy(&mut m, 0, enemy(9_001, 1, 1_500, 60));
+    idle(&mut m);
+    assert!(!m.public.sides[0].dead && m.public.result.is_none());
+}
+
+#[test]
+fn both_dying_on_the_same_tick_is_a_draw() {
+    // SPEC §4.
+    let mut m = fight(0);
+    place_enemy(&mut m, 0, enemy(9_000, 3, 100, 10));
+    place_enemy(&mut m, 1, enemy(9_001, 3, 100, 10));
     idle(&mut m);
     let r = m.public.result.unwrap();
     assert_eq!((r.winner, r.ko, r.moved), (None, true, 0));
 }
 
 #[test]
-fn timer_win_pays_by_margin_and_equal_hp_draws() {
-    // SPEC §7: 60% vs 40% of HP at the timer moves 60% of S.
-    let mut m = new_match();
-    m.public.options.stake = 10_000_000;
-    m.public.tick = MATCH_TICKS - 1;
-    m.public.sides[0].hp = 1320;
-    m.public.sides[1].hp = 880;
-    idle(&mut m);
+fn both_done_ends_with_the_gold_ratio() {
+    // SPEC §3/§8: both done → the pot splits by gold.
+    let mut m = MatchState::new(
+        0,
+        MatchOptions {
+            stake: 1_000_000,
+            ..MatchOptions::default()
+        },
+    );
+    for (s, gold) in m.public.sides.iter_mut().zip([900, 600]) {
+        s.phase = Phase::Done;
+        s.gold = gold;
+    }
+    let ev = idle(&mut m);
     let r = m.public.result.unwrap();
     assert_eq!(
         (r.winner, r.ko, r.moved, r.fee),
-        (Some(0), false, 6_000_000, 300_000)
+        (Some(0), false, 200_000, 10_000)
     );
-
-    let mut m = new_match();
-    m.public.options.stake = 10_000_000;
-    m.public.tick = MATCH_TICKS - 1;
-    m.public.sides[0].hp = 1320;
-    m.public.sides[1].hp = 1320;
-    idle(&mut m);
-    assert_eq!(m.public.result.unwrap().winner, None);
-}
-
-// --- M3: clash buckets, apply_input, history ---------------------------------------------------
-
-/// The plain double loop the bucketed `clash` replaced (M1), kept as the reference.
-fn clash_plain(p: &mut PublicState, ev: &mut impl EventSink) {
-    let [s0, s1] = &mut p.sides;
-    let b_side = s1.cohorts_mut();
-    for a in s0.cohorts_mut().iter_mut() {
-        for b in b_side.iter_mut() {
-            if a.count == 0 {
-                break;
-            }
-            if b.count == 0 {
-                continue;
-            }
-            if i32::from(a.y) + i32::from(b.y) < LANE_LENGTH {
-                break;
-            }
-            if i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32 {
-                continue;
-            }
-            let killed = a.count.min(b.count);
-            a.count -= killed;
-            b.count -= killed;
-            let x = (i32::from(a.x) + i32::from(b.x)) / 2;
-            let y = (i32::from(a.y) + LANE_LENGTH - i32::from(b.y)) / 2;
-            ev.push(Event::Clash {
-                x: x as i16,
-                y: y.clamp(0, LANE_LENGTH) as i16,
-                killed: [killed, killed],
-            });
-        }
-    }
+    assert!(ev.contains(&Event::End { result: r }));
+    assert_eq!(m.public.tick, 1);
 }
 
 #[test]
-fn bucketed_clash_equals_the_plain_loop() {
-    // Random fronts with x clustered near bin edges and CLASH_REACH (the near misses), sorted
-    // front-most first like real streams; some dead cohorts mixed in.
-    let mut rng = crate::rng::SplitMix64::new(11);
-    let near = [
-        0, 1, 249, 250, 251, 499, 500, 501, 749, 750, 999, 1000, 2999,
-    ];
-    for round in 0..4000 {
-        let mut m = quiet_mid_match();
-        for side in 0..2 {
-            let n = rng.below(COHORT_CAP as u64 + 1) as usize;
-            let mut ys: Vec<i32> = (0..n).map(|_| rng.below(12_000) as i32).collect();
-            ys.sort_unstable_by(|a, b| b.cmp(a));
-            for (k, y) in ys.into_iter().enumerate() {
-                let x = if rng.below(2) == 0 {
-                    near[rng.below(near.len() as u64) as usize] + rng.below(3) as i32
-                } else {
-                    rng.below(LANE_WIDTH as u64) as i32
-                };
-                let count = if rng.below(8) == 0 {
-                    0
-                } else {
-                    1 + rng.below(60) as u32
-                };
-                let c = cohort(k as u32 + 1, count, x.min(LANE_WIDTH - 1), y);
-                place(&mut m, side, c);
-            }
+fn the_time_cap_ends_the_match_with_gold_so_far() {
+    // SPEC §3: at MATCH_TICKS whatever was earned counts.
+    let mut m = fight(0);
+    sturdy(&mut m);
+    while m.public.result.is_none() {
+        for s in m.public.sides.iter_mut() {
+            s.enemies = [Enemy::default(); ENEMY_CAP];
+            s.enemy_len = 0;
         }
-        let mut fast = m.public;
-        let mut plain = m.public;
-        let (mut ev_fast, mut ev_plain) = (Events::<4096>::new(), Events::<4096>::new());
-        clash(&mut fast, &mut ev_fast);
-        clash_plain(&mut plain, &mut ev_plain);
-        assert_eq!(fast, plain, "round {round}");
-        assert_eq!(ev_fast.as_slice(), ev_plain.as_slice(), "round {round}");
+        idle(&mut m);
     }
+    assert_eq!(m.public.tick, MATCH_TICKS);
+    let [a, b] = &m.public.sides;
+    assert!(a.gold > 0 && !a.dead && !b.dead);
+    assert_eq!(
+        m.public.result,
+        Some(payout(0, [false, false], [a.gold, b.gold]))
+    );
 }
 
 #[test]
 fn apply_input_between_ticks_equals_passing_it_to_step() {
-    // On-chain, player instructions apply inputs after catching up instead of queueing them.
-    for t in [0u32, 30, 59, 60, 61, 500, 800, 830, 860, 2_399] {
-        let mut a = new_match();
-        run_to(&mut a, t);
-        let mut b = a;
-        let i = SideInput {
-            aim: Some(2_000),
-            rig: Some(3),
-            peek: Some(5),
-        };
-        tick(&mut a, input(1, i));
-        apply_input(&mut b, 1, &i);
-        idle(&mut b);
-        assert_eq!(a, b, "tick {t}");
-    }
-    // Ignored once the match has ended.
-    let mut m = new_match();
-    m.public.result = Some(crate::payout(0, [1, 1]));
-    let before = m;
-    apply_input(
-        &mut m,
-        0,
-        &SideInput {
-            aim: Some(0),
-            rig: Some(1),
-            peek: Some(2),
-        },
-    );
-    assert_eq!(m, before);
-}
-
-#[test]
-fn history_logs_every_phase_rig_and_peek() {
-    let mut m = new_match();
-    // Idle cannons trade hits all match; keep both alive until the planned KO.
-    m.public.sides[0].hp = 1_000_000;
-    m.public.sides[1].hp = 1_000_000;
-    set_deal(&mut m, [M2; CELLS], 8);
-    tick(&mut m, rig(0, 1));
-    run_to(&mut m, PLANT_TICKS + 1);
-    tick(&mut m, peek(1, 2));
-    run_to(&mut m, PLANT_STARTS[1]);
-    let h0 = m.secret.history[0];
-    assert_eq!(h0.rigs, [Some(1), None]);
-    assert_eq!(h0.peeks[0], None);
-    assert_eq!(h0.peeks[1].map(|p| p.cell), Some(2));
-    // Phase 2: side 1 rigs; the match ends on the timer in phase 3 with nothing done there.
-    let gold = m.secret.deal.gold_cell;
-    tick(&mut m, rig(1, (gold + 1) % 9));
-    run_to(&mut m, PLANT_STARTS[2]);
-    assert_eq!(m.public.tick, PLANT_STARTS[2]);
-    assert_eq!(m.secret.history[1].rigs, [None, Some((gold + 1) % 9)]);
-    // KO in phase 3 logs phase 3 too.
-    let gold = m.secret.deal.gold_cell;
-    tick(&mut m, rig(0, (gold + 2) % 9));
-    m.public.sides[1].hp = 1;
-    place(&mut m, 0, cohort(500, 5, 500, 11_990));
-    run_to(&mut m, MATCH_TICKS);
-    assert!(m.public.result.is_some_and(|r| r.ko));
-    assert_eq!(m.secret.history[2].rigs, [Some((gold + 2) % 9), None]);
+    // The program applies player instructions between crank ticks.
+    let mut a = new_match(3);
+    let mut b = a;
+    let i = SideInput {
+        aim: Some(400),
+        rig: Some(1),
+        peek: None,
+    };
+    tick(&mut a, input(1, i));
+    apply_input(&mut b, 1, &i);
+    idle(&mut b);
+    assert_eq!(a.digest(), b.digest());
 }
