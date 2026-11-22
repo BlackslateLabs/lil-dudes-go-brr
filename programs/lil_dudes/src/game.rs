@@ -1,13 +1,12 @@
-//! Shared game plumbing: sim state in and out of the accounts, catch-up, gotcha records, payout.
+//! Shared game plumbing: sim state in and out of the accounts, catch-up, gotcha records, the
+//! Peek view, payout.
 use crate::errors::GameError;
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
 use lil_dudes_sim::codec::{decode_public, decode_secret, encode_public, encode_secret};
-use lil_dudes_sim::state::phase_at;
 use lil_dudes_sim::{
-    step, Event, EventSink, Inputs, MatchResult, MatchState, PublicState, HP_MAX, LANE_WIDTH,
-    MATCH_TICKS,
+    step, Event, EventSink, Inputs, MatchResult, MatchState, PublicState, LANE_WIDTH, MATCH_TICKS,
 };
 
 /// Decodes both parts into a fresh state (cheap: `zeroed` builds nothing).
@@ -23,12 +22,12 @@ pub fn store(m: &MatchState, game: &mut Match, secrets: &mut Secrets) {
     encode_secret(&m.secret, &mut secrets.state);
 }
 
-/// The state shown before the seed exists: full HP, cannons centred, nothing dealt.
+/// The state shown before the seed exists: cannons centred, nothing loaded (the layout comes
+/// from the seed), both sides empty (`PublicSide::EMPTY`).
 pub fn pre_match_public(stake: u64) -> PublicState {
     let mut p = MatchState::zeroed().public;
     p.options.stake = stake;
     for s in p.sides.iter_mut() {
-        s.hp = HP_MAX;
         s.cannon_x = (LANE_WIDTH / 2) as i16;
         s.aim = s.cannon_x;
     }
@@ -52,13 +51,13 @@ impl EventSink for ChainEvents<'_> {
     fn push(&mut self, event: Event) {
         if let Event::Gotcha {
             side,
-            cell,
+            slot,
             rigged_by,
         } = event
         {
             if let Some(g) = self.gotcha.get_mut(usize::from(side)) {
                 let [lo, hi] = u16::try_from(self.tick).unwrap_or(NO_TICK).to_le_bytes();
-                *g = [lo, hi, cell, rigged_by];
+                *g = [lo, hi, slot, rigged_by];
             }
         }
     }
@@ -84,11 +83,19 @@ pub fn catch_up(m: &mut MatchState, game: &mut Match, slot: u64, cap: u32) -> u3
     steps
 }
 
-pub fn phase_now(m: &MatchState) -> u8 {
-    phase_at(m.public.tick)
+/// Rewrites `side`'s Peek from the sim's private view of its current stage (the Peek layout in
+/// state.rs). Cheap: no decoding, a few bytes.
+pub fn write_peek(m: &MatchState, side: u8, p: &mut Peek) {
+    let v = m.private_view(side);
+    p.stage = v.stage;
+    (p.rig_stage, p.rig_slot) = v.rig.map_or((NONE, NONE), |r| (r.stage, r.slot));
+    (p.peek_stage, p.peek_slot, p.peek_op) = v
+        .peek
+        .map_or((NONE, NONE, 0), |pk| (v.stage, pk.slot, pk.op.to_byte()));
+    p._pad = 0;
 }
 
-/// What each side and the treasury get out of the vault (SPEC §7). The vault holds 2S.
+/// What each side and the treasury get out of the vault (SPEC §8). The vault holds 2S.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Split {
     pub to: [u64; 2],
@@ -97,13 +104,15 @@ pub struct Split {
 
 pub fn split(stake: u64, result: Option<MatchResult>) -> Split {
     match result.and_then(|r| r.winner.map(|w| (w, r))) {
-        // Draw, abort (no result): everyone gets their stake back.
+        // Draw (equal gold, or both died on the same tick), abort (no result): everyone gets
+        // their stake back.
         None => Split {
             to: [stake, stake],
             fee: 0,
         },
         Some((w, r)) => {
-            // payout() guarantees fee ≤ moved ≤ stake.
+            // payout() guarantees fee ≤ moved ≤ stake (moved = S on a death, else the gold
+            // ratio's share above S).
             let moved = r.moved.min(stake);
             let fee = r.fee.min(moved);
             let win = stake.saturating_add(moved).saturating_sub(fee);
@@ -204,18 +213,87 @@ mod tests {
 
     #[test]
     fn split_conserves_the_vault() {
+        let deaths = [[false, true], [true, false], [true, true]];
+        let golds = [
+            [900, 600],
+            [650, 700],
+            [1, 0],
+            [0, 0],
+            [5, 5],
+            [u32::MAX, 1],
+        ];
         for stake in [0u64, 1, 50_000_000, 100_000_000, 250_000_000] {
-            for hp in [[2200, 0], [0, 1], [1320, 880], [1078, 1122], [5, 5], [0, 0]] {
-                let r = payout(stake, hp);
-                let s = split(stake, Some(r));
-                assert_eq!(s.to[0] + s.to[1] + s.fee, 2 * stake, "{stake} {hp:?}");
-                if let Some(w) = r.winner {
-                    assert!(s.to[usize::from(w)] >= stake);
+            for dead in deaths.iter().chain([[false, false]].iter()) {
+                for gold in golds {
+                    let r = payout(stake, *dead, gold);
+                    let s = split(stake, Some(r));
+                    let ctx = format!("{stake} {dead:?} {gold:?}");
+                    assert_eq!(s.to[0] + s.to[1] + s.fee, 2 * stake, "{ctx}");
+                    if let Some(w) = r.winner {
+                        assert!(s.to[usize::from(w)] >= stake, "{ctx}");
+                    }
+                    if r.ko && r.winner.is_some() {
+                        // SPEC §8: a death moves the loser's whole stake.
+                        let w = usize::from(r.winner.unwrap_or(0));
+                        assert_eq!(s.to[w] + s.fee, 2 * stake, "{ctx}");
+                        assert_eq!(s.to[1 - w], 0, "{ctx}");
+                    }
                 }
             }
             let abort = split(stake, None);
             assert_eq!(abort.to, [stake, stake]);
         }
+    }
+
+    #[test]
+    fn peek_mirrors_the_private_view() {
+        use lil_dudes_sim::{MatchOptions, Peek as SimPeek, Rig};
+        let mut m = MatchState::new(5, MatchOptions::default());
+        let mut p = Peek {
+            id: 1,
+            owner: Pubkey::default(),
+            side: 0,
+            stage: NONE,
+            rig_stage: NONE,
+            rig_slot: NONE,
+            peek_stage: NONE,
+            peek_slot: NONE,
+            peek_op: 0,
+            _pad: 0,
+        };
+        write_peek(&m, 0, &mut p);
+        assert_eq!(
+            [
+                p.stage,
+                p.rig_stage,
+                p.rig_slot,
+                p.peek_stage,
+                p.peek_slot,
+                p.peek_op
+            ],
+            [0, NONE, NONE, NONE, NONE, 0]
+        );
+        m.public.sides[0].stage = 1;
+        m.secret.history[1].rigs[0] = Some(Rig { stage: 2, slot: 3 });
+        m.secret.history[1].peeks[0] = Some(SimPeek {
+            slot: 4,
+            op: lil_dudes_sim::GateOp::Div(2),
+        });
+        write_peek(&m, 0, &mut p);
+        assert_eq!(
+            [
+                p.stage,
+                p.rig_stage,
+                p.rig_slot,
+                p.peek_stage,
+                p.peek_slot,
+                p.peek_op
+            ],
+            [1, 2, 3, 1, 4, 0x82]
+        );
+        // Side 1 did nothing in its stage 0.
+        write_peek(&m, 1, &mut p);
+        assert_eq!([p.stage, p.rig_stage, p.peek_stage], [0, NONE, NONE]);
     }
 
     #[test]
