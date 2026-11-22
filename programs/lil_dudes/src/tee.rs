@@ -498,16 +498,32 @@ pub struct Finish<'info> {
     pub game: AccountLoader<'info, Match>,
     #[account(mut)]
     pub secrets: AccountLoader<'info, Secrets>,
-    /// CHECK: this match's Peek[0] (checked against the stored bump); committed as-is.
+    /// CHECK: this match's Peek[0] (checked against the stored bump); refreshed, then committed.
     #[account(mut)]
     pub peek0: UncheckedAccount<'info>,
-    /// CHECK: this match's Peek[1] (checked against the stored bump); committed as-is.
+    /// CHECK: this match's Peek[1] (checked against the stored bump); refreshed, then committed.
     #[account(mut)]
     pub peek1: UncheckedAccount<'info>,
 }
 
-/// Ends the match on the TEE: publishes the seed and every phase's rigs and peeks in the Match
-/// (Verify and the result screen), then commits + undelegates all four accounts with the
+/// Rewrites a Peek passed as a raw account (discriminator checked) from the final state.
+fn refresh_peek(peek: &AccountInfo, m: &MatchState, side: u8) -> Result<()> {
+    let mut data = peek.try_borrow_mut_data()?;
+    require!(
+        data.get(..8) == Some(Peek::DISCRIMINATOR) && *peek.owner == crate::ID,
+        GameError::BadData
+    );
+    let body = data
+        .get_mut(8..8 + core::mem::size_of::<Peek>())
+        .ok_or(GameError::BadData)?;
+    let p = bytemuck::try_from_bytes_mut::<Peek>(body).map_err(|_| GameError::BadData)?;
+    write_peek(m, side, p);
+    Ok(())
+}
+
+/// Ends the match on the TEE: publishes the seed and every stage's rigs and peeks in the Match
+/// (Verify and the result screen), refreshes both Peeks to each side's final stage, then
+/// commits + undelegates all four accounts with the
 /// `settle_action` Magic Action. Anyone may finish a match with a result; a player may abort one
 /// that never started (after ABORT_SLOTS, or at once if its permissions were never made), and
 /// anyone may after ABORT_ANYONE_SLOTS (everyone refunded either way).
@@ -550,7 +566,8 @@ pub fn handle_finish(ctx: Context<Finish>) -> Result<()> {
             _ => return err!(GameError::WrongStatus),
         }
         if !g.has(flags::ABORTED) {
-            // Codec: the secret part starts with the seed (u64 LE) and ends with the history.
+            // Codec: the secret part starts with the seed (u64 LE) and ends with the history
+            // (HISTORY_LEN bytes from S_HISTORY, the same layout in the Match).
             g.seed = s
                 .state
                 .get(..8)
@@ -560,6 +577,9 @@ pub fn handle_finish(ctx: Context<Finish>) -> Result<()> {
             if let Some(dst) = g.history.get_mut(..history.len()) {
                 dst.copy_from_slice(history);
             }
+            let m = load(&g, &s);
+            refresh_peek(&a.peek0, &m, 0)?;
+            refresh_peek(&a.peek1, &m, 1)?;
         }
         g.status = status::FINISHED;
         let (vault, _) = Pubkey::find_program_address(&[VAULT_SEED, &id_bytes], &crate::ID);
