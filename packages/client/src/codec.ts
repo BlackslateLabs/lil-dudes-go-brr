@@ -1,159 +1,139 @@
 // Decoder for the PUBLIC part of the match state, as stored in the on-chain Match account
-// (crates/sim/src/codec.rs documents the layout; a parity test checks this file against the WASM
-// build). The secret part never reaches a client during a match.
+// (crates/sim/src/codec.rs documents the layout, codec v2 / rules v3; a parity test checks this
+// file against the WASM build). The secret part never reaches a client during a match.
 import * as C from './constants';
-import type { CohortView, GateOp, GateView, Hint, MatchResult, MatchStatus, MatchView, Side, SideView } from './types';
+import { opFromByte } from './layout';
+import { matchView, resultOf, sideOf, type LaneState, type RawResult } from './view';
+import type { CohortView, MatchResult, MatchStatus, MatchView } from './types';
 
 /** Must equal crates/sim CODEC_VERSION (byte 0 of the public part). */
-export const CODEC_VERSION = 1;
+export const CODEC_VERSION = 2;
 export const HEADER_LEN = 34;
-export const GATE_LEN = 2;
-export const COHORT_LEN = 12;
-const SIDE_GATES = 8;
-const SIDE_COHORTS = SIDE_GATES + C.CELLS * GATE_LEN;
-export const SIDE_LEN = SIDE_COHORTS + C.COHORT_CAP * COHORT_LEN;
+export const GATE_LEN = 3;
+export const UNIT_LEN = 12;
+const SIDE_TOWERS = 14;
+const SIDE_CRATES = SIDE_TOWERS + C.TOWERS_MAX * 2;
+const SIDE_GATES = SIDE_CRATES + C.CRATES_MAX * 2;
+const SIDE_COHORTS = SIDE_GATES + C.GATES_MAX * GATE_LEN;
+const SIDE_ENEMIES = SIDE_COHORTS + C.COHORT_CAP * UNIT_LEN;
+export const SIDE_LEN = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
 export const PUBLIC_LEN = HEADER_LEN + 2 * SIDE_LEN;
+/** Offset of a side's aim inside its record (the program writes it directly). */
+export const SIDE_AIM = 4;
 
-const HINTS: readonly Hint[] = ['none', 'good', 'bad', 'gold'];
-const OPS: readonly GateOp['kind'][] = ['mul', 'add', 'sub', 'div'];
+const F_BOT0 = 1;
+const F_BOT1 = 2;
+const F_TUTORIAL = 4;
+const F_RESULT = 8;
+const F_KO = 16;
+const F_PHASE = 7;
+const F_DEAD = 8;
+const F_RIG = 16;
+const F_PEEK = 32;
 
 /** A cohort as stored (MatchView's CohortView plus the gate rows it has passed). */
 export interface CohortState extends CohortView {
   lastRow: number;
 }
 
-export interface SideState {
-  hp: number;
-  cannonX: number;
-  aimX: number;
-  rigUsed: boolean;
-  peekUsed: boolean;
-  gates: GateView[];
+/** One lane as stored (see view.ts LaneState), with each cohort's `lastRow`. */
+export interface SideState extends LaneState {
   cohorts: CohortState[];
 }
 
 /** Everything in the public part, decoded. */
 export interface PublicState {
   tick: number;
+  layout: number;
   stake: number;
   bot: [boolean, boolean];
   tutorial: boolean;
   nextCohortId: number;
-  result: MatchResult | null;
+  result: RawResult | null;
   sides: [SideState, SideState];
 }
-
-export const opOf = (kind: number, value: number): GateOp => ({ kind: OPS[kind & 3] ?? 'mul', value });
 
 /** Decodes the public part starting at `offset` of `data` (e.g. the Match account data). */
 export function decodePublic(data: Uint8Array, offset = 0): PublicState {
   if (data.length < offset + PUBLIC_LEN) throw new Error(`public state: need ${PUBLIC_LEN} bytes at ${offset}, have ${data.length - offset}`);
   const dv = new DataView(data.buffer, data.byteOffset + offset, PUBLIC_LEN);
-  const version = dv.getUint8(0);
+  const u8 = (at: number) => dv.getUint8(at);
+  const version = u8(0);
   if (version !== CODEC_VERSION) throw new Error(`public state codec v${version}, expected v${CODEC_VERSION}`);
-  const flags = dv.getUint8(1);
-  const winner = dv.getUint8(2);
-  const result: MatchResult | null =
-    flags & 8
+  const flags = u8(1);
+  const winner = u8(2);
+  const result: RawResult | null =
+    flags & F_RESULT
       ? {
-          winner: winner === 0 ? 0 : winner === 1 ? 1 : null,
-          ko: (flags & 16) !== 0,
+          winner: winner < 2 ? sideOf(winner) : null,
+          ko: (flags & F_KO) !== 0,
           moved: Number(dv.getBigUint64(16, true)),
           fee: Number(dv.getBigUint64(24, true)),
         }
       : null;
   const side = (base: number): SideState => {
-    const len = Math.min(dv.getUint8(base + 6), C.COHORT_CAP);
-    const sflags = dv.getUint8(base + 7);
-    const gates: GateView[] = [];
-    for (let cell = 0; cell < C.CELLS; cell++) {
-      const at = base + SIDE_GATES + cell * GATE_LEN;
-      const packed = dv.getUint8(at);
-      const revealed = (packed & 8) !== 0;
-      gates.push({
-        cell,
-        // Same convention as OfflineSource: no hint once revealed.
-        hint: revealed ? 'none' : (HINTS[packed & 3] ?? 'none'),
-        revealed: revealed ? opOf(packed >> 4, dv.getUint8(at + 1)) : null,
-        gold: (packed & 4) !== 0,
-      });
-    }
-    const cohorts: CohortState[] = [];
-    for (let i = 0; i < len; i++) {
-      const at = base + SIDE_COHORTS + i * COHORT_LEN;
-      cohorts.push({
-        id: dv.getUint16(at, true),
-        count: dv.getUint32(at + 2, true),
-        x: dv.getInt16(at + 6, true),
-        y: dv.getInt16(at + 8, true),
-        age: dv.getUint8(at + 10),
-        lastRow: dv.getUint8(at + 11),
-      });
-    }
+    const sflags = u8(base + 1);
+    const cohortLen = Math.min(u8(base + 12), C.COHORT_CAP);
+    const enemyLen = Math.min(u8(base + 13), C.ENEMY_CAP);
+    const u16 = (at: number) => dv.getUint16(base + at, true);
+    const i16 = (at: number) => dv.getInt16(base + at, true);
+    const unit = (start: number, i: number) => base + start + i * UNIT_LEN;
     return {
-      hp: dv.getUint16(base, true),
-      cannonX: dv.getInt16(base + 2, true),
-      aimX: dv.getInt16(base + 4, true),
-      rigUsed: (sflags & 1) !== 0,
-      peekUsed: (sflags & 2) !== 0,
-      gates,
-      cohorts,
+      stage: u8(base),
+      phase: sflags & F_PHASE,
+      phaseTicks: u16(6),
+      dead: (sflags & F_DEAD) !== 0,
+      cannonX: i16(2),
+      aimX: i16(SIDE_AIM),
+      gold: dv.getUint32(base + 8, true),
+      rigUsed: (sflags & F_RIG) !== 0,
+      peekUsed: (sflags & F_PEEK) !== 0,
+      towers: Array.from({ length: C.TOWERS_MAX }, (_, i) => u16(SIDE_TOWERS + 2 * i)),
+      crates: Array.from({ length: C.CRATES_MAX }, (_, i) => u16(SIDE_CRATES + 2 * i)),
+      gates: Array.from({ length: C.GATES_MAX }, (_, i) => {
+        const at = SIDE_GATES + i * GATE_LEN;
+        return { x: i16(at), revealed: opFromByte(u8(base + at + 2)) };
+      }),
+      cohorts: Array.from({ length: cohortLen }, (_, i) => {
+        const at = unit(SIDE_COHORTS, i);
+        return {
+          id: dv.getUint16(at, true),
+          count: dv.getUint32(at + 2, true),
+          x: dv.getInt16(at + 6, true),
+          y: dv.getInt16(at + 8, true),
+          age: u8(at + 10),
+          lastRow: u8(at + 11),
+        };
+      }),
+      enemies: Array.from({ length: enemyLen }, (_, i) => {
+        const at = unit(SIDE_ENEMIES, i);
+        return {
+          id: dv.getUint16(at, true),
+          count: dv.getUint32(at + 2, true),
+          x: dv.getInt16(at + 6, true),
+          y: dv.getInt16(at + 8, true),
+          tower: u8(at + 10),
+        };
+      }),
     };
   };
   return {
     tick: dv.getUint32(4, true),
+    layout: u8(3),
     stake: Number(dv.getBigUint64(8, true)),
-    bot: [(flags & 1) !== 0, (flags & 2) !== 0],
-    tutorial: (flags & 4) !== 0,
+    bot: [(flags & F_BOT0) !== 0, (flags & F_BOT1) !== 0],
+    tutorial: (flags & F_TUTORIAL) !== 0,
     nextCohortId: dv.getUint16(32, true),
     result,
     sides: [side(HEADER_LEN), side(HEADER_LEN + SIDE_LEN)],
   };
 }
 
-// --- timeline helpers (mirror crates/sim/src/state.rs) ------------------------------------------
+/** The MatchResult of a decoded state (with gold and who died), or null while playing. */
+export const matchResultOf = (p: PublicState): MatchResult | null => resultOf(p.result, p.sides);
 
-export function phaseAt(tick: number): number {
-  let phase = 0;
-  C.PLANT_STARTS.forEach((start, p) => {
-    if (tick >= start) phase = p;
-  });
-  return phase;
-}
-
-export const playStart = (phase: number): number => (C.PLANT_STARTS[phase] ?? C.MATCH_TICKS) + C.PLANT_TICKS;
-export const inPlant = (tick: number): boolean => tick < playStart(phaseAt(tick));
-
-export function statusOf(p: Pick<PublicState, 'tick' | 'result'>): MatchStatus {
-  if (p.result) return 'ended';
-  return inPlant(p.tick) ? 'plant' : 'playing';
-}
-
-/** The MatchView for a decoded public state (names and id come from the Match account header). */
+/** The MatchView for a decoded public state (names and id come from the Match account header).
+ *  `status` defaults to 'ended' with a result, else 'playing' (LiveSource passes 'waiting'). */
 export function toMatchView(p: PublicState, matchId: string, names: [string, string], status?: MatchStatus): MatchView {
-  const sides = p.sides.map(
-    (s, i): SideView => ({
-      name: names[i] ?? '',
-      isBot: p.bot[i] ?? false,
-      hp: s.hp,
-      cannonX: s.cannonX,
-      aimX: s.aimX,
-      cohorts: s.cohorts.map(({ id, count, x, y, age }) => ({ id, count, x, y, age })),
-      gates: s.gates,
-      rigUsed: s.rigUsed,
-      peekUsed: s.peekUsed,
-    }),
-  ) as [SideView, SideView];
-  return {
-    matchId,
-    tick: p.tick,
-    status: status ?? statusOf(p),
-    phase: phaseAt(p.tick),
-    surge: p.tick >= C.SURGE_TICK,
-    stake: p.stake,
-    sides,
-    result: p.result,
-  };
+  return matchView({ matchId, tick: p.tick, layout: p.layout, stake: p.stake, bot: p.bot, names, lanes: p.sides, result: p.result, status });
 }
-
-export const sideOf = (n: number): Side => (n === 1 ? 1 : 0);
