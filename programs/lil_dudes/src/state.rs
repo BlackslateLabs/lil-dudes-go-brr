@@ -3,8 +3,10 @@
 //! Per match `id`, all created on the base layer by `create_match`:
 //! - `Match`    public; delegated to the TEE. Header + the sim's public state (codec bytes).
 //! - `Secrets`  private (ephemeral permission, no members) once `init_permissions` ran; delegated.
-//!   VRF output, both players' salts, the sim's secret state (true gates, rigs, peeks, history).
-//! - `Peek[s]`  private (member = side s's burner); delegated. That player's own rig and peek.
+//!   VRF output, both players' salts, the sim's secret state (seed, every stage's true gate
+//!   values, the rig/peek history).
+//! - `Peek[s]`  private (member = side s's burner); delegated. That player's own rig and peek in
+//!   their current stage.
 //! - `Vault`    system-owned PDA on the base layer, never delegated: both stakes until settled.
 use anchor_lang::prelude::*;
 use lil_dudes_sim::{PUBLIC_LEN, SECRET_LEN};
@@ -122,11 +124,12 @@ pub struct Match {
     pub vault_bump: u8,
     /// Bumps of Match, Secrets, Peek[0], Peek[1].
     pub bumps: [u8; 4],
-    /// Last rig sprung on each side's grid: [tick lo, tick hi, cell, rigged by]; tick NO_TICK = none.
+    /// Last rig sprung in each side's copy: [tick lo, tick hi, gate slot, rigged by]; tick
+    /// NO_TICK = none. The slot is in the stage that side was in at that tick.
     pub gotcha: [[u8; 4]; 2],
-    /// Published at `finish`: every phase's rigs and peeks (codec history layout).
+    /// Published at `finish`: every stage's rigs and peeks (codec history layout).
     pub history: [u8; HISTORY_LEN],
-    pub _pad: [u8; 4],
+    pub _pad: [u8; 2],
     /// The sim's public state (crates/sim codec, PUBLIC part).
     pub state: [u8; PUBLIC_LEN],
 }
@@ -140,11 +143,12 @@ pub struct Secrets {
     pub salts: [[u8; 32]; 2],
     /// The sim's secret state (crates/sim codec, SECRET part).
     pub state: [u8; SECRET_LEN],
-    pub _pad: [u8; 3],
 }
 
-/// One player's private view (MatchView's PrivateView): what they rigged and peeked. Entries
-/// carry their phase; one from an earlier phase is stale.
+/// One player's private view (the sim's `PrivateView`): what they rigged and peeked during their
+/// current stage. Rewritten from the sim after each of the owner's `plant_rig` / `peek_cell` and
+/// at `finish`; `stage` says which stage it describes, so one whose `stage` is behind the side's
+/// public stage is stale (nothing rigged or peeked in the new stage yet).
 #[account(zero_copy)]
 #[repr(C)]
 pub struct Peek {
@@ -152,13 +156,17 @@ pub struct Peek {
     /// That side's burner (the permission member).
     pub owner: Pubkey,
     pub side: u8,
-    pub rig_phase: u8,
-    pub rig_cell: u8,
-    pub peek_phase: u8,
-    pub peek_cell: u8,
-    pub peek_kind: u8,
-    pub peek_value: u8,
-    pub peek_gold: u8,
+    /// The owner's stage when this was last written (NONE before the first write).
+    pub stage: u8,
+    /// The rig the owner placed during that stage: the victim's stage and gate slot (NONE = none).
+    pub rig_stage: u8,
+    pub rig_slot: u8,
+    /// The owner's peek during that stage: its stage (NONE = none), gate slot and the true op
+    /// (`GateOp::to_byte`: k for ×k, 0x80 | k for ÷k).
+    pub peek_stage: u8,
+    pub peek_slot: u8,
+    pub peek_op: u8,
+    pub _pad: u8,
 }
 
 pub const MATCH_SPACE: usize = 8 + core::mem::size_of::<Match>();
@@ -166,10 +174,18 @@ pub const SECRETS_SPACE: usize = 8 + core::mem::size_of::<Secrets>();
 pub const PEEK_SPACE: usize = 8 + core::mem::size_of::<Peek>();
 
 const _: () = {
-    assert!(core::mem::size_of::<Match>() == 1_368);
-    assert!(core::mem::size_of::<Secrets>() == 192);
+    assert!(core::mem::size_of::<Match>() == 1_784);
+    assert!(core::mem::size_of::<Secrets>() == 160);
     assert!(core::mem::size_of::<Peek>() == 48);
-    assert!(lil_dudes_sim::codec::SECRET_LEN - HISTORY_LEN == 55);
+    // The history is the tail of the secret part (copied as-is at `finish`).
+    assert!(SECRET_LEN - HISTORY_LEN == lil_dudes_sim::codec::S_HISTORY);
+    // Fixed offsets the TS decoder reads (packages/client), after the 8-byte discriminator.
+    assert!(core::mem::offset_of!(Match, gotcha) == 280);
+    assert!(core::mem::offset_of!(Match, history) == 288);
+    assert!(core::mem::offset_of!(Match, state) == 314);
+    assert!(core::mem::offset_of!(Secrets, state) == 104);
+    assert!(core::mem::offset_of!(Peek, stage) == 41);
+    assert!(core::mem::offset_of!(Peek, _pad) == 47);
 };
 
 impl Match {
