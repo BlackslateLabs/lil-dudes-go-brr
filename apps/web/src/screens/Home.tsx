@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LANE_WIDTH, MockSource } from '@lil-dudes/client';
+import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { unlockSound } from '../feel/sound';
 import { useFeed } from '../match/useFeed';
@@ -67,21 +67,14 @@ export function Home() {
   );
 }
 
-/** A mock match with a wandering cannon, restarted when it ends. Silent, not interactive. */
+/** A bot-vs-bot offline match on loop behind the menu. Silent, not interactive. */
 function Background({ onEnd }: { onEnd: () => void }) {
-  const feed = useFeed(() => new MockSource({ myName: 'You', speed: 1 }));
+  const feed = useFeed(() => new OfflineSource({ myName: 'You', selfBot: true }));
   useEffect(() => {
-    const wander = setInterval(() => {
-      feed.aim = Math.random() * LANE_WIDTH;
-      feed.flushAim();
-    }, 2500);
     const off = feed.onEvent((e) => {
       if (e.type === 'end') setTimeout(onEnd, 1500);
     });
-    return () => {
-      clearInterval(wander);
-      off();
-    };
+    return off;
   }, [feed, onEnd]);
   return <Arena feed={feed} />;
 }
