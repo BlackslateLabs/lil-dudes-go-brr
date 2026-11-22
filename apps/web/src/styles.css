@@ -730,3 +730,70 @@ i.k-peek {
   color: var(--muted);
   opacity: 0.6;
 }
+
+/* ---------- v3: opponent mini-view, gold, stage banners ---------- */
+.mini-wrap {
+  position: absolute;
+  top: calc(max(8%, 52px) + 6px);
+  right: 8px;
+  width: 22%;
+  aspect-ratio: 1 / 2.2;
+  border: 3px solid var(--outline);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 3px 0 var(--outline);
+  transition: width 0.25s ease, box-shadow 0.25s ease;
+  z-index: 2;
+}
+
+.mini-wrap.rig {
+  width: 44%;
+  box-shadow: 0 0 0 4px var(--gold), 0 3px 0 var(--outline);
+  animation: rig-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes rig-pulse {
+  to {
+    box-shadow: 0 0 0 7px var(--gold), 0 3px 0 var(--outline);
+  }
+}
+
+.mini-lane {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mini-lane.rig {
+  cursor: crosshair;
+}
+
+.who .pill.gold {
+  background: var(--gold);
+  color: var(--outline);
+}
+
+.tag.dead {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--bad);
+  -webkit-text-stroke: 0;
+}
+
+.banner-pop.flash {
+  font-size: 48px;
+  animation: pop-in 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both, fade-out 0.4s 1.2s forwards;
+}
+
+.banner-pop.good {
+  color: var(--me);
+}
+
+.banner-pop.gold {
+  color: var(--gold);
+}
+
+.banner-pop.bad {
+  color: var(--bad);
+}
