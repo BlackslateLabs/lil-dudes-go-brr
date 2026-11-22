@@ -1,70 +1,72 @@
 //! Compact little-endian codec for the on-chain accounts (TECH §4): the public part lives in the
 //! public Match account, the secret part in the private Secrets account. Offsets are fixed (the
-//! TS decoder in packages/client/src/codec.ts reads the same layout), but only live cohorts are
-//! copied and free cohort slots are zero in the buffer. Built for SBF compute: no allocation, no
-//! cursor, constant offsets, nothing rebuilt on decode (decode into `MatchState::zeroed()`).
+//! TS decoder in packages/client/src/codec.ts reads the same layout), but only live cohorts and
+//! enemies are copied and free slots are zero in the buffer. Built for SBF compute: no
+//! allocation, no cursor, constant offsets, nothing rebuilt on decode (decode into
+//! `MatchState::zeroed()`).
 //!
-//! Lossless for every state the rules can reach: cohort ids, HP and the tick fit their narrower
-//! fields (checked at compile time below). Decoding never panics on garbage; it clamps.
+//! Lossless for every state the rules can reach: ids, tower/crate HP and phase timers fit their
+//! narrower fields (checked at compile time below). Decoding never panics on garbage; it clamps.
 //!
-//! PUBLIC (PUBLIC_LEN = 1,046 bytes)
+//! PUBLIC (PUBLIC_LEN = 1,470 bytes)
 //! ```text
 //!   0  u8   CODEC_VERSION
 //!   1  u8   flags: 1 bot side 0 | 2 bot side 1 | 4 tutorial | 8 has result | 16 ko
 //!   2  u8   winner (0, 1; 2 = draw or no result)
-//!   3  u8   0 (reserved)
+//!   3  u8   layout
 //!   4  u32  tick
 //!   8  u64  stake
 //!  16  u64  moved
 //!  24  u64  fee
 //!  32  u16  next_cohort_id
-//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 506 each:
-//!        0 u16 hp | 2 i16 cannon_x | 4 i16 aim | 6 u8 cohort_len | 7 u8 flags (1 rig used, 2 peek used)
-//!        8 gates 9 × 2 B: [hint | gold << 2 | revealed << 3 | kind << 4, value]
-//!       26 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age, u8 last_row]
+//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 718 each:
+//!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 rig used | 32 peek used
+//!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
+//!       12 u8 cohort_len | 13 u8 enemy_len
+//!       14 towers 2 × u16 hp | 18 crates 2 × u16 hp
+//!       22 gates 8 × [i16 x, u8 revealed op (0 = face-down)]
+//!       46 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age, u8 last_row]
+//!      526 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 0]
 //! ```
-//! hint: 0 none, 1 good, 2 bad, 3 gold. kind: 0 mul, 1 add, 2 sub, 3 div.
+//! phase: 0 plant, 1 fight, 2 transit, 3 raid, 4 done. Op byte: `k` = ×k, `0x80 | k` = ÷k.
 //!
-//! SECRET (SECRET_LEN = 85 bytes)
+//! SECRET (SECRET_LEN = 56 bytes)
 //! ```text
 //!   0  u64  seed
-//!   8  deal ops 9 × [kind, value]
-//!  26  u8   gold cell
-//!  27  hints 2 × 9 × u8 (side 0 first)
-//!  45  rigs 2 × u8 (255 = none)
-//!  47  peeks 2 × [cell (255 = none), kind, value, gold]
-//!  55  history 3 phases × 2 sides × [rig (255 = none), peek cell (255 = none), kind, value, gold]
+//!   8  values 3 stages × 8 slots × op byte
+//!  32  history 3 stages × 2 sides × [rig stage (255 = none), rig slot, peek slot (255 = none),
+//!        peek op]   (stage = the actor's own stage; the rig names the victim's stage)
 //! ```
 
 use crate::constants::{
-    CELLS, COHORT_CAP, FIRE_TICKS_SURGE, HP_MAX, MATCH_TICKS, PHASES, PLANT_TICKS,
+    COHORT_CAP, CRATES_MAX, ENEMY_CAP, FIRE_TICKS, FIRST_WAVE_TICKS, GATES_MAX, MATCH_TICKS,
+    STAGES, TOWERS_MAX, WAVE_GAPS,
 };
 use crate::payout::MatchResult;
-use crate::state::{
-    MatchOptions, Peek, PhaseLog, PublicGate, PublicSide, PublicState, SecretState,
-};
-use crate::types::{Cohort, GateOp, Hint};
+use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, Rig, SecretState};
+use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Bump when either layout changes (the TS decoder checks byte 0 of the public part).
-pub const CODEC_VERSION: u8 = 1;
+pub const CODEC_VERSION: u8 = 2;
 
 pub const HEADER_LEN: usize = 34;
-pub const GATE_LEN: usize = 2;
-pub const COHORT_LEN: usize = 12;
-pub const SIDE_GATES: usize = 8;
-pub const SIDE_COHORTS: usize = SIDE_GATES + CELLS * GATE_LEN;
-pub const SIDE_LEN: usize = SIDE_COHORTS + COHORT_CAP * COHORT_LEN;
+pub const GATE_LEN: usize = 3;
+pub const UNIT_LEN: usize = 12;
+pub const SIDE_TOWERS: usize = 14;
+pub const SIDE_CRATES: usize = SIDE_TOWERS + TOWERS_MAX * 2;
+pub const SIDE_GATES: usize = SIDE_CRATES + CRATES_MAX * 2;
+pub const SIDE_COHORTS: usize = SIDE_GATES + GATES_MAX * GATE_LEN;
+pub const SIDE_ENEMIES: usize = SIDE_COHORTS + COHORT_CAP * UNIT_LEN;
+pub const SIDE_LEN: usize = SIDE_ENEMIES + ENEMY_CAP * UNIT_LEN;
 pub const PUBLIC_LEN: usize = HEADER_LEN + 2 * SIDE_LEN;
+/// Offset of the aim inside a side (the program writes it directly).
+pub const SIDE_AIM: usize = 4;
 
-const PEEK_LEN: usize = 4;
-const LOG_LEN: usize = 1 + PEEK_LEN;
-const S_OPS: usize = 8;
-const S_GOLD: usize = S_OPS + CELLS * 2;
-const S_HINTS: usize = S_GOLD + 1;
-const S_RIGS: usize = S_HINTS + 2 * CELLS;
-const S_PEEKS: usize = S_RIGS + 2;
-const S_HISTORY: usize = S_PEEKS + 2 * PEEK_LEN;
-pub const SECRET_LEN: usize = S_HISTORY + PHASES * 2 * LOG_LEN;
+const LOG_LEN: usize = 4;
+const S_VALUES: usize = 8;
+pub const S_HISTORY: usize = S_VALUES + STAGES * GATES_MAX;
+pub const HISTORY_LEN: usize = STAGES * 2 * LOG_LEN;
+pub const SECRET_LEN: usize = S_HISTORY + HISTORY_LEN;
 
 const NONE: u8 = u8::MAX;
 const F_BOT0: u8 = 1;
@@ -72,19 +74,30 @@ const F_BOT1: u8 = 2;
 const F_TUTORIAL: u8 = 4;
 const F_RESULT: u8 = 8;
 const F_KO: u8 = 16;
-const F_RIG: u8 = 1;
-const F_PEEK: u8 = 2;
+const F_PHASE: u8 = 7;
+const F_DEAD: u8 = 8;
+const F_RIG: u8 = 16;
+const F_PEEK: u8 = 32;
 
 const _: () = {
-    assert!(PUBLIC_LEN == 1_046);
-    assert!(SECRET_LEN == 85);
-    // Lossless narrowing: at most one volley per side every FIRE_TICKS_SURGE ticks, so ids stay
-    // far below u16::MAX; HP only goes down from HP_MAX; the tick never passes MATCH_TICKS.
-    assert!(2 * (MATCH_TICKS / FIRE_TICKS_SURGE + 1) + 1 < u16::MAX as u32);
-    assert!(HP_MAX <= u16::MAX as u32);
-    assert!(PLANT_TICKS < MATCH_TICKS);
+    assert!(PUBLIC_LEN == 1_470);
+    assert!(SECRET_LEN == 56);
+    assert!(HISTORY_LEN == 24);
+    // The on-chain commit limit is 10,240 bytes including the account header.
+    assert!(PUBLIC_LEN + 64 < 10_240);
+    // Lossless narrowing: one volley per side every FIRE_TICKS and at most one wave per tower
+    // per WAVE_GAPS[2] ticks keep ids far below u16::MAX; timers stay below MATCH_TICKS.
+    assert!(
+        2 * (MATCH_TICKS / FIRE_TICKS + 1)
+            + 2 * TOWERS_MAX as u32 * (MATCH_TICKS / WAVE_GAPS[2] + FIRST_WAVE_TICKS)
+            + 1
+            < u16::MAX as u32
+    );
+    assert!(MATCH_TICKS < u16::MAX as u32);
     assert!(COHORT_CAP < NONE as usize);
-    assert!(CELLS < NONE as usize);
+    assert!(ENEMY_CAP < NONE as usize);
+    assert!(GATES_MAX < NONE as usize);
+    assert!(STAGES < NONE as usize);
 };
 
 // --- byte helpers (constant-size copies; inlined at the sim's opt-level) ---------------------
@@ -117,26 +130,20 @@ fn set(buf: &mut [u8], at: usize, v: u8) {
     }
 }
 
-fn op_from(kind: u8, value: u8) -> GateOp {
-    match kind & 3 {
-        0 => GateOp::Mul(value),
-        1 => GateOp::Add(value),
-        2 => GateOp::Sub(value),
-        _ => GateOp::Div(value),
-    }
-}
-
-fn hint_from(code: u8) -> Hint {
-    match code & 3 {
-        1 => Hint::Good,
-        2 => Hint::Bad,
-        3 => Hint::Gold,
-        _ => Hint::None,
-    }
-}
-
 fn narrow_u16(v: u32) -> [u8; 2] {
     u16::try_from(v).unwrap_or(u16::MAX).to_le_bytes()
+}
+
+fn u16_at(buf: &[u8], at: usize) -> u16 {
+    u16::from_le_bytes(get(buf, at))
+}
+
+fn i16_at(buf: &[u8], at: usize) -> i16 {
+    i16::from_le_bytes(get(buf, at))
+}
+
+fn u32_at(buf: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(get(buf, at))
 }
 
 // --- public part -----------------------------------------------------------------------------
@@ -158,7 +165,7 @@ pub fn encode_public(p: &PublicState, out: &mut [u8; PUBLIC_LEN]) {
             CODEC_VERSION,
             flags,
             r.and_then(|r| r.winner).unwrap_or(2),
-            0,
+            p.layout,
         ],
     );
     put(head, 4, p.tick.to_le_bytes());
@@ -172,22 +179,31 @@ pub fn encode_public(p: &PublicState, out: &mut [u8; PUBLIC_LEN]) {
 }
 
 fn encode_side(s: &PublicSide, buf: &mut [u8]) {
-    put(buf, 0, narrow_u16(s.hp));
-    put(buf, 2, s.cannon_x.to_le_bytes());
-    put(buf, 4, s.aim.to_le_bytes());
+    let flags = (s.phase.code() & F_PHASE)
+        | (if s.dead { F_DEAD } else { 0 })
+        | (if s.rig_used { F_RIG } else { 0 })
+        | (if s.peek_used { F_PEEK } else { 0 });
     let live = s.cohorts();
-    let flags = (if s.rig_used { F_RIG } else { 0 }) | (if s.peek_used { F_PEEK } else { 0 });
-    put(buf, 6, [live.len() as u8, flags]);
-    let (head, cohorts) = buf.split_at_mut(SIDE_COHORTS);
-    for (g, at) in s.gates.iter().zip((SIDE_GATES..).step_by(GATE_LEN)) {
-        let (kind, value) = g.revealed.map_or((0, 0), GateOp::code);
-        let packed = g.hint.code()
-            | (u8::from(g.gold) << 2)
-            | (u8::from(g.revealed.is_some()) << 3)
-            | ((kind & 3) << 4);
-        put(head, at, [packed, value]);
+    let foes = s.enemies();
+    put(buf, 0, [s.stage, flags]);
+    put(buf, 2, s.cannon_x.to_le_bytes());
+    put(buf, SIDE_AIM, s.aim.to_le_bytes());
+    put(buf, 6, s.phase_ticks.to_le_bytes());
+    put(buf, 8, s.gold.to_le_bytes());
+    put(buf, 12, [live.len() as u8, foes.len() as u8]);
+    for (hp, at) in s.towers.iter().zip((SIDE_TOWERS..).step_by(2)) {
+        put(buf, at, hp.to_le_bytes());
     }
-    let mut chunks = cohorts.chunks_exact_mut(COHORT_LEN);
+    for (hp, at) in s.crates.iter().zip((SIDE_CRATES..).step_by(2)) {
+        put(buf, at, hp.to_le_bytes());
+    }
+    for (g, at) in s.gates.iter().zip((SIDE_GATES..).step_by(GATE_LEN)) {
+        let [lo, hi] = g.x.to_le_bytes();
+        put(buf, at, [lo, hi, g.revealed.map_or(0, GateOp::to_byte)]);
+    }
+    let (_, units) = buf.split_at_mut(SIDE_COHORTS.min(buf.len()));
+    let (cohorts, enemies) = units.split_at_mut((COHORT_CAP * UNIT_LEN).min(units.len()));
+    let mut chunks = cohorts.chunks_exact_mut(UNIT_LEN);
     for (c, rec) in live.iter().zip(chunks.by_ref()) {
         put(rec, 0, narrow_u16(c.id));
         put(rec, 2, c.count.to_le_bytes());
@@ -195,8 +211,18 @@ fn encode_side(s: &PublicSide, buf: &mut [u8]) {
         put(rec, 8, c.y.to_le_bytes());
         put(rec, 10, [c.age, c.last_row]);
     }
-    // Free slots are zero (one memset).
-    if let Some(rest) = cohorts.get_mut(live.len().saturating_mul(COHORT_LEN)..) {
+    if let Some(rest) = cohorts.get_mut(live.len().saturating_mul(UNIT_LEN)..) {
+        rest.fill(0);
+    }
+    let mut chunks = enemies.chunks_exact_mut(UNIT_LEN);
+    for (e, rec) in foes.iter().zip(chunks.by_ref()) {
+        put(rec, 0, narrow_u16(e.id));
+        put(rec, 2, e.count.to_le_bytes());
+        put(rec, 6, e.x.to_le_bytes());
+        put(rec, 8, e.y.to_le_bytes());
+        put(rec, 10, [e.tower, 0]);
+    }
+    if let Some(rest) = enemies.get_mut(foes.len().saturating_mul(UNIT_LEN)..) {
         rest.fill(0);
     }
 }
@@ -206,7 +232,8 @@ pub fn decode_public(buf: &[u8; PUBLIC_LEN], p: &mut PublicState) {
     let (head, sides) = buf.split_at(HEADER_LEN);
     let flags = byte(head, 1);
     let winner = byte(head, 2);
-    p.tick = u32::from_le_bytes(get(head, 4));
+    p.layout = byte(head, 3);
+    p.tick = u32_at(head, 4);
     p.options = MatchOptions {
         stake: u64::from_le_bytes(get(head, 8)),
         bot: [flags & F_BOT0 != 0, flags & F_BOT1 != 0],
@@ -218,43 +245,53 @@ pub fn decode_public(buf: &[u8; PUBLIC_LEN], p: &mut PublicState) {
         moved: u64::from_le_bytes(get(head, 16)),
         fee: u64::from_le_bytes(get(head, 24)),
     });
-    p.next_cohort_id = u32::from(u16::from_le_bytes(get(head, 32)));
+    p.next_cohort_id = u32::from(u16_at(head, 32));
     for (side, buf) in p.sides.iter_mut().zip(sides.chunks_exact(SIDE_LEN)) {
         decode_side(buf, side);
     }
 }
 
 fn decode_side(buf: &[u8], s: &mut PublicSide) {
-    s.hp = u32::from(u16::from_le_bytes(get(buf, 0)));
-    s.cannon_x = i16::from_le_bytes(get(buf, 2));
-    s.aim = i16::from_le_bytes(get(buf, 4));
-    let len = byte(buf, 6).min(COHORT_CAP as u8);
-    let flags = byte(buf, 7);
+    let flags = byte(buf, 1);
+    s.stage = byte(buf, 0);
+    s.phase = Phase::from_code(flags & F_PHASE);
+    s.dead = flags & F_DEAD != 0;
     s.rig_used = flags & F_RIG != 0;
     s.peek_used = flags & F_PEEK != 0;
-    let (head, cohorts) = buf.split_at(SIDE_COHORTS.min(buf.len()));
+    s.cannon_x = i16_at(buf, 2);
+    s.aim = i16_at(buf, SIDE_AIM);
+    s.phase_ticks = u16_at(buf, 6);
+    s.gold = u32_at(buf, 8);
+    s.cohort_len = byte(buf, 12).min(COHORT_CAP as u8);
+    s.enemy_len = byte(buf, 13).min(ENEMY_CAP as u8);
+    for (hp, at) in s.towers.iter_mut().zip((SIDE_TOWERS..).step_by(2)) {
+        *hp = u16_at(buf, at);
+    }
+    for (hp, at) in s.crates.iter_mut().zip((SIDE_CRATES..).step_by(2)) {
+        *hp = u16_at(buf, at);
+    }
     for (g, at) in s.gates.iter_mut().zip((SIDE_GATES..).step_by(GATE_LEN)) {
-        let [packed, value] = get(head, at);
+        let op = byte(buf, at.saturating_add(2));
         *g = PublicGate {
-            hint: hint_from(packed),
-            gold: packed & 4 != 0,
-            revealed: (packed & 8 != 0).then(|| op_from(packed >> 4, value)),
+            x: i16_at(buf, at),
+            revealed: (op != 0).then(|| GateOp::from_byte(op)),
         };
     }
-    s.cohort_len = len;
-    let live = usize::from(len);
+    let units = buf.get(SIDE_COHORTS..).unwrap_or(&[]);
+    let (cohorts, enemies) = units.split_at((COHORT_CAP * UNIT_LEN).min(units.len()));
+    let live = usize::from(s.cohort_len);
     for (c, rec) in s
         .cohorts
         .iter_mut()
-        .zip(cohorts.chunks_exact(COHORT_LEN))
+        .zip(cohorts.chunks_exact(UNIT_LEN))
         .take(live)
     {
         let [age, last_row] = get(rec, 10);
         *c = Cohort {
-            id: u32::from(u16::from_le_bytes(get(rec, 0))),
-            count: u32::from_le_bytes(get(rec, 2)),
-            x: i16::from_le_bytes(get(rec, 6)),
-            y: i16::from_le_bytes(get(rec, 8)),
+            id: u32::from(u16_at(rec, 0)),
+            count: u32_at(rec, 2),
+            x: i16_at(rec, 6),
+            y: i16_at(rec, 8),
             age,
             last_row,
         };
@@ -262,90 +299,65 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
     if let Some(rest) = s.cohorts.get_mut(live..) {
         rest.fill(Cohort::default());
     }
+    let foes = usize::from(s.enemy_len);
+    for (e, rec) in s
+        .enemies
+        .iter_mut()
+        .zip(enemies.chunks_exact(UNIT_LEN))
+        .take(foes)
+    {
+        *e = Enemy {
+            id: u32::from(u16_at(rec, 0)),
+            count: u32_at(rec, 2),
+            x: i16_at(rec, 6),
+            y: i16_at(rec, 8),
+            tower: byte(rec, 10),
+        };
+    }
+    if let Some(rest) = s.enemies.get_mut(foes..) {
+        rest.fill(Enemy::default());
+    }
 }
 
 // --- secret part -----------------------------------------------------------------------------
 
-fn put_peek(buf: &mut [u8], at: usize, pk: Option<Peek>) {
-    put(
-        buf,
-        at,
-        match pk {
-            None => [NONE, 0, 0, 0],
-            Some(pk) => {
-                let (kind, value) = pk.op.code();
-                [pk.cell, kind, value, u8::from(pk.gold)]
-            }
-        },
-    );
-}
-
-fn get_peek(buf: &[u8], at: usize) -> Option<Peek> {
-    let [cell, kind, value, gold] = get(buf, at);
-    (cell != NONE).then(|| Peek {
-        cell,
-        op: op_from(kind, value),
-        gold: gold != 0,
-    })
-}
-
-fn opt_cell(v: u8) -> Option<u8> {
-    (v != NONE).then_some(v)
-}
-
 /// Writes the secret state into the Secrets account's state bytes.
 pub fn encode_secret(x: &SecretState, out: &mut [u8; SECRET_LEN]) {
     put(out, 0, x.seed.to_le_bytes());
-    for (op, at) in x.deal.ops.iter().zip((S_OPS..).step_by(2)) {
-        let (kind, value) = op.code();
-        put(out, at, [kind, value]);
-    }
-    set(out, S_GOLD, x.deal.gold_cell);
-    for (h, at) in x.deal.hints.iter().flatten().zip(S_HINTS..) {
-        set(out, at, h.code());
-    }
-    for (r, at) in x.rigs.iter().zip(S_RIGS..) {
-        set(out, at, r.unwrap_or(NONE));
-    }
-    for (pk, at) in x.peeks.iter().zip((S_PEEKS..).step_by(PEEK_LEN)) {
-        put_peek(out, at, *pk);
+    for (op, at) in x.values.iter().flatten().zip(S_VALUES..) {
+        set(out, at, op.to_byte());
     }
     let logs = x
         .history
         .iter()
         .flat_map(|l| l.rigs.iter().zip(l.peeks.iter()));
-    for ((rig, pk), at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
-        set(out, at, rig.unwrap_or(NONE));
-        put_peek(out, at.saturating_add(1), *pk);
+    for ((rig, peek), at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
+        let (rs, rslot) = rig.map_or((NONE, 0), |r| (r.stage, r.slot));
+        let (pslot, pop) = peek.map_or((NONE, 0), |p| (p.slot, p.op.to_byte()));
+        put(out, at, [rs, rslot, pslot, pop]);
     }
 }
 
 /// Reads the secret state back. Every field of `x` is overwritten.
 pub fn decode_secret(buf: &[u8; SECRET_LEN], x: &mut SecretState) {
     x.seed = u64::from_le_bytes(get(buf, 0));
-    for (op, at) in x.deal.ops.iter_mut().zip((S_OPS..).step_by(2)) {
-        let [kind, value] = get(buf, at);
-        *op = op_from(kind, value);
+    for (op, at) in x.values.iter_mut().flatten().zip(S_VALUES..) {
+        *op = GateOp::from_byte(byte(buf, at));
     }
-    x.deal.gold_cell = byte(buf, S_GOLD);
-    for (h, at) in x.deal.hints.iter_mut().flatten().zip(S_HINTS..) {
-        *h = hint_from(byte(buf, at));
-    }
-    for (r, at) in x.rigs.iter_mut().zip(S_RIGS..) {
-        *r = opt_cell(byte(buf, at));
-    }
-    for (pk, at) in x.peeks.iter_mut().zip((S_PEEKS..).step_by(PEEK_LEN)) {
-        *pk = get_peek(buf, at);
-    }
-    for (phase, at) in x.history.iter_mut().zip((S_HISTORY..).step_by(2 * LOG_LEN)) {
-        let side1 = at.saturating_add(LOG_LEN);
-        *phase = PhaseLog {
-            rigs: [opt_cell(byte(buf, at)), opt_cell(byte(buf, side1))],
-            peeks: [
-                get_peek(buf, at.saturating_add(1)),
-                get_peek(buf, side1.saturating_add(1)),
-            ],
-        };
+    let logs = x
+        .history
+        .iter_mut()
+        .flat_map(|l| l.rigs.iter_mut().zip(l.peeks.iter_mut()));
+    for ((rig, peek), at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
+        let [rs, rslot, pslot, pop] = get(buf, at);
+        *rig = (rs != NONE).then_some(Rig {
+            stage: rs,
+            slot: rslot,
+        });
+        *peek = (pslot != NONE).then(|| Peek {
+            slot: pslot,
+            op: GateOp::from_byte(pop),
+        });
     }
 }
 
@@ -376,16 +388,26 @@ mod tests {
             age: 9,
             last_row: 9,
         }; COHORT_CAP];
+        back.public.sides[1].enemies = [Enemy {
+            id: 9,
+            count: 9,
+            x: 9,
+            y: 9,
+            tower: 9,
+        }; ENEMY_CAP];
+        back.secret.history[1].rigs[0] = Some(Rig { stage: 9, slot: 9 });
         decode_public(&pub_buf, &mut back.public);
         decode_secret(&sec_buf, &mut back.secret);
         assert_eq!(back, *m, "roundtrip at tick {}", m.public.tick);
         let mut again = [0u8; PUBLIC_LEN];
         encode_public(&back.public, &mut again);
         assert_eq!(again, pub_buf);
+        assert_eq!(&sec_buf[..8], &m.secret.seed.to_le_bytes());
     }
 
     #[test]
     fn roundtrip_whole_matches() {
+        let mut saw = [false; 3]; // a rig, a peek, enemies on the field
         for seed in 0..40u64 {
             let mut m = MatchState::new(
                 seed,
@@ -410,16 +432,17 @@ mod tests {
                     };
                 }
                 step(&mut m, &inputs, &mut NoEvents);
+                saw[2] |= m.public.sides.iter().any(|s| s.enemy_len > 0);
                 if m.public.tick % 7 == 0 || m.public.result.is_some() {
                     roundtrip(&m);
                 }
             }
-            assert!(m
-                .secret
-                .history
-                .iter()
-                .any(|l| l.rigs.iter().any(Option::is_some)));
+            for log in &m.secret.history {
+                saw[0] |= log.rigs.iter().any(Option::is_some);
+                saw[1] |= log.peeks.iter().any(Option::is_some);
+            }
         }
+        assert_eq!(saw, [true; 3]);
     }
 
     #[test]
@@ -434,6 +457,17 @@ mod tests {
         decode_secret(&sec_buf, &mut z.secret);
         assert_eq!(z, m);
         assert_eq!(pub_buf[0], CODEC_VERSION);
+        assert_eq!(history_bytes(&sec_buf), &[NONE, 0, NONE, 0].repeat(6)[..]);
+    }
+
+    #[test]
+    fn aim_sits_at_the_documented_offset() {
+        let mut m = MatchState::new(3, MatchOptions::default());
+        m.public.sides[1].aim = 0x1234;
+        let mut buf = [0u8; PUBLIC_LEN];
+        encode_public(&m.public, &mut buf);
+        let at = HEADER_LEN + SIDE_LEN + SIDE_AIM;
+        assert_eq!(&buf[at..at + 2], &0x1234i16.to_le_bytes());
     }
 
     #[test]
@@ -451,8 +485,11 @@ mod tests {
                 .public
                 .sides
                 .iter()
-                .all(|s| usize::from(s.cohort_len) <= COHORT_CAP));
+                .all(|s| usize::from(s.cohort_len) <= COHORT_CAP
+                    && usize::from(s.enemy_len) <= ENEMY_CAP));
             step(&mut m, &Inputs::default(), &mut NoEvents);
+            let mut w = Warlord::new(0, 1);
+            w.decide(&m.public);
         }
     }
 }
