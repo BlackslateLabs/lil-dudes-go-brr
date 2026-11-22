@@ -1,15 +1,32 @@
-import { useRef } from 'react';
+import { Suspense, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { CapsuleGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { Euler, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
 import type { CohortView } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { HALF_W, PALETTE, wx, wz } from './layout';
+import { preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
 
 /** Instance cap per crowd (TECH §5: ~1,500 on a phone). */
 const MAX_UNITS = 1500;
 const SPACING = 0.32;
 /** Widest a crowd is drawn either side of its centre: about the sim's gate grace (100 units). */
 const MAX_HALF_SPREAD = 0.6;
+/**
+ * Model scale. The characters are ~0.8 tall with arms down (baked "idle" pose), so a dude is about
+ * as tall as the old capsule and ~0.55 wide; the narrow-column spread above is unchanged.
+ */
+const UNIT_SCALE = 1.0;
+
+/**
+ * Team colours on the shared Mini Characters colormap (see models/assets.ts `tintedMap`):
+ * our knight's armour + helmet swatches go team blue, the robot's metal goes team red and its
+ * brass bits a dark trim, so from the high camera each crowd is one clear colour.
+ */
+const DUDE_TINT: readonly TintRule[] = [{ cells: [[5, 3], [3, 3]], ref: [5, 3], color: PALETTE.me }];
+const TROOP_TINT: readonly TintRule[] = [
+  { cells: [[5, 3], [3, 3]], ref: [5, 3], color: PALETTE.enemy },
+  { cells: [[1, 3]], color: '#5a1f2a' },
+];
 
 /** Visible units for a cohort: 1:1 when small, then sub-linear so big crowds stay affordable. */
 function unitsFor(count: number): number {
@@ -17,26 +34,31 @@ function unitsFor(count: number): number {
   return count <= 30 ? count : Math.round(30 + Math.sqrt(count - 30) * 4);
 }
 
-const unitGeo = new CapsuleGeometry(0.24, 0.36, 2, 8);
-unitGeo.translate(0, 0.44, 0);
-
 const m4 = new Matrix4();
 const q = new Quaternion();
+const e = new Euler();
 const pos = new Vector3();
-const one = new Vector3(1, 1, 1);
+const scl = new Vector3(UNIT_SCALE, UNIT_SCALE, UNIT_SCALE);
+
+preloadPacks('dudes');
 
 /** Your dudes (blue) and the base's troops (red) in your lane. No number badge per crowd (SPEC v3 §7). */
 export function Crowds({ feed }: { feed: MatchFeed }) {
   return (
-    <>
+    <Suspense fallback={null}>
       <Crowd feed={feed} enemy={false} />
       <Crowd feed={feed} enemy />
-    </>
+    </Suspense>
   );
 }
 
 function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
   const ref = useRef<InstancedMesh>(null!);
+  const pack = usePack('dudes');
+  const geo = pack.geo[enemy ? 'troop' : 'dude']!;
+  const material = useTintedMaterial(pack, enemy ? 'troop' : 'dude', enemy ? TROOP_TINT : DUDE_TINT, 0.5);
+  // Dudes run up the lane (−Z, backs to the camera); troops run down it, facing us.
+  const yaw = enemy ? 0 : Math.PI;
 
   useFrame(({ clock }) => {
     const mesh = ref.current;
@@ -67,9 +89,14 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
         const ang = i * 2.39996 + c.id * 0.7;
         const ux = Math.max(-HALF_W + 0.3, Math.min(HALF_W - 0.3, cx + r * Math.cos(ang) * kx));
         const uz = cz + r * Math.sin(ang) * kz;
-        const bob = Math.abs(Math.sin(time * 13 + i * 1.7 + c.id)) * 0.18;
+        // Cheap walk: a hop and a side-to-side waddle per instance, phase-shifted so the crowd
+        // doesn't move in lockstep. The model itself is static (no skinning).
+        const ph = time * 13 + i * 1.7 + c.id;
+        const bob = Math.abs(Math.sin(ph)) * 0.16;
+        e.set(0, yaw + Math.sin(ph * 0.37 + i) * 0.12, Math.cos(ph) * 0.2);
+        q.setFromEuler(e);
         pos.set(ux, bob, uz);
-        m4.compose(pos, q, one);
+        m4.compose(pos, q, scl);
         mesh.setMatrixAt(n++, m4);
       }
     }
@@ -77,9 +104,5 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
     mesh.instanceMatrix.needsUpdate = true;
   });
 
-  return (
-    <instancedMesh ref={ref} args={[unitGeo, undefined, MAX_UNITS]} frustumCulled={false}>
-      <meshLambertMaterial color={enemy ? PALETTE.enemy : PALETTE.me} />
-    </instancedMesh>
-  );
+  return <instancedMesh ref={ref} args={[geo, material, MAX_UNITS]} frustumCulled={false} />;
 }

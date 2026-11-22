@@ -1,0 +1,221 @@
+{
+ "dudes": {
+  "kit": "mini",
+  "pieces": [
+   [
+    "dude",
+    "character-knight",
+    {
+     "pose": "idle",
+     "dropDown": true,
+     "simplify": 0.45,
+     "error": 0.02
+    }
+   ],
+   [
+    "troop",
+    "character-robot",
+    {
+     "pose": "idle",
+     "dropDown": true,
+     "simplify": 0.45,
+     "error": 0.02
+    }
+   ]
+  ]
+ },
+ "blaster": {
+  "kit": "blaster",
+  "pieces": [
+   [
+    "launcher",
+    "blaster-b"
+   ],
+   [
+    "crate",
+    "crate-wide"
+   ]
+  ]
+ },
+ "towers": {
+  "kit": "td",
+  "pieces": [
+   [
+    "tower-bottom",
+    "tower-round-bottom-a"
+   ],
+   [
+    "tower-roof",
+    "tower-round-roof-b"
+   ]
+  ]
+ },
+ "hall": {
+  "kit": "town",
+  "pieces": [
+   [
+    "wall",
+    "wall"
+   ],
+   [
+    "wall-doorway-round",
+    "wall-doorway-round"
+   ],
+   [
+    "wall-window-round",
+    "wall-window-round"
+   ],
+   [
+    "wall-window-glass",
+    "wall-window-glass"
+   ],
+   [
+    "wall-window-shutters",
+    "wall-window-shutters"
+   ],
+   [
+    "pillar-stone",
+    "pillar-stone"
+   ],
+   [
+    "banner-red",
+    "banner-red"
+   ],
+   [
+    "roof-high",
+    "roof-high"
+   ],
+   [
+    "roof-high-corner",
+    "roof-high-corner"
+   ],
+   [
+    "roof-high-point",
+    "roof-high-point"
+   ],
+   [
+    "lantern",
+    "lantern"
+   ],
+   [
+    "wall-block",
+    "wall-block"
+   ]
+  ]
+ },
+ "nature": {
+  "kit": "nature",
+  "pieces": [
+   [
+    "tree_default",
+    "tree_default"
+   ],
+   [
+    "tree_oak",
+    "tree_oak"
+   ],
+   [
+    "tree_fat",
+    "tree_fat"
+   ],
+   [
+    "tree_detailed",
+    "tree_detailed"
+   ],
+   [
+    "tree_cone",
+    "tree_cone"
+   ],
+   [
+    "tree_pineRoundA",
+    "tree_pineRoundA"
+   ],
+   [
+    "tree_blocks",
+    "tree_blocks"
+   ],
+   [
+    "plant_bush",
+    "plant_bush"
+   ],
+   [
+    "plant_bushLarge",
+    "plant_bushLarge"
+   ],
+   [
+    "plant_bushDetailed",
+    "plant_bushDetailed"
+   ],
+   [
+    "grass",
+    "grass"
+   ],
+   [
+    "grass_large",
+    "grass_large"
+   ],
+   [
+    "rock_largeA",
+    "rock_largeA"
+   ],
+   [
+    "rock_largeB",
+    "rock_largeB"
+   ],
+   [
+    "rock_smallA",
+    "rock_smallA"
+   ],
+   [
+    "rock_smallC",
+    "rock_smallC"
+   ],
+   [
+    "stone_largeB",
+    "stone_largeB"
+   ],
+   [
+    "stone_smallC",
+    "stone_smallC"
+   ],
+   [
+    "flower_redA",
+    "flower_redA"
+   ],
+   [
+    "flower_yellowA",
+    "flower_yellowA"
+   ],
+   [
+    "flower_purpleA",
+    "flower_purpleA"
+   ],
+   [
+    "mushroom_red",
+    "mushroom_red"
+   ],
+   [
+    "stump_round",
+    "stump_round"
+   ],
+   [
+    "log",
+    "log"
+   ]
+  ],
+  "colors": {
+   "leafsGreen": "#43b84e",
+   "leafsDark": "#2f9e55",
+   "grass": "#5fcf4f",
+   "woodBark": "#a86a42",
+   "woodBarkDark": "#8d5636",
+   "woodInner": "#f2d9a6",
+   "dirt": "#b98556",
+   "stone": "#c8cedd",
+   "colorRed": "#ff4f6a",
+   "colorYellow": "#ffd23f",
+   "colorPurple": "#b58cff",
+   "_defaultMat": "#fff4e6"
+  }
+ }
+}
