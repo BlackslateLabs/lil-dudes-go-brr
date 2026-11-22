@@ -1,0 +1,27 @@
+# Render Blueprint for apps/server (not applied by anyone yet; see docs/TECH.md §9 "Deploy").
+# Secrets are set in the Render dashboard (sync: false), never here.
+services:
+  - type: web
+    name: lil-dudes-server
+    runtime: docker
+    dockerfilePath: ./apps/server/Dockerfile
+    dockerContext: .
+    # Free instances sleep after 15 min idle (the bot and the sweeper stop, first request ~1 min).
+    # Starter keeps it awake for the demo.
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: BASE_RPC_URL
+        value: https://rpc.magicblock.app/devnet
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SPONSOR_SECRET_KEY
+        sync: false
+      - key: BOT_SECRET_KEY
+        sync: false

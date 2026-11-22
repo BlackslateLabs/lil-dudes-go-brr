@@ -79,7 +79,7 @@ test('topup limits: per burner, per IP, hourly budget; refuses bad input and the
   assert.match(String(big.body.error), /budget/);
   // No faucet configured → 503.
   const off = createApp({});
-  assert.equal((await off.request('/topup', { method: 'POST', body: '{}' })).status, 503);
+  assert.equal((await off.request('/topup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 503);
   assert.equal(((await (await app.request('/faucet')).json()) as { enabled: boolean }).enabled, true);
 });
 

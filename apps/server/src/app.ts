@@ -4,10 +4,10 @@
 // join_match, then either delegates). State is in memory with short TTLs (one instance is enough
 // for the hackathon; a restart only drops waiting players).
 import { Hono, type Context } from 'hono';
-import { cors } from 'hono/cors';
 import { baseConnection, settleNow } from '@lil-dudes/client';
 import type { BotService } from './bot';
 import type { Faucet } from './faucet';
+import { guard } from './guard';
 import { Budget, RateLimit } from './limits';
 
 /** Stake tiers in lamports (programs/lil_dudes STAKE_TIERS). */
@@ -52,6 +52,10 @@ export interface ServerOptions {
   sweeperStats?: () => unknown;
   /** POST /settle: "Settle now" for a burner with no SOL (the sponsor pays the fee). */
   settle?: (id: bigint) => Promise<{ state: string; signature?: string }>;
+  /** Allowed web origins (CORS_ORIGINS); default local dev origins; '*' = any. */
+  origins?: string[] | '*';
+  /** Requests per IP per minute over all routes (default 240). */
+  perMinute?: number;
 }
 
 /** MVP §4 "Faucet abuse": a burner is topped up to `stake + reserve` (≤ maxBalance), once per
@@ -90,6 +94,8 @@ export function clientIp(c: Context, trustProxy: boolean): string {
 const isPubkey = (s: unknown): s is string => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 const isU64 = (s: unknown): s is string => typeof s === 'string' && /^\d{1,20}$/.test(s) && BigInt(s) < 2n ** 64n;
 const isTier = (n: unknown): n is number => typeof n === 'number' && (STAKE_TIERS as readonly number[]).includes(n);
+const isCode = (s: string) => new RegExp(`^[${CODE_ALPHABET}]{6}$`).test(s);
+const isTicket = (s: string) => /^[a-z0-9]{16}$/.test(s);
 
 export function createApp(opts: ServerOptions = {}) {
   const now = opts.now ?? Date.now;
@@ -136,7 +142,14 @@ export function createApp(opts: ServerOptions = {}) {
     k.match ? { ticket: k.ticket, state: 'matched' as const, stake: k.stake, ...k.match } : { ticket: k.ticket, state: 'waiting' as const, stake: k.stake };
 
   const app = new Hono();
-  app.use('*', cors());
+  for (const m of guard({ origins: opts.origins, now, perMinute: opts.perMinute, ipOf: (c) => clientIp(c, opts.trustProxy ?? false) })) app.use('*', m);
+  app.notFound((c) => c.json({ error: 'no such route' }, 404));
+  // Never leak a stack trace or an internal message shape.
+  app.onError((e, c) => {
+    console.error('[server]', String(e).split('\n')[0]);
+    return c.json({ error: 'internal error' }, 500);
+  });
+  app.get('/healthz', (c) => c.json({ ok: true }));
   app.get('/health', (c) =>
     c.json({
       ok: true,
@@ -165,7 +178,9 @@ export function createApp(opts: ServerOptions = {}) {
 
   app.get('/rooms/:code', (c) => {
     sweep();
-    const room = rooms.get(c.req.param('code').toUpperCase());
+    const code = c.req.param('code').toUpperCase();
+    if (!isCode(code)) return c.json({ error: 'a room code is 6 letters/digits' }, 400);
+    const room = rooms.get(code);
     return room ? c.json(room) : c.json({ error: 'no such room' }, 404);
   });
 
@@ -202,7 +217,9 @@ export function createApp(opts: ServerOptions = {}) {
 
   app.get('/queue/:ticket', (c) => {
     sweep();
-    const k = tickets.get(c.req.param('ticket'));
+    const id = c.req.param('ticket');
+    if (!isTicket(id)) return c.json({ error: 'bad ticket' }, 400);
+    const k = tickets.get(id);
     if (!k) return c.json({ error: 'no such ticket (expired?)' }, 404);
     k.seenAt = now();
     maybeBot(k);

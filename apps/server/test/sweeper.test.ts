@@ -68,5 +68,5 @@ test('POST /settle: validates, rate-limits, reports', async () => {
   for (let i = 0; i < 9; i++) await post({ id: '77' });
   assert.equal((await post({ id: '77' })).status, 429);
   assert.equal(calls.length, 10);
-  assert.equal((await createApp({}).request('/settle', { method: 'POST', body: '{}' })).status, 503);
+  assert.equal((await createApp({}).request('/settle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 503);
 });

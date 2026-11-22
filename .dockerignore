@@ -1,0 +1,18 @@
+# Docker build context = repo root (apps/server/Dockerfile). Keep it small and secret-free.
+**/node_modules
+target
+tests-magicsvm/target
+spikes
+crates
+programs
+tools
+pvt-docs
+.git
+**/keys
+**/*.env
+**/.env*
+!**/.env.example
+**/*-keypair.json
+**/id.json
+packages/client/scripts/out
+apps/web

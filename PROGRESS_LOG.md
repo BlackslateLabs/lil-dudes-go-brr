@@ -629,3 +629,65 @@ left. A player's own fast paths (creator any time, 60 s, ~60 s) are unchanged.
 **CONTRACT (additions):** `settleNow`, `LiveSource.settleNow`, `withdraw`, `planWithdraw`,
 `RENT_EXEMPT_MIN`, `BASE_FEE`, `vaultBalance`, `myMatches`, `recoverMatches`, types
 `SettleNowResult`, `WithdrawPlan`, `Recovered`.
+
+## 2026-11-22 · Kai · M4/5 step 6 (server hardening + deploy plan) · [STAGE]
+**Did:** M4/5 step 6 done (last step). `apps/server/src/guard.ts`: CORS only for `CORS_ORIGINS`
+(default localhost / LAN dev origins), 240 req/min per IP (before anything else), 4 KB body cap,
+JSON-only writes (415), secure headers, JSON 404/500 without stack traces, strict room-code /
+ticket formats; `GET /healthz` (never limited). `apps/server/Dockerfile` + `.dockerignore` (keys
+and `.env` excluded and deleted in the image) + `render.yaml` (Starter, 1 instance, secrets
+`sync: false`). Docker's daemon isn't running here, so the image itself was not built; the
+Dockerfile's steps were replayed in a clean copy (`pnpm install --frozen-lockfile --filter
+server...` → start → `/healthz` ok, CORS / 415 / 503 / 404 as expected). 3 new tests (16).
+Exact deploy steps: TECH §9 "Deploy". **Not deployed.**
+
+## 2026-11-22 · Kai · M4–M5 back end done (summary) · [STAGE] [DECISION] [HANDOFF]
+**M4 + M5 back end: done.** Hidden info is provably hidden on the real program, the result screen
+has all its data, and money + onboarding work end to end on devnet.
+
+| What | Result |
+|---|---|
+| Privacy re-check (real program, devnet + TEE) | **PASS**, 2 runs, 0 fails, 0 leak hits (opponent token, third token, no token; every read path + subscription; TECH §4) |
+| `reveal()` (Live + Offline) | deals, rigs/peeks/`sprung`, GOTCHAs, payout + why, txs + explorer links, settlement; live 0.05 SOL match: paid = balance deltas exactly |
+| Faucet `POST /topup` | 0.085 SOL in 3.0 s; limits per burner / IP / hour; devnet-only guard |
+| Online bot | fresh 0-SOL burner → playing the bot in **15.4 s**; free only; ~0.012 SOL per match |
+| Money edges | program upgraded (anyone-after-timeout refunds); `settleNow`, `withdraw`, `recoverMatches`; sweeper e2e PASS (abandoned join cancelled, stuck delegated match aborted + closed, exact refunds) |
+| Tests | Rust 80 · MagicSVM 17 · client 16 · server 16; clippy -D warnings, fmt; autofixer clean |
+| Program | `4QFSXrcG…9FDa` upgraded at slot 524,984,012 (457,760 B .so, account extended to 467,912 B) |
+
+**SOL (deploy wallet):** 7.558699241 → 7.432407001 this session (−0.1263): upgrade 0.0543
+(0.0520 now locked as program rent; buffer refunded), devnet runs ~0.072 (2 privacy, 2 live, 1 bot,
+1 sweeper e2e, faucet e2e; ~0.012 per live match is the real delegation + commit cost).
+**Sponsor `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`: 0 SOL, Kai funds 3 SOL** (step 3 entry).
+
+**Decided:** faucet target stake + 0.035 SOL (≤ 0.3); the bot creates and the human joins (a fresh
+burner needs only fees); anyone-after-timeout refunds (20 min / 5 min / ~5 min); the sweeper
+closes paid-out matches after 10 min (result screens keep working); Render Starter recommended
+over free (free sleeps → bot and sweeper stop).
+
+**Risks:** server state is in memory (one instance; a restart drops the queue and resets limits);
+a commit that never lands on base (Match stuck delegated after `finish`) has no program-side
+recovery (never seen); the sponsor drains ~0.012 SOL per bot match plus top-ups (3 SOL ≈ 35
+staked top-ups or ~80 free ones + bot matches; watch `GET /faucet`); devnet faucets for refills.
+
+**Handoff (Suparno), exact calls** (all in `@lil-dudes/client`; `server` = the server URL):
+- **First visit / Home:** on start, `recoverMatches(baseConnection(), burner)` (refunds stale matches).
+- **Wallet sheet:** balance `baseConnection().getBalance(burner.publicKey)`; **Top up**
+  `topUp(server, burner.publicKey)`; **Withdraw** `withdraw(base, burner, new PublicKey(addr), 'all' |
+  lamports)` (show its error text: dust / new-address rules); validate first with
+  `planWithdraw(balance, amount, destBalance)` to grey out the button.
+- **Stake picker:** before a staked Quick Match / Room, `topUp(server, burner.publicKey, stake)`;
+  grey a tier if the top-up throws a limit and the balance < stake + 0.035 SOL.
+- **Quick Match (free):** `quickMatch(...)` may return `bot: true` after ~5 s → "Playing the
+  Warlord bot"; flow is the normal `role: 'join'` one. `topUp(server, burner.publicKey)` first.
+- **Waiting:** `LiveSource` `onStage('setup', 'opponent never showed: aborting (refund)')` → show
+  "Opponent didn't show, refunded"; then `view.status === 'ended'` with `result === null`.
+- **Result:** `await src.awaitReveal()` (or `src.reveal()` + `onStage('finished','settled')`):
+  `payout.why` / `paid` / `net` for the count-up line, `deals` + `history[p].rigs/peeks/sprung` +
+  `gotchas` for the full reveal, `txs[].url` + `matchUrl` for explorer links. If
+  `settlement.state === 'pending'` 20 s after the end → **Settle now** button →
+  `await src.settleNow(server)`.
+- **Offline (bot) result:** `new OfflineSource(...).reveal()` has the same shape (`settlement:
+  'offline'`, `txs: []`).
+- **Server URL:** local `http://<laptop-ip>:8787` (`pnpm --filter server start`); deployed URL after
+  Kai runs TECH §9 "Deploy".

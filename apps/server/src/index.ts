@@ -5,6 +5,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { onlineBot } from './bot';
 import { loadKey, loadSponsorKey, solanaFaucet } from './faucet';
+import { parseOrigins } from './guard';
 import { sweeper } from './sweeper';
 
 const port = Number(process.env.PORT ?? 8787);
@@ -16,8 +17,9 @@ const bot = faucet && process.env.BOT !== '0' ? onlineBot({ faucet, baseRpc: pro
 // The sweeper (permissionless refunds / settles / closes, sweeper.ts) signs with the sponsor. SWEEP=0 turns it off.
 const sweep = sponsor && process.env.SWEEP !== '0' ? sweeper({ signer: sponsor }) : null;
 sweep?.start();
-const app = createApp({ faucet, bot, trustProxy: process.env.TRUST_PROXY === '1', sweeperStats: () => sweep?.stats ?? null });
+const origins = parseOrigins(process.env.CORS_ORIGINS);
+const app = createApp({ faucet, bot, origins, trustProxy: process.env.TRUST_PROXY === '1', sweeperStats: () => sweep?.stats ?? null });
 serve({ fetch: app.fetch, port });
 console.log(
-  `server listening on :${port}; faucet ${faucet ? `on (sponsor ${faucet.address})` : 'off (no SPONSOR_KEYPAIR_PATH / SPONSOR_SECRET_KEY)'}; bot ${bot ? `on (${bot.address})` : 'off'}; sweeper ${sweep ? 'on' : 'off'}`,
+  `server listening on :${port}; faucet ${faucet ? `on (sponsor ${faucet.address})` : 'off (no SPONSOR_KEYPAIR_PATH / SPONSOR_SECRET_KEY)'}; bot ${bot ? `on (${bot.address})` : 'off'}; sweeper ${sweep ? 'on' : 'off'}; CORS ${origins === '*' ? 'any origin' : origins ? origins.join(' ') : 'local dev origins'}`,
 );

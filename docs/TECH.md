@@ -1,12 +1,15 @@
 # Lil Dudes Go Brr: Technical Design
 
-Status: **BUILT through M3** (live 1v1 on devnet + the TEE). Updated 2026-11-22. Game rules: [SPEC.md](SPEC.md).
+Status: **BUILT through M5 (back end)**: live 1v1 on devnet + the TEE, hidden info re-checked, money edges, faucet, online bot, sweeper. Updated 2026-11-22. Game rules: [SPEC.md](SPEC.md).
 Facts marked ✅ were checked against MagicBlock docs, MagicBlock's example repo, or live devnet on
 2026-11-21/22; ⚠️ = unverified; ❌ = disproved. **Stage 0 (M2) ran on 2026-11-22: every check passed
 or has a proven workaround. Numbers and rerun commands: [spikes/stage0/RESULTS.md](../spikes/stage0/RESULTS.md).**
 **M3 (2026-11-22): the real `lil_dudes` program is on devnet (`4QFSXrcG…9FDa`) and three headless bot-vs-bot
 matches ran end to end through `LiveSource` (KO, KO, timer win), each paid out exactly by the Magic Action.
 Final accounts, instructions and compute: §4; client: §5; results: `packages/client/scripts/out/`.**
+**M4–M5 (2026-11-22): privacy re-check of the real program PASS (§4 Privacy); `reveal()` carries the whole
+result screen (§5); anyone-after-timeout refunds (program upgraded); server faucet, online bot, sweeper,
+hardening and a deploy plan (§9). Web wiring is Suparno's (PROGRESS_LOG handoff).**
 
 ## 1. Decisions
 
@@ -76,7 +79,7 @@ lil-dudes-go-brr/
 |---|---|---|
 | `MockSource` | hand-written TS fake: scripted cohorts, gates, reveals, events at 20 Hz | day 1 of the scaffold |
 | `OfflineSource` | the real rules (`packages/sim-wasm`) + local bot, no chain | end of M1 |
-| `LiveSource` | the chain feed (TEE websocket), played out ~3 ticks behind, events from state diffs (no prediction needed: p99 gap 51–53 ms) | ✅ M3 |
+| `LiveSource` | the chain feed (TEE websocket), played out ~3 ticks behind, events from state diffs (no prediction needed: p99 gap 51–53 ms); `reveal()` / `awaitReveal()` for the result screen, `settleNow()` | ✅ M3, M4–M5 |
 
 The web app only talks to `MatchSource` (`subscribe(view => …)`, `setAim(x)`, `rig(cell)`,
 `peek(cell)`), so moving from mock → offline → live is a one-line change, with no rendering rewrite.
@@ -418,3 +421,29 @@ players recorded in the Match.
   cap, JSON-only writes, 240 requests / min per IP (`X-Forwarded-For` behind the proxy with
   `TRUST_PROXY=1`), secure headers, JSON errors without stack traces, strict validation of every
   pubkey / u64 / tier / code / ticket.
+
+### Deploy (not done: Kai runs these)
+
+Image: `apps/server/Dockerfile` (build context = repo root, ~only `packages/client`,
+`packages/sim-wasm`, `apps/server`; keys and `.env` files are excluded by `.dockerignore` and
+deleted in the image). One instance only (state is in memory). Recommended: **Render, Starter
+plan** (free instances sleep after 15 min idle, which stops the bot and the sweeper and makes the
+first request take ~1 min); `render.yaml` is the Blueprint.
+
+1. Fund the sponsor: `solana transfer 8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr 3 --allow-unfunded-recipient -u devnet`.
+2. Render → New → Blueprint → pick the repo (it reads `render.yaml`). In the service's
+   Environment, set the three `sync: false` values: `SPONSOR_SECRET_KEY` = the JSON array in
+   `~/.config/lil-dudes/sponsor.json`, `BOT_SECRET_KEY` = the one in `~/.config/lil-dudes/bot.json`
+   (paste them in the dashboard only; never in a file in the repo), `CORS_ORIGINS` = the web
+   app's URL (e.g. `https://lil-dudes.vercel.app`, comma-separate several).
+3. Manual deploy (autoDeploy is off). Check `https://<service>.onrender.com/healthz` → `{"ok":true}`
+   and `/health` → `faucet: true`, `bot.address` = `CJbQ…9ogW`, `sweeper.runs` going up.
+4. Smoke test from the laptop: `pnpm --filter @lil-dudes/client exec tsx scripts/vs-server-bot.ts
+   --server https://<service>.onrender.com` (a fresh burner: top-up → bot match → settle).
+5. Give Suparno the URL for the web app's server setting.
+
+Fly.io instead: `fly launch --no-deploy --dockerfile apps/server/Dockerfile --internal-port 8787`,
+`fly secrets set SPONSOR_SECRET_KEY="$(cat ~/.config/lil-dudes/sponsor.json)" BOT_SECRET_KEY="$(cat
+~/.config/lil-dudes/bot.json)" CORS_ORIGINS=https://… TRUST_PROXY=1`, keep `min_machines_running =
+1` and `fly scale count 1`, then `fly deploy`. Locally: `pnpm --filter server start` reads
+`apps/server/.env` (key paths, gitignored).

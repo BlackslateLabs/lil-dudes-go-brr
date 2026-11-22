@@ -1,6 +1,6 @@
 # Lil Dudes Go Brr: MVP and build order
 
-Status: **DECIDED** unless marked **OPEN**. Updated 2026-11-21.
+Status: **DECIDED** unless marked **OPEN**. Updated 2026-11-22 (M4–M5 back end done: §4 edge cases, §8 wallets).
 Idea: [IDEA.md](IDEA.md) · Rules: [SPEC.md](SPEC.md) · Tech: [TECH.md](TECH.md).
 
 ## 1. The MVP in one paragraph
@@ -152,8 +152,8 @@ Each milestone ends with something you can play or test. K = Kai, S = Suparno.
 | **M1** | **Playable offline** | monorepo scaffold; `crates/sim` (SPEC v2.1, tests); WASM build; local bot; `packages/client` `MatchView` v0 | arena prototype (camera, drag, crowds, gates, clash, HUD) on the WASM sim | a full 2:00 match vs the local bot on a phone at 60 fps |
 | **M2** | **Chain proven** | Stage 0 spike program on devnet-tee (TECH §7 checklist) | art direction (§5 OPEN items), first real assets | all 6 checks pass, or the fallback is chosen and logged |
 | **M3** | **Live 1v1** | `lil_dudes` program: create/join/delegate/start/advance/set_aim/finish; MagicSVM tests; client feed | switch the arena to the live feed with WASM prediction; room-code screens | two phones play a full live match on devnet, smooth |
-| **M4** | **Hidden info** | Secrets/Peek permissions, VRF deals, rig, peek, reveal, re-deal | plant window, peek, GOTCHA, re-deal flip, Verify screen | the opponent's client provably can't read `?` values; Verify ✓ |
-| **M5** | **Money + onboarding** | vault, stakes, settle action + fallback; `apps/server` faucet + quick-match queue | stake picker, wallet sheet, result count-up, Home, waiting screens | a staked match settles correctly on devnet from a fresh phone |
+| **M4** ✅ back end | **Hidden info** | Secrets/Peek permissions, VRF deals, rig, peek, reveal, re-deal | plant window, peek, GOTCHA, re-deal flip, Verify screen | the opponent's client provably can't read `?` values; Verify ✓ |
+| **M5** ✅ back end | **Money + onboarding** | vault, stakes, settle action + fallback; `apps/server` faucet + quick-match queue | stake picker, wallet sheet, result count-up, Home, waiting screens | a staked match settles correctly on devnet from a fresh phone |
 | **M6** | **Feel + tutorial** | Rust balance runner → tune HP/deck; bot polish; perf of `advance` | tutorial, juice pass, sound, haptics, quality tiers | 5 people play; notes logged; numbers tuned |
 | **M7** | **Ship** | deploy, monitoring, README | demo video, landing copy | submitted |
 
