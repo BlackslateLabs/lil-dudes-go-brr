@@ -1,5 +1,6 @@
-//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4), rules v3 (docs/SPEC.md: both
-//! players race identical copies of one level; rig and peek name a gate slot).
+//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4), rules v4 (docs/SPEC.md: both
+//! players race identical copies of one two-stage level, the town hall raid in place at the end
+//! of stage 1; rig and peek name a gate slot).
 //!
 //! Base layer: `create_match` → `join_match` → `delegate_match` (Match, Secrets, Peek×2 → the
 //! TEE); `cancel_match` refunds a match that never got there.

@@ -274,7 +274,8 @@ mod tests {
             [0, NONE, NONE, NONE, NONE, 0]
         );
         m.public.sides[0].stage = 1;
-        m.secret.history[1].rigs[0] = Some(Rig { stage: 2, slot: 3 });
+        // Rules v4: a rig names my own current stage (the opponent's copy of it).
+        m.secret.history[1].rigs[0] = Some(Rig { stage: 1, slot: 3 });
         m.secret.history[1].peeks[0] = Some(SimPeek {
             slot: 4,
             op: lil_dudes_sim::GateOp::Div(2),
@@ -289,7 +290,7 @@ mod tests {
                 p.peek_slot,
                 p.peek_op
             ],
-            [1, 2, 3, 1, 4, 0x82]
+            [1, 1, 3, 1, 4, 0x82]
         );
         // Side 1 did nothing in its stage 0.
         write_peek(&m, 1, &mut p);
