@@ -58,6 +58,9 @@ export interface OfflineOptions {
   botSeed?: bigint;
   /** Guided first match: side 0's Fight 1 waves at TUTORIAL_WAVE_PCT (SPEC §10). Default false. */
   tutorial?: boolean;
+  /** The bot also drives `mySide` (inputs are ignored): a hands-off match for the Home-screen
+   *  background, demos and tests. Default false. */
+  selfBot?: boolean;
 }
 
 function randomU64(): bigint {
@@ -92,7 +95,7 @@ export class OfflineSource implements MatchSource {
     const me = opts.myName ?? 'You';
     const them = opts.opponentName ?? 'Warlord';
     this.names = this.mySide === 0 ? [me, them] : [them, me];
-    const botMask = this.mySide === 0 ? 0b10 : 0b01;
+    const botMask = opts.selfBot ? 0b11 : this.mySide === 0 ? 0b10 : 0b01;
     const stake = BigInt(Math.max(0, Math.floor(opts.stake ?? 0)));
     this.sim = new SimMatch(this.seed, opts.botSeed ?? randomU64(), stake, botMask, opts.tutorial ?? false);
     this.current = { view: this.decodeView(), priv: this.decodePrivate() };
