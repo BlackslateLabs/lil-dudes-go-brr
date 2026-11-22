@@ -10,11 +10,11 @@ export class Bot {
     [Symbol.dispose](): void;
     /**
      * The bot's input for the tick the given public state is about to process:
-     * `[aim, rig, peek]`, each -1 for none. Garbage or short input gives `[-1, -1, -1]`.
+     * `[aim, rig slot, peek slot]`, each -1 for none. Garbage or short input gives `[-1, -1, -1]`.
      */
     decide(public_bytes: Uint8Array | number[]): Int32Array;
     /**
-     * `seed` must be independent of the match seed (it only drives tie-breaks and rig/peek cells).
+     * `seed` must be independent of the match seed (it only drives tie-breaks and rig/peek slots).
      */
     constructor(side: number, seed: bigint);
 }
@@ -32,8 +32,9 @@ export class SimMatch {
      */
     events(): Float64Array;
     /**
-     * Every phase's rigs and peeks so far (codec history layout, 3 × 2 × [rig, peek cell, kind,
-     * value, gold], 255 = none); the live result screen reads the same bytes from the Match.
+     * Every stage's rigs and peeks so far (codec history layout: 3 stages × 2 sides ×
+     * [rig victim stage, rig slot, peek slot, peek op byte], 255 = none; the stage index is
+     * the actor's own stage). The live result screen reads the same bytes from the Match.
      */
     history(): Uint8Array;
     /**
@@ -52,7 +53,8 @@ export class SimMatch {
     public_bytes(): Uint8Array;
     /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-     * Later calls before the step win.
+     * `rig` / `peek` are gate slots (rig: of the opponent's current stage). Later calls before
+     * the step win.
      */
     set_input(side: number, aim?: number | null, rig?: number | null, peek?: number | null): void;
     /**
@@ -73,16 +75,25 @@ export class SimMatch {
 export function codec_version(): number;
 
 /**
- * Every constant packages/client mirrors, as JSON (the TS parity test compares them).
+ * Every constant packages/client mirrors, plus the level pool, as JSON (the TS parity test
+ * compares them). `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
+ * gates: [{row, x, width, big, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
+ * tower and crate indices are the slots used everywhere else.
  */
 export function constants_json(): string;
 
 /**
- * DEALS LAYOUT (`deals_for(seed)`): for each phase 0, 1, 2 (DEAL_LEN bytes each):
- *   gold cell, 9 × [kind, value] (true ops, gold included), 2 × 9 hints (side 0, then side 1).
- * The deals of a finished match, from its published seed (Verify and the result screen).
+ * DEALS LAYOUT (`deals_for(seed)`): [layout id, then 3 stages × 8 slots × value k (×k)];
+ * slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
+ * its published seed (Verify and the result screen); rigs come from `history()`.
  */
 export function deals_for(seed: bigint): Uint8Array;
+
+/**
+ * Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight/Raid
+ * (for smooth drawing of sliding gates between ticks). 0 for a missing gate.
+ */
+export function gate_x_at(layout: number, stage: number, slot: number, t: number): number;
 
 export function layout_version(): number;
 
@@ -99,6 +110,7 @@ export interface InitOutput {
     readonly codec_version: () => number;
     readonly constants_json: () => [number, number];
     readonly deals_for: (a: bigint) => [number, number];
+    readonly gate_x_at: (a: number, b: number, c: number, d: number) => number;
     readonly layout_version: () => number;
     readonly rules_version: () => number;
     readonly simmatch_digest: (a: number) => bigint;
