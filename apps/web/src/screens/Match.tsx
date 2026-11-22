@@ -120,7 +120,11 @@ function Prompts() {
   } else if (phase[0] === 'done') {
     text = phase[1] === 'done' || phase[1] === 'dead' ? 'Done!' : `Done! Waiting for ${names[1]}…`;
   }
-  return text ? <div className="hud prompt">{text}</div> : null;
+  return text ? (
+    <div className="hud prompt">
+      <span>{text}</span>
+    </div>
+  ) : null;
 }
 
 function Overlays() {
