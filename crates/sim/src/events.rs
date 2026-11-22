@@ -2,47 +2,80 @@
 //! public information. They are not state: dropping one never changes the match.
 
 use crate::payout::MatchResult;
-use crate::types::GateOp;
+use crate::types::{GateOp, Phase};
 
-/// Mirrors `MatchEvent` in packages/client/src/types.ts.
+/// Mirrors `MatchEvent` in packages/client/src/types.ts. `side` is always the lane it happened in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// A cannon fired a cohort (SPEC §6).
+    /// `side`'s cannon fired a cohort (SPEC §7).
     Volley {
         side: u8,
         cohort_id: u32,
         x: i16,
         count: u32,
     },
-    /// A gate on `side`'s grid flipped face-up (SPEC §4). `op` is what the cohort got.
-    Reveal {
-        side: u8,
-        cell: u8,
-        op: GateOp,
-        gold: bool,
-    },
-    /// A cohort passed a gate and its count changed from `before` to `after` (SPEC §4).
+    /// A cohort passed gate `slot` of `side`'s current stage: `before` → `after` (SPEC §6).
+    /// `reveal`: this was the first pass, so the gate just flipped face-up showing `op`.
     Gate {
         side: u8,
-        cell: u8,
+        slot: u8,
         cohort_id: u32,
+        op: GateOp,
         before: u32,
         after: u32,
+        reveal: bool,
     },
-    /// `side`'s stream hit the trap that `rigged_by` planted (SPEC §5).
-    Gotcha { side: u8, cell: u8, rigged_by: u8 },
-    /// Two opposing cohorts met and subtracted (SPEC §6). `y` is measured from side 0's cannon;
-    /// `killed[s]` = units side `s` lost.
-    Clash { x: i16, y: i16, killed: [u32; 2] },
-    /// `side`'s cannon was hit for `damage` and has `hp` left (SPEC §6).
-    Hit { side: u8, damage: u32, hp: u32 },
-    /// A plant window started (SPEC §3).
-    Plant { phase: u8 },
-    /// All 18 gates were replaced with a fresh deal (SPEC §3).
-    Redeal { phase: u8 },
-    /// Fire rate doubled (SPEC §3).
-    Surge,
-    /// KO or timer (SPEC §7).
+    /// `side`'s first cohort through gate `slot` hit the trap `rigged_by` planted (SPEC §6).
+    Gotcha { side: u8, slot: u8, rigged_by: u8 },
+    /// A crate absorbed `absorbed` dudes and has `hp` left (SPEC §4).
+    CrateHit {
+        side: u8,
+        crate_ix: u8,
+        cohort_id: u32,
+        absorbed: u32,
+        hp: u32,
+    },
+    /// A crate reached 0: the gate behind it is open (SPEC §4).
+    CrateBroken { side: u8, crate_ix: u8 },
+    /// Tower `tower` released a wave of `count` (SPEC §4). `merged`: the lane was at ENEMY_CAP,
+    /// so it joined existing enemy cohort `enemy_id` instead of spawning.
+    Wave {
+        side: u8,
+        tower: u8,
+        enemy_id: u32,
+        x: i16,
+        count: u32,
+        merged: bool,
+    },
+    /// A cohort of yours and an enemy cohort met and cancelled `killed` each (SPEC §4).
+    Clash {
+        side: u8,
+        x: i16,
+        y: i16,
+        killed: u32,
+    },
+    /// A cohort hit tower `tower` for `damage` (SPEC §4); `hp` left, `gold` earned (SPEC §5).
+    TowerHit {
+        side: u8,
+        tower: u8,
+        damage: u32,
+        hp: u32,
+        gold: u32,
+    },
+    /// Tower `tower` fell; `gold` = TOWER_BONUS (SPEC §5).
+    TowerDestroyed { side: u8, tower: u8, gold: u32 },
+    /// A raid cohort of `units` dudes reached the vault for `gold` (SPEC §5).
+    Loot {
+        side: u8,
+        cohort_id: u32,
+        units: u32,
+        gold: u32,
+    },
+    /// `side` entered `phase` of `stage` (SPEC §3). Transit already names the next stage.
+    Phase { side: u8, stage: u8, phase: Phase },
+    /// An enemy reached `side`'s cannon line (SPEC §4).
+    Death { side: u8 },
+    /// Death, both done, or the time cap (SPEC §3, §8).
     End { result: MatchResult },
 }
 
@@ -58,8 +91,8 @@ impl EventSink for NoEvents {
     fn push(&mut self, _event: Event) {}
 }
 
-/// Enough for any realistic tick (≈2 volleys, a few gates, clashes and hits). Extra events are
-/// dropped and counted, never stored past the end.
+/// Enough for any realistic tick (2 volleys, a few gates, waves, clashes and hits per lane).
+/// Extra events are dropped and counted, never stored past the end.
 pub const EVENT_CAP: usize = 256;
 
 /// A fixed-capacity event buffer (no allocation).
@@ -73,7 +106,7 @@ pub struct Events<const N: usize = EVENT_CAP> {
 impl<const N: usize> Events<N> {
     pub const fn new() -> Self {
         Self {
-            buf: [Event::Surge; N],
+            buf: [Event::Death { side: 0 }; N],
             len: 0,
             dropped: 0,
         }
@@ -119,10 +152,22 @@ mod tests {
     #[test]
     fn buffer_drops_past_capacity() {
         let mut ev = Events::<2>::new();
-        ev.push(Event::Surge);
-        ev.push(Event::Plant { phase: 1 });
-        ev.push(Event::Redeal { phase: 1 });
-        assert_eq!(ev.as_slice(), &[Event::Surge, Event::Plant { phase: 1 }]);
+        ev.push(Event::Death { side: 1 });
+        ev.push(Event::CrateBroken {
+            side: 0,
+            crate_ix: 1,
+        });
+        ev.push(Event::Death { side: 0 });
+        assert_eq!(
+            ev.as_slice(),
+            &[
+                Event::Death { side: 1 },
+                Event::CrateBroken {
+                    side: 0,
+                    crate_ix: 1
+                }
+            ]
+        );
         assert_eq!(ev.dropped(), 1);
         ev.clear();
         assert!(ev.as_slice().is_empty());
