@@ -15,6 +15,30 @@ the game look and feel good without breaking the rules, the phone budget or the 
 - **Phone budget:** ~1,500 instanced units at 60 fps on a mid phone. Whole game download ≤ 8 MB
   (glTF/GLB with meshopt or Draco, KTX2 or small PNG textures, OGG/M4A audio).
 
+## Decisions (Suparno, 2026-11-22)
+
+Picked from a shortlist with previews; the live pick sheet is a private page Suparno keeps, and this
+table is the copy of record. Change a pick here and in the log together.
+
+| Decision | Pick | Source | Licence |
+|---|---|---|---|
+| Overall look | Candy platformer: rounder, glossier, saturated; applied to every pack below through our own lighting and materials | (direction) | — |
+| Team colours | Blue (us) vs red (base), gold for rewards (current palette) | ours | — |
+| Our dudes | Mini Characters, one model recoloured to team blue | Kenney · Mini Characters | CC0 |
+| Base troops | The villains from the same pack (robot / zombie), team red | Kenney · Mini Characters | CC0 |
+| Cannon | Toy blaster, scaled up as a dude launcher | Kenney · Blaster Kit | CC0 |
+| Enemy towers | Tower-defense towers, recoloured to the enemy team | Kenney · Tower Defense Kit | CC0 |
+| Town hall | The big timbered hall with the archway (the vault door) | Kenney · Fantasy Town Kit | CC0 |
+| Gates | Glowing glass panel (big gates gold), built in code | ours | — |
+| Crates | Block crates (wooden crate, cage, safe) | KayKit · Block Bits (free version) | CC0 |
+| Around the lane | Nature Kit + tower-defense ground tiles | Kenney · Nature Kit, Tower Defense Kit | CC0 |
+| Effects | Particle sprites driven by our code | Kenney · Particle Pack | CC0 |
+| Buttons and panels | Our own chunky CSS (thick outlines, drop shadows, bouncy presses) | ours | — |
+| Display font | Lilita One (current) | Google Fonts | OFL |
+| UI text font | Baloo 2 | Google Fonts | OFL |
+| Sound effects | **Undecided** (shortlist: Kenney Impact, Casino, Interface, UI, Digital, RPG, Voiceover; or the code synth) | | |
+| Music | **Undecided** (shortlist: Kevin MacLeod tracks, CC BY; Abstraction loop bundle, CC0; Kenney Music Jingles for stings) | | |
+
 ## Where to find assets
 
 | Need | Where | Licence | Notes |
