@@ -47,11 +47,13 @@ pub fn handler(ctx: Context<Bench>, n: u16, with_bot: bool) -> Result<()> {
     encode_secret(&m.secret, s);
     log_cu();
     msg!(
-        "bench n={} tick={} live={}/{}",
+        "bench n={} tick={} live={}/{} enemies={}/{}",
         n,
         m.public.tick,
         m.public.sides[0].cohort_len,
-        m.public.sides[1].cohort_len
+        m.public.sides[1].cohort_len,
+        m.public.sides[0].enemy_len,
+        m.public.sides[1].enemy_len
     );
     Ok(())
 }
