@@ -4,8 +4,9 @@
 import { constants_json, initSync, layout_version, rules_version, SimMatch } from '@lil-dudes/sim-wasm';
 import { wasmBase64 } from '@lil-dudes/sim-wasm/inline';
 import * as C from './constants';
+import { phaseAt } from './codec';
 import type { MatchListener, MatchSource } from './source';
-import { revealOf, type MatchReveal } from './verify';
+import { markSprung, payoutOf, revealOf, type GotchaLog, type MatchReveal } from './verify';
 import type {
   CohortView,
   GateOp,
@@ -93,6 +94,7 @@ export class OfflineSource implements MatchSource {
   private listeners = new Set<MatchListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private current: { view: MatchView; priv: PrivateView };
+  private gotchas: GotchaLog[] = [];
 
   constructor(opts: OfflineOptions = {}) {
     initSim();
@@ -148,6 +150,9 @@ export class OfflineSource implements MatchSource {
     }
     const events = this.decodeEvents();
     this.current = { view: this.decodeView(), priv: this.decodePrivate() };
+    for (const e of events) {
+      if (e.type === 'gotcha') this.gotchas.push({ phase: phaseAt(this.current.view.tick - 1), tick: this.current.view.tick - 1, side: e.side, cell: e.cell, riggedBy: e.riggedBy });
+    }
     const { view, priv } = this.current;
     for (const l of this.listeners) l(view, priv, events);
     if (view.result) this.stop();
@@ -163,10 +168,27 @@ export class OfflineSource implements MatchSource {
     return this.sim.digest();
   }
 
-  /** Every deal and every phase's rigs and peeks: the result screen's full reveal (offline the
-   *  seed is no secret, so this works mid-match too). */
+  /** The result screen's data (same shape as LiveSource.reveal()): every deal, every phase's rigs
+   *  and peeks (with `sprung`), GOTCHAs, final HP, payout and why. Offline the seed is no secret,
+   *  so this works mid-match too (result/payout then describe the current state). No txs. */
   reveal(): MatchReveal {
-    return revealOf(this.seed, this.sim.history());
+    const v = this.current.view;
+    const base = revealOf(this.seed, this.sim.history());
+    const hp: [number, number] = [v.sides[0].hp, v.sides[1].hp];
+    const names: [string, string] = [v.sides[0].name, v.sides[1].name];
+    return {
+      ...base,
+      history: markSprung(base.history, this.gotchas),
+      matchId: this.matchId,
+      names,
+      result: v.result,
+      hp,
+      finalTick: v.tick,
+      gotchas: [...this.gotchas],
+      payout: payoutOf(v.stake, v.result, hp, false, names),
+      txs: [],
+      settlement: { state: 'offline' },
+    };
   }
 
   /** The public state in the on-chain Match account layout (decode with `decodePublic`). */

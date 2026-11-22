@@ -219,6 +219,8 @@ async function main() {
   log('result', r, 'hp', final.state.sides[0].hp, final.state.sides[1].hp, 'tick', final.state.tick);
   const reveal = sources[0]!.reveal();
   log('seed', reveal?.seed.toString(), 'phase-1 rigs', reveal?.history[0]?.rigs);
+  // Result-screen data (step 2): waits for the settlement, then has every field.
+  const full = await sources[1]!.awaitReveal(90_000);
   const feed = sources.map((s) => ({ ...s.stats }));
   for (const s of sources) s.dispose();
 
@@ -264,6 +266,21 @@ async function main() {
     }
   }
   const verified = !!reveal && mismatches === 0;
+  // The reveal must agree with the chain: payout = balance deltas, txs labelled, GOTCHAs = rigs.
+  const revealChecks: Record<string, boolean> = {};
+  if (full) {
+    revealChecks.settled = full.settlement?.state === 'settled';
+    revealChecks.paidMatchesDeltas = settledBy !== 'action' || (full.payout!.paid[0] === deltas[0] && full.payout!.paid[1] === deltas[1]);
+    revealChecks.resultMatches = JSON.stringify(full.result) === JSON.stringify(r);
+    const whats = full.txs!.map((t) => t.what);
+    for (const w of ['create_match', 'join_match', 'delegate_match', 'finish', 'request_seed']) revealChecks[`tx ${w}`] = whats.some((x) => x.startsWith(w));
+    revealChecks['tx Magic Action'] = STAKE === 0 || whats.some((x) => x.includes('Magic Action')) || settledBy === 'fallback';
+    revealChecks.gotchasMatchRigs = full.gotchas!.every((g) => full.history[g.phase]?.rigs[g.riggedBy] === g.cell && full.history[g.phase]!.sprung[g.riggedBy]);
+    revealChecks.threeDeals = full.deals.length === 3;
+  }
+  const revealOk = !!full && Object.values(revealChecks).every(Boolean);
+  log('reveal', revealOk ? 'OK' : 'FAILED', JSON.stringify(revealChecks));
+  if (full) log('why:', full.payout?.why, '| gotchas', full.gotchas?.length, '| txs', full.txs?.map((t) => t.what).join(', '));
   log('verify', verified ? 'OK' : 'FAILED', `${checked} revealed gates checked, ${mismatches} mismatches`);
 
   // 5. Close + sweep back.
@@ -285,6 +302,7 @@ async function main() {
     seed: reveal?.seed.toString(),
     history: reveal?.history,
     verify: { ok: verified, revealedGatesChecked: checked, mismatches },
+    reveal: { ok: revealOk, checks: revealChecks, payout: full?.payout, gotchas: full?.gotchas, settlement: full?.settlement, txs: full?.txs },
     status: m?.header.status,
     txs,
     events: Object.fromEntries(events),
@@ -299,7 +317,7 @@ async function main() {
   fs.writeFileSync(file, JSON.stringify(result, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
   log('→', path.relative(process.cwd(), file));
   log('SOL spent', (startBalance - endBalance) / LAMPORTS_PER_SOL);
-  process.exit(payoutOk === false || !verified ? 1 : 0);
+  process.exit(payoutOk === false || !verified || !revealOk ? 1 : 0);
 }
 
 main().catch((e) => {

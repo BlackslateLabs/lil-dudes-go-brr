@@ -535,3 +535,22 @@ ever shows Match; every `request_seed` / `plant_rig` / `peek_cell` / `start` is 
 hits for salts, VRF output, rig/peek ix data, Peek bytes, secret state; no hint shown in a plant
 window (rig timing gives nothing away); base Secrets untouched until `finish`. Table: TECH §4
 Privacy. SOL ~0.012 per run (fees). Raw: `scripts/out/privacy-*.json`.
+
+## 2026-11-22 · Kai · M4/5 step 2 (result data) · [STAGE] [CONTRACT]
+**Did:** M4/5 step 2 done; next: step 3 (faucet).
+`reveal()` now carries everything the result screen needs, same shape offline and live (README
+"Result screen data"). Proven on a 0.05 SOL live devnet match (`live-11364960300607690146.json`):
+`payout.paid` = the real balance deltas (23,825,000 / 74,866,250), result matches, 5 GOTCHAs all
+match the published rigs, settled by the Magic Action, every tx labelled with an explorer link.
+SOL 0.012 (fees). New tests: `test/reveal.test.ts` (SPEC §7 payout cases, 12 offline bot matches:
+every GOTCHA = that phase's rig, `sprung` set, conservation exact).
+
+**CONTRACT (additions only, nothing renamed):** `MatchReveal` gains optional `matchId`, `names`,
+`result`, `hp`, `finalTick`, `gotchas: GotchaLog[]`, `payout: PayoutInfo`, `txs: TxRecord[]`,
+`settlement: SettlementInfo`, `matchUrl`; `PhaseLog` gains `sprung: [boolean, boolean]`.
+`LiveSource`: `awaitReveal(timeoutMs?)`, option `baseRpc`; after the end it tracks the settlement
+itself and calls `onStage('finished', 'settled')`. New exports: `payoutOf`, `markSprung`,
+`matchTxs`, `settlementOf`, `BASE_EXPLORER`, `TEE_EXPLORER`, `ACCOUNT_EXPLORER` and the types.
+**Suparno:** the result screen can read `reveal().payout.why` / `.paid` / `.net` for the count-up
+line, `history[p].sprung` + `gotchas` for the rig marks, `txs[].url` for explorer links, and
+`settlement.state` for "Settling…" (it is `'offline'` for bot matches).

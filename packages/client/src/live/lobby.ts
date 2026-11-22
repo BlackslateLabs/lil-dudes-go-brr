@@ -4,7 +4,8 @@
 //   either: delegateMatch → both: LiveSource.connect({ matchId, burner }).start()
 // After the end: the Magic Action pays out; if it doesn't within ~20 s, anyone calls settleMatch.
 import { Connection, PublicKey, type Keypair } from '@solana/web3.js';
-import { BASE_RPC, decodeMatch, ixs, matchAccounts, newMatchId, send, Status, TEE_VALIDATOR, type MatchAccount } from './chain';
+import { BASE_RPC, decodeMatch, DELEGATION_PROGRAM, ixs, matchAccounts, newMatchId, PROGRAM_ID, send, Status, TEE_VALIDATOR, type MatchAccount } from './chain';
+import { BASE_EXPLORER, type SettlementInfo, type TxRecord } from '../verify';
 
 export const baseConnection = (rpc = BASE_RPC) => new Connection(rpc, 'confirmed');
 
@@ -94,4 +95,80 @@ export async function waitForStatus(base: Connection, id: bigint, status: number
     if (Date.now() - t0 > timeoutMs) throw new Error(`match ${id} did not reach status ${status} in ${timeoutMs} ms`);
     await new Promise((r) => setTimeout(r, 750));
   }
+}
+
+const snake = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+
+/** Raw getTransaction (the Magic Action's base tx is a v1 transaction web3.js 1.x can't decode). */
+async function rawTx(base: Connection, sig: string): Promise<{ logs: string[]; payer?: string } | null> {
+  for (const version of [1, 0]) {
+    const res = await fetch(base.rpcEndpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTransaction', params: [sig, { encoding: 'json', maxSupportedTransactionVersion: version, commitment: 'confirmed' }] }),
+    }).catch(() => null);
+    const body = (await res?.json().catch(() => null)) as { result?: { meta?: { logMessages?: string[] }; transaction?: { message?: { accountKeys?: (string | { pubkey: string })[] } } } | null; error?: unknown } | null;
+    if (!body || body.error) continue;
+    if (!body.result) return null;
+    const k0 = body.result.transaction?.message?.accountKeys?.[0];
+    return { logs: body.result.meta?.logMessages ?? [], payer: typeof k0 === 'string' ? k0 : k0?.pubkey };
+  }
+  return null;
+}
+
+/** Labels a base-layer tx of a match from its logs. */
+function label(logs: string[]): string {
+  const ours = logs.filter((l) => l.startsWith('Program log: Instruction: ')).map((l) => snake(l.slice('Program log: Instruction: '.length)));
+  const dlp = logs.some((l) => l.includes(DELEGATION_PROGRAM.toBase58()));
+  if (ours.includes('settle_action')) return 'commit + undelegate + settle (Magic Action)';
+  if (dlp && !ours.length) return 'commit + undelegate';
+  return ours.find((x) => x !== 'settle_action') ?? (dlp ? 'delegation' : 'other');
+}
+
+/**
+ * Every successful base-layer tx of a match (oldest first): create, join, delegate, the TEE's
+ * commit + undelegate + Magic Action, a fallback settle, cancel, close. For the result screen's
+ * explorer links and Verify's "under the hood" list. Players are matched by fee payer.
+ */
+export async function matchTxs(base: Connection, id: bigint, header?: MatchAccount['header']): Promise<TxRecord[]> {
+  const a = matchAccounts(id);
+  const sigs = new Map<string, number>();
+  for (const pk of [a.game, a.vault]) {
+    const list = await base.getSignaturesForAddress(pk, { limit: 100 }, 'confirmed').catch(() => []);
+    for (const s of list) if (!s.err) sigs.set(s.signature, s.slot);
+  }
+  const out: (TxRecord & { slot: number })[] = [];
+  for (const [signature, slot] of [...sigs].sort((x, y) => x[1] - y[1])) {
+    const t = await rawTx(base, signature);
+    if (!t) continue;
+    const what = label(t.logs);
+    if (what === 'other' && !t.logs.some((l) => l.includes(PROGRAM_ID.toBase58()))) continue;
+    const by: TxRecord['by'] = !t.payer
+      ? undefined
+      : t.payer === TEE_VALIDATOR.toBase58()
+        ? 'validator'
+        : header?.players.findIndex((p) => p.toBase58() === t.payer) === 0 || header?.burners[0]?.toBase58() === t.payer
+          ? 0
+          : header?.players[1]?.toBase58() === t.payer || header?.burners[1]?.toBase58() === t.payer
+            ? 1
+            : 'other';
+    out.push({ what, signature, layer: 'base', url: BASE_EXPLORER(signature), by, slot });
+  }
+  return out.map(({ slot: _slot, ...r }) => r);
+}
+
+/** Where the stakes are (MVP §3.7 "Settling…"): settled once the Match is back on base and the
+ *  vault is paid out. `txs` (from matchTxs) supplies the signature and who paid. */
+export async function settlementOf(base: Connection, id: bigint, txs?: TxRecord[]): Promise<SettlementInfo> {
+  const m = await fetchMatch(base, id);
+  if (!m || !(await isOnBase(base, id))) return { state: 'pending' };
+  if (m.header.status < Status.FINISHED) return { state: 'pending' };
+  if (m.header.stake === 0) return { state: 'settled', by: 'free' };
+  const vault = await base.getBalance(matchAccounts(id).vault, 'confirmed');
+  if (m.header.status !== Status.SETTLED && vault > 0) return { state: 'pending' };
+  const list = txs ?? (await matchTxs(base, id, m.header));
+  const action = list.find((t) => t.what.includes('Magic Action'));
+  const fallback = list.find((t) => t.what === 'settle');
+  if (fallback) return { state: 'settled', by: 'fallback', signature: fallback.signature };
+  return { state: 'settled', by: 'action', signature: action?.signature };
 }

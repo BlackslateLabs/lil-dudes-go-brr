@@ -10,10 +10,10 @@
 // idempotent on-chain, so both players' sources can race safely.
 import { Connection, Transaction, TransactionInstruction, type Keypair } from '@solana/web3.js';
 import * as C from '../constants';
-import { opOf, PUBLIC_LEN, toMatchView } from '../codec';
+import { opOf, phaseAt, PUBLIC_LEN, toMatchView } from '../codec';
 import type { MatchListener, MatchSource } from '../source';
 import type { MatchEvent, MatchStatus, MatchView, PrivateView, Side } from '../types';
-import { revealOf, type MatchReveal } from '../verify';
+import { ACCOUNT_EXPLORER, markSprung, payoutOf, revealOf, TEE_EXPLORER, type GotchaLog, type MatchReveal, type SettlementInfo, type TxRecord } from '../verify';
 import {
   decodeMatch,
   decodePeek,
@@ -30,6 +30,7 @@ import {
   type PeekAccount,
 } from './chain';
 import { diffEvents } from './events';
+import { baseConnection, matchTxs, settlementOf } from './lobby';
 
 /** Where a live match is, for waiting / result screens (finer than MatchView.status). */
 export type LiveStage = 'connecting' | 'setup' | 'playing' | 'finishing' | 'finished';
@@ -49,6 +50,8 @@ export interface LiveOptions {
   onStage?: (stage: LiveStage, detail?: string) => void;
   /** Called with every tx this source sends (the "under the hood" list). */
   onTx?: (what: string, signature: string) => void;
+  /** Base-layer RPC used after the end to track settlement and list the match's txs (reveal()). */
+  baseRpc?: string;
 }
 
 interface Snap {
@@ -93,6 +96,13 @@ export class LiveSource implements MatchSource {
   private stage: LiveStage = 'connecting';
   /** rig / peek: one request at a time, and none once it took this phase. */
   private inflight = { rig: false, peek: false };
+  /** TEE txs this source sent (set_aim folded into one line), for reveal().txs. */
+  private teeTxs: TxRecord[] = [];
+  private aimCount = 0;
+  private gotchas: GotchaLog[] = [];
+  private baseTxs: TxRecord[] = [];
+  private settlement: SettlementInfo = { state: 'pending' };
+  private tracking: Promise<void> | null = null;
   /** Feed statistics (the headless run reports them). */
   readonly stats = { snapshots: 0, emitted: 0, maxQueue: 0, txs: 0, txFailures: 0 };
 
@@ -108,6 +118,7 @@ export class LiveSource implements MatchSource {
     this.newest = snap;
     this.played = snap;
     this.playTick = first.state.tick;
+    this.noteGotchas(first);
   }
 
   /** Authenticates the burner on the TEE, loads the match (it must already be delegated) and opens the feed. */
@@ -213,6 +224,7 @@ export class LiveSource implements MatchSource {
         if (account.header.status >= Status.FINISHED) {
           this.newest = this.snap(account, info.data);
           this.setStage('finished');
+          this.trackSettlement();
           return account;
         }
       }
@@ -221,11 +233,73 @@ export class LiveSource implements MatchSource {
     return null;
   }
 
-  /** The full reveal once the match finished (seed + every deal + every rig and peek). */
+  /**
+   * The result screen's data once the match finished (null before): seed + every deal, rigs and
+   * peeks per phase (with `sprung`), GOTCHAs, final HP, the payout and why, every tx with an
+   * explorer link, and the settlement state. Base-layer txs and the settlement arrive a few
+   * seconds after the end (`onStage('finished', 'settled')`, or `await awaitReveal()`).
+   * An aborted match (never started) has no seed: deals are empty.
+   */
   reveal(): MatchReveal | null {
-    const h = this.newest.account.header;
-    if (h.status < Status.FINISHED || h.flags & Flags.ABORTED) return null;
-    return revealOf(h.seed, h.history);
+    const { header: h, state } = this.newest.account;
+    if (h.status < Status.FINISHED) return null;
+    const aborted = !!(h.flags & Flags.ABORTED);
+    const base = aborted ? { seed: 0n, deals: [], history: [] } : revealOf(h.seed, h.history);
+    const hp: [number, number] = [state.sides[0].hp, state.sides[1].hp];
+    const isLobby = (t: TxRecord) => ['create_match', 'join_match', 'delegate_match'].includes(t.what);
+    const lobby = this.baseTxs.filter(isLobby);
+    const after = this.baseTxs.filter((t) => !isLobby(t));
+    const aims = this.aimCount
+      ? [{ ...this.teeTxs.find((t) => t.what === 'set_aim')!, what: `set_aim ×${this.aimCount}` }]
+      : [];
+    return {
+      ...base,
+      history: markSprung(base.history, this.gotchas),
+      matchId: this.matchId.toString(),
+      names: h.names,
+      result: aborted ? null : state.result,
+      hp,
+      finalTick: state.tick,
+      gotchas: [...this.gotchas],
+      payout: payoutOf(h.stake, aborted ? null : state.result, hp, aborted, h.names),
+      // Chronological: lobby (base) → this device's TEE txs → commit / settlement / close (base).
+      txs: [...lobby, ...this.teeTxs.filter((t) => t.what !== 'set_aim'), ...aims, ...after],
+      settlement: { ...this.settlement },
+      matchUrl: ACCOUNT_EXPLORER(this.accounts.game.toBase58()),
+    };
+  }
+
+  /** Waits until the settlement is known (or `timeoutMs`), then returns reveal(). */
+  async awaitReveal(timeoutMs = 60_000): Promise<MatchReveal | null> {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+      if (this.newest.account.header.status >= Status.FINISHED) {
+        this.trackSettlement();
+        if (this.settlement.state === 'settled') break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return this.reveal();
+  }
+
+  /** After the end: poll the base layer until the vault is paid out, then list the base txs. */
+  private trackSettlement(): void {
+    if (this.tracking) return;
+    const base = baseConnection(this.opts.baseRpc);
+    this.tracking = (async () => {
+      const t0 = Date.now();
+      while (!this.disposed && Date.now() - t0 < 120_000) {
+        const s = await settlementOf(base, this.matchId, []).catch(() => ({ state: 'pending' }) as SettlementInfo);
+        if (s.state === 'settled') {
+          const txs = await matchTxs(base, this.matchId, this.newest.account.header).catch(() => []);
+          this.baseTxs = txs;
+          this.settlement = await settlementOf(base, this.matchId, txs).catch(() => s);
+          this.setStage('finished', 'settled');
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+    })();
   }
 
   /** Stop, close the feed and forget the listeners. */
@@ -300,6 +374,7 @@ export class LiveSource implements MatchSource {
     if (account.state.tick < prev.state.tick) return;
     const snap = this.snap(account, bytes);
     this.newest = snap;
+    this.noteGotchas(account);
     this.stats.snapshots++;
     if (account.state.tick !== this.lastProgress.tick) this.lastProgress = { tick: account.state.tick, at: Date.now() };
     if (snap.view.status === 'playing' || snap.view.status === 'plant') {
@@ -312,6 +387,15 @@ export class LiveSource implements MatchSource {
       this.emit(snap);
     }
     void this.drive();
+  }
+
+  /** GOTCHAs from the header's last-sprung record (at most one per grid per phase, so no snapshot
+   *  can hide one: the feed never skips a state, TECH §4). */
+  private noteGotchas(account: MatchAccount): void {
+    account.header.gotcha.forEach((g, s) => {
+      if (!g || this.gotchas.some((x) => x.side === s && x.tick === g.tick)) return;
+      this.gotchas.push({ phase: phaseAt(g.tick), tick: g.tick, side: s as Side, cell: g.cell, riggedBy: (g.riggedBy === 1 ? 1 : 0) as Side });
+    });
   }
 
   private onPeek(bytes: Uint8Array): void {
@@ -391,6 +475,7 @@ export class LiveSource implements MatchSource {
       tx.sign(this.opts.burner);
       const sig = await this.conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
       this.stats.txs++;
+      this.record(what, sig);
       this.opts.onTx?.(what, sig);
     } catch {
       this.stats.txFailures++;
@@ -398,10 +483,18 @@ export class LiveSource implements MatchSource {
     }
   }
 
+  private record(what: string, signature: string): void {
+    if (what === 'set_aim') {
+      if (this.aimCount++ > 0) return;
+    }
+    this.teeTxs.push({ what, signature, layer: 'tee', url: TEE_EXPLORER(signature, this.opts.teeRpc ?? TEE_RPC), by: this.mySide });
+  }
+
   private async tx(what: string, instruction: TransactionInstruction, quiet = false, cu?: number): Promise<boolean> {
     try {
       const sig = await send(this.conn, [instruction], [this.opts.burner], { cu });
       this.stats.txs++;
+      this.record(what, sig);
       this.opts.onTx?.(what, sig);
       return true;
     } catch (e) {
@@ -473,6 +566,7 @@ export class LiveSource implements MatchSource {
         case Status.FINISHED:
         case Status.SETTLED:
           this.setStage('finished');
+          this.trackSettlement();
           break;
       }
     } finally {

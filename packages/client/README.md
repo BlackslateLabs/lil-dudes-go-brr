@@ -69,6 +69,25 @@ src.start();                                           // auto-drives the TEE se
 - Headless end-to-end run (bot vs bot on devnet, settles and sweeps back):
   `pnpm --filter @lil-dudes/client live -- --stake 50000000` (results in `scripts/out/`).
 
+### Result screen data (M4): `reveal()`
+
+Same shape from `OfflineSource.reveal()` (any time) and `LiveSource.reveal()` (null until the
+match is FINISHED). `await live.awaitReveal()` waits for the settlement (base txs included).
+
+| Field | What |
+|---|---|
+| `seed`, `deals[3]` | the VRF seed and every deal (`goldCell`, true `ops[9]`, both sides' `hints`) |
+| `history[phase]` | `rigs[s]` (cell side s rigged), `peeks[s]` (`{cell, op, gold}`), `sprung[s]` (that rig was hit) |
+| `gotchas[]` | `{ phase, tick, side, cell, riggedBy }`: `side`'s stream hit the rig `riggedBy` planted |
+| `result`, `hp`, `finalTick`, `names` | final result (`winner`, `ko`, `moved`, `fee`) and HP |
+| `payout` | `kind` (ko/timer/draw/aborted), `free`, `winner`, `stake`, `leadPm`, `sharePm`, `moved`, `fee`, `paid[2]` (back from the vault), `net[2]`, `why` (one neutral line, e.g. "Lil B won on the timer by 20.0% HP → takes 60.0% of the stake, minus a 5% fee.") |
+| `txs[]` | `{ what, signature, layer: 'base' \| 'tee', url, by }`, oldest first: create/join/delegate, this device's TEE txs (`set_aim ×N` folded), commit + undelegate + settle (Magic Action) or `settle`, close. TEE txs that touch a private account show as redacted on the explorer, by design. |
+| `settlement` | `{ state: 'offline' \| 'pending' \| 'settled', by?: 'action' \| 'fallback' \| 'free', signature? }` (MVP §3.7 "Settling…") |
+| `matchUrl` | explorer link of the Match account (live) |
+
+Also exported: `payoutOf(stake, result, hp, aborted?, names?)`, `matchTxs(base, id)`,
+`settlementOf(base, id)`, `BASE_EXPLORER` / `TEE_EXPLORER` / `ACCOUNT_EXPLORER`.
+
 To use it from the web app, add `"@lil-dudes/client": "workspace:*"` to `apps/web/package.json`.
 The package ships TypeScript source (no build step); Vite compiles it.
 

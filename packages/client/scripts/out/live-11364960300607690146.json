@@ -1,0 +1,384 @@
+{
+  "stake": 50000000,
+  "started": "2026-11-22T06:08:31.692Z",
+  "match": {
+    "id": "11364960300607690146",
+    "account": "HbmwSBxt2wTvRwPbtyc5NBEGvoboDJun8gPQKcerazwL",
+    "createSig": "2VUUF1aphkpcDND7fdqPbjg5Kvi1sk4RUisvwhLec9mVwJY6ThrPbGqkQSr7qNhu4PHcNqAkvQmeshQB5mSCzZnS",
+    "joinSig": "21inC3ehGFaNThQmRcta2wDKf42YN7r3nDKXUmEyrc6TBQCH1Z4Th1K387cbfRqGbQT68bmy42t5ncUqMC3Qda2S",
+    "delegateSig": "4YMif4LngkxtABnCkvaWgieT2CicvDszBzL9sQj138AeXZDMWhZS8hH1khG6MF3hEN8ZHNG1PPKLdXc9Wk2xTAZa",
+    "matchmaking": {
+      "via": "direct"
+    }
+  },
+  "result": {
+    "winner": 1,
+    "ko": false,
+    "moved": 26175000,
+    "fee": 1308750
+  },
+  "finalTick": 2400,
+  "hp": [
+    38,
+    143
+  ],
+  "settledBy": "action",
+  "payoutDeltas": [
+    23825000,
+    74866250
+  ],
+  "payoutExpected": [
+    23825000,
+    74866250
+  ],
+  "payoutOk": true,
+  "seed": "5329591671776033393",
+  "history": [
+    {
+      "phase": 0,
+      "rigs": [
+        3,
+        6
+      ],
+      "peeks": [
+        {
+          "cell": 8,
+          "op": {
+            "kind": "add",
+            "value": 10
+          },
+          "gold": false
+        },
+        {
+          "cell": 2,
+          "op": {
+            "kind": "sub",
+            "value": 6
+          },
+          "gold": false
+        }
+      ],
+      "sprung": [
+        true,
+        true
+      ]
+    },
+    {
+      "phase": 1,
+      "rigs": [
+        4,
+        5
+      ],
+      "peeks": [
+        {
+          "cell": 0,
+          "op": {
+            "kind": "sub",
+            "value": 6
+          },
+          "gold": false
+        },
+        {
+          "cell": 7,
+          "op": {
+            "kind": "mul",
+            "value": 3
+          },
+          "gold": false
+        }
+      ],
+      "sprung": [
+        false,
+        true
+      ]
+    },
+    {
+      "phase": 2,
+      "rigs": [
+        6,
+        4
+      ],
+      "peeks": [
+        {
+          "cell": 4,
+          "op": {
+            "kind": "div",
+            "value": 2
+          },
+          "gold": false
+        },
+        {
+          "cell": 6,
+          "op": {
+            "kind": "div",
+            "value": 2
+          },
+          "gold": false
+        }
+      ],
+      "sprung": [
+        true,
+        true
+      ]
+    }
+  ],
+  "verify": {
+    "ok": true,
+    "revealedGatesChecked": 12,
+    "mismatches": 0
+  },
+  "reveal": {
+    "ok": true,
+    "checks": {
+      "settled": true,
+      "paidMatchesDeltas": true,
+      "resultMatches": true,
+      "tx create_match": true,
+      "tx join_match": true,
+      "tx delegate_match": true,
+      "tx finish": true,
+      "tx request_seed": true,
+      "tx Magic Action": true,
+      "gotchasMatchRigs": true,
+      "threeDeals": true
+    },
+    "payout": {
+      "free": false,
+      "stake": 50000000,
+      "kind": "timer",
+      "winner": 1,
+      "leadPm": 47,
+      "moved": 26175000,
+      "fee": 1308750,
+      "sharePm": 523,
+      "paid": [
+        23825000,
+        74866250
+      ],
+      "net": [
+        -26175000,
+        24866250
+      ],
+      "why": "Bot B won on the timer by 4.7% HP → takes 52.3% of the stake, minus a 5% fee."
+    },
+    "gotchas": [
+      {
+        "phase": 0,
+        "tick": 81,
+        "side": 1,
+        "cell": 3,
+        "riggedBy": 0
+      },
+      {
+        "phase": 0,
+        "tick": 91,
+        "side": 0,
+        "cell": 6,
+        "riggedBy": 1
+      },
+      {
+        "phase": 1,
+        "tick": 873,
+        "side": 0,
+        "cell": 5,
+        "riggedBy": 1
+      },
+      {
+        "phase": 2,
+        "tick": 1691,
+        "side": 1,
+        "cell": 6,
+        "riggedBy": 0
+      },
+      {
+        "phase": 2,
+        "tick": 1721,
+        "side": 0,
+        "cell": 4,
+        "riggedBy": 1
+      }
+    ],
+    "settlement": {
+      "state": "settled",
+      "by": "action",
+      "signature": "3RmMjCduzHg5iQ6ckQ2ULd48WQ1nV9JQjf8HZCvjMGpp6MzniVQhaTuKdRHtiPhfQSBbHWQ4Dmc9b39GW6NWeQ6z"
+    },
+    "txs": [
+      {
+        "what": "create_match",
+        "signature": "2VUUF1aphkpcDND7fdqPbjg5Kvi1sk4RUisvwhLec9mVwJY6ThrPbGqkQSr7qNhu4PHcNqAkvQmeshQB5mSCzZnS",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/2VUUF1aphkpcDND7fdqPbjg5Kvi1sk4RUisvwhLec9mVwJY6ThrPbGqkQSr7qNhu4PHcNqAkvQmeshQB5mSCzZnS?cluster=devnet",
+        "by": 0
+      },
+      {
+        "what": "join_match",
+        "signature": "21inC3ehGFaNThQmRcta2wDKf42YN7r3nDKXUmEyrc6TBQCH1Z4Th1K387cbfRqGbQT68bmy42t5ncUqMC3Qda2S",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/21inC3ehGFaNThQmRcta2wDKf42YN7r3nDKXUmEyrc6TBQCH1Z4Th1K387cbfRqGbQT68bmy42t5ncUqMC3Qda2S?cluster=devnet",
+        "by": 1
+      },
+      {
+        "what": "delegate_match",
+        "signature": "4YMif4LngkxtABnCkvaWgieT2CicvDszBzL9sQj138AeXZDMWhZS8hH1khG6MF3hEN8ZHNG1PPKLdXc9Wk2xTAZa",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/4YMif4LngkxtABnCkvaWgieT2CicvDszBzL9sQj138AeXZDMWhZS8hH1khG6MF3hEN8ZHNG1PPKLdXc9Wk2xTAZa?cluster=devnet",
+        "by": 0
+      },
+      {
+        "what": "commit + undelegate + settle (Magic Action)",
+        "signature": "3RmMjCduzHg5iQ6ckQ2ULd48WQ1nV9JQjf8HZCvjMGpp6MzniVQhaTuKdRHtiPhfQSBbHWQ4Dmc9b39GW6NWeQ6z",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/3RmMjCduzHg5iQ6ckQ2ULd48WQ1nV9JQjf8HZCvjMGpp6MzniVQhaTuKdRHtiPhfQSBbHWQ4Dmc9b39GW6NWeQ6z?cluster=devnet",
+        "by": "validator"
+      },
+      {
+        "what": "request_seed",
+        "signature": "5oDgvCp2kcZrwa5aV7WdBYesiVJR7Uji4yz4fLMZrRtQuQEfFCywQZLA2CXi5etQwKUgo6ozE49RFPjzq15b5oQP",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/5oDgvCp2kcZrwa5aV7WdBYesiVJR7Uji4yz4fLMZrRtQuQEfFCywQZLA2CXi5etQwKUgo6ozE49RFPjzq15b5oQP?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "advance",
+        "signature": "2F1kEvbAFJUL4kpeiVQ5vkp67QnQ1WKffbLEy2odMyMTVxmMyzuYRCEWzSXsMrQz8hjkvMkkhvLv55jiYdaqCk63",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/2F1kEvbAFJUL4kpeiVQ5vkp67QnQ1WKffbLEy2odMyMTVxmMyzuYRCEWzSXsMrQz8hjkvMkkhvLv55jiYdaqCk63?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "plant_rig",
+        "signature": "3TtXE2NVoSCrY6kiudRYx74w7rUS6zwYKjA2nQWMBUFjzYereBGf7A6Cjh9zjbpuenm5jNHwS7zbMZnKo5GyZ53e",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/3TtXE2NVoSCrY6kiudRYx74w7rUS6zwYKjA2nQWMBUFjzYereBGf7A6Cjh9zjbpuenm5jNHwS7zbMZnKo5GyZ53e?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "peek_cell",
+        "signature": "4hA7fDQaDjXZKGiDcZL9MAfLne2UjKrBQ3JTSzGJNsVL8gT4euWLKpEY9NJWfpJQ2tASeTWGy8xWuxpRVrLBpJj3",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/4hA7fDQaDjXZKGiDcZL9MAfLne2UjKrBQ3JTSzGJNsVL8gT4euWLKpEY9NJWfpJQ2tASeTWGy8xWuxpRVrLBpJj3?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "plant_rig",
+        "signature": "4pyi6RkjAxbVEF3ews7h5rjhxHVAcCtL63ssDz2THgGQ2enKsurWkKp8q4jZmddRvfsTiAoP4TTZadSMV8Md6qzF",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/4pyi6RkjAxbVEF3ews7h5rjhxHVAcCtL63ssDz2THgGQ2enKsurWkKp8q4jZmddRvfsTiAoP4TTZadSMV8Md6qzF?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "peek_cell",
+        "signature": "4yr55bNU4JJWMMJduT9euAUp6sK9Qiubc7VdZNhcdZRru4nuVkGzpiJRiDzeCMPJjSdbfVuhhpdaoFTXT8eyLztd",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/4yr55bNU4JJWMMJduT9euAUp6sK9Qiubc7VdZNhcdZRru4nuVkGzpiJRiDzeCMPJjSdbfVuhhpdaoFTXT8eyLztd?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "plant_rig",
+        "signature": "4N4TXLyjzptYF9ZxrVLNV8saiNbKN6JJKdsarQzhe9CfCHqqRq7CWnJ8gnH8jFXWzn5GUVLo21e62s9GSTbHzZFp",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/4N4TXLyjzptYF9ZxrVLNV8saiNbKN6JJKdsarQzhe9CfCHqqRq7CWnJ8gnH8jFXWzn5GUVLo21e62s9GSTbHzZFp?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "peek_cell",
+        "signature": "3pp7CEtiuMZLQxZwb3UnfezspU6vFqAjNWvPzcJYwknbHiS2vix8YACmsNwCSArYi4TGyYT8UWH7qknAeBmmYJj",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/3pp7CEtiuMZLQxZwb3UnfezspU6vFqAjNWvPzcJYwknbHiS2vix8YACmsNwCSArYi4TGyYT8UWH7qknAeBmmYJj?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "finish",
+        "signature": "cARR75y78E22P1YUA7yJoT1Gx9z73wyzHw4zoj4nvuraixLBWSbXGu98ErYhR8Px19wXhsWTwuUC8yTY7D9dfcX",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/cARR75y78E22P1YUA7yJoT1Gx9z73wyzHw4zoj4nvuraixLBWSbXGu98ErYhR8Px19wXhsWTwuUC8yTY7D9dfcX?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "set_aim ×6",
+        "signature": "4qj9QzDm4MM9nMYAR418RR5xc1Zz3d79aqJAQPpAe6Lv4d3xr1LF6sUGPrsk3mPkECAQ6TEsGbNEoqajTaGW2NoN",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/4qj9QzDm4MM9nMYAR418RR5xc1Zz3d79aqJAQPpAe6Lv4d3xr1LF6sUGPrsk3mPkECAQ6TEsGbNEoqajTaGW2NoN?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      }
+    ]
+  },
+  "status": 5,
+  "txs": {
+    "init_permissions": 1,
+    "request_seed": 2,
+    "start": 1,
+    "set_aim": 12,
+    "plant_rig": 6,
+    "advance": 1,
+    "peek_cell": 6,
+    "finish": 1
+  },
+  "events": {
+    "plant": 3,
+    "volley": 627,
+    "reveal": 32,
+    "gate": 1145,
+    "gotcha": 5,
+    "clash": 243,
+    "hit": 248,
+    "redeal": 2,
+    "surge": 1,
+    "end": 1
+  },
+  "renderedFrames": 2370,
+  "feed": [
+    {
+      "snapshots": 2454,
+      "emitted": 2399,
+      "maxQueue": 15,
+      "txs": 15,
+      "txFailures": 2
+    },
+    {
+      "snapshots": 2454,
+      "emitted": 2398,
+      "maxQueue": 16,
+      "txs": 15,
+      "txFailures": 2
+    }
+  ],
+  "frameGapMs": {
+    "p50": 50,
+    "p90": 51,
+    "p99": 53,
+    "max": 808
+  },
+  "stages": [
+    "9.8s side 0: setup (permissions)",
+    "9.8s side 1: setup (permissions)",
+    "10.8s side 0: setup (seed)",
+    "10.8s side 1: setup (seed)",
+    "11.8s side 0: setup (start)",
+    "11.8s side 1: setup (start)",
+    "12.0s side 1: playing",
+    "12.4s side 0: playing",
+    "132.2s side 1: finishing",
+    "132.3s side 0: finishing",
+    "134.0s side 1: finished",
+    "134.5s side 0: finished",
+    "138.9s side 0: finished (settled)",
+    "139.0s side 1: finished (settled)"
+  ],
+  "timingsMs": {
+    "created": 5325,
+    "joined": 6807,
+    "delegated": 8375,
+    "connected": 9781,
+    "playing": 12300,
+    "finished_on_tee": 134900,
+    "settled": 139398,
+    "done": 144876
+  },
+  "sol": {
+    "before": 7.534706561,
+    "after": 7.522722721,
+    "spent": 0.01198384
+  }
+}
