@@ -1,29 +1,30 @@
 import { useRef, useState, type PointerEvent } from 'react';
-import {
-  LANE_WIDTH,
-  MATCH_TICKS,
-  MockSource,
-  PLANT_STARTS,
-  PLANT_TICKS,
-  TICKS_PER_SEC,
-} from '@lil-dudes/client';
+import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
+import { MiniLane } from '../match/MiniLane';
 import { useFeed } from '../match/useFeed';
 import { useMatchHud } from '../match/useMatchHud';
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
 const DRAG_SPAN = 0.7;
+const STAGE_LABELS = ['Fight 1', 'Fight 2', 'Raid'];
 
-/** Match screen. Driven by Kai's MockSource until OfflineSource (WASM) lands; then a one-line swap. */
+/** Match screen (MVP §3.6, v3): your lane full size, the opponent's lane as a mini-view. */
 export function Match() {
   const feed = useFeed(() => {
-    // `?tick=2100` starts the mock at that tick (e.g. Surge), for testing.
-    const t = Number(new URLSearchParams(window.location.search).get('tick'));
-    return new MockSource({ startTick: Number.isFinite(t) && t > 0 ? t : 0 });
+    // `?seed=123` replays a specific match (testing); the seed also picks the layout.
+    // `?autoplay=1` lets the bot drive your side too (demos, screenshots).
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('seed');
+    const seed = raw && /^\d+$/.test(raw) ? BigInt(raw) : undefined;
+    const selfBot = params.get('autoplay') === '1';
+    return new OfflineSource(seed === undefined ? { myName: 'You', selfBot } : { myName: 'You', selfBot, seed });
   });
   useMatchHud(feed);
+  const { phase, rigUsed } = useHud();
+  const rigMode = phase[0] === 'plant' && !rigUsed && phase[1] !== 'dead' && phase[1] !== 'done';
 
   const drag = useRef<{ x: number } | null>(null);
   const onDown = (e: PointerEvent) => {
@@ -34,8 +35,7 @@ export function Match() {
     const dxPx = e.clientX - drag.current.x;
     drag.current.x = e.clientX;
     const width = e.currentTarget.getBoundingClientRect().width;
-    const dir = feed.mySide === 0 ? 1 : -1; // side 1 sees the lane mirrored
-    feed.nudgeAim((dxPx / (width * DRAG_SPAN)) * LANE_WIDTH * dir);
+    feed.nudgeAim((dxPx / (width * DRAG_SPAN)) * LANE_WIDTH);
   };
   const onUp = () => {
     if (drag.current) feed.flushAim();
@@ -53,6 +53,9 @@ export function Match() {
     >
       <Arena feed={feed} interactive />
       <TopBar />
+      <div className={`mini-wrap ${rigMode ? 'rig' : ''}`}>
+        <MiniLane feed={feed} rigMode={rigMode} />
+      </div>
       <Prompts />
       <Overlays />
       <ThumbControls />
@@ -60,28 +63,35 @@ export function Match() {
   );
 }
 
+function StagePips({ stage, phase }: { stage: number; phase: string }) {
+  return (
+    <span className="pips" title={STAGE_LABELS[stage]}>
+      {[0, 1, 2].map((i) => (
+        <i key={i} className={i < stage || phase === 'done' ? 'done' : i === stage ? 'on' : ''} />
+      ))}
+    </span>
+  );
+}
+
 function TopBar() {
-  const { names, totals, tick, status, phase, stake } = useHud();
+  const { names, gold, stage, phase, tick, status, stake } = useHud();
   const left = Math.max(0, Math.ceil((MATCH_TICKS - tick) / TICKS_PER_SEC));
   return (
     <div className="hud topbar">
       <div className="who me">
         <b>{names[0]}</b>
-        <span className="pill">{totals[0]}</span>
+        <span className="pill gold">{gold[0]}</span>
+        <StagePips stage={stage[0]} phase={phase[0]} />
       </div>
       <div className="centre">
         <div className="timer">{status === 'ended' ? '0:00' : formatTime(left)}</div>
         <div className="meta">
           <span>{stake > 0 ? `${stake / 1e9} SOL` : 'FREE'}</span>
-          <span className="pips">
-            {[0, 1, 2].map((i) => (
-              <i key={i} className={i < phase ? 'done' : i === phase ? 'on' : ''} />
-            ))}
-          </span>
         </div>
       </div>
       <div className="who them">
-        <span className="pill">{totals[1]}</span>
+        {phase[1] === 'dead' ? <span className="tag dead">DEAD</span> : <StagePips stage={stage[1]} phase={phase[1]} />}
+        <span className="pill gold">{gold[1]}</span>
         <b>{names[1]}</b>
       </div>
     </div>
@@ -90,54 +100,58 @@ function TopBar() {
 
 /** One-line prompts just above your cannon (TECH §5). */
 function Prompts() {
-  const { status, phase, tick, rigUsed, peeking } = useHud();
+  const { phase, myPhaseTick, rigUsed, peeking, names, stage } = useHud();
   let text: string | null = null;
-  if (status === 'plant') {
-    const end = (PLANT_STARTS[phase as 0 | 1 | 2] ?? 0) + PLANT_TICKS;
-    const secs = Math.max(1, Math.ceil((end - tick) / TICKS_PER_SEC));
-    text = rigUsed ? `Rig set! Fire in ${secs}…` : `Tap one of their gates to rig it · ${secs}`;
+  if (phase[0] === 'plant') {
+    const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
+    const canRig = phase[1] !== 'dead' && phase[1] !== 'done';
+    text = rigUsed || !canRig ? `${STAGE_LABELS[stage[0]]}: fire in ${secs}…` : `Tap one of their gates (top right) to rig it · ${secs}`;
   } else if (peeking) {
     text = 'Tap one of your ? gates to peek';
+  } else if (phase[0] === 'transit') {
+    text = 'Stage cleared!';
+  } else if (phase[0] === 'done') {
+    text = phase[1] === 'done' || phase[1] === 'dead' ? 'Done!' : `Done! Waiting for ${names[1]}…`;
   }
   return text ? <div className="hud prompt">{text}</div> : null;
 }
 
 function Overlays() {
-  const { gotcha, surgeAt, ended } = useHud();
+  const { gotcha, banner, ended } = useHud();
   return (
     <>
+      {banner && !ended && (
+        <div key={banner.at} className={`banner-pop flash ${banner.tone}`}>
+          {banner.text}
+        </div>
+      )}
       {gotcha && (
         <div key={gotcha.at} className={`gotcha ${gotcha.onMe ? 'bad' : 'good'}`}>
           <span>GOTCHA!</span>
           <small>{gotcha.onMe ? 'you ran into their rig' : 'they ran into your rig'}</small>
         </div>
       )}
-      {surgeAt && !ended && (
-        <div key={surgeAt} className="banner-pop surge">
-          SURGE!
-        </div>
-      )}
       {ended && (
         <div className={`banner-pop end ${ended.won === null ? '' : ended.won ? 'good' : 'bad'}`}>
-          {ended.ko ? 'K.O.!' : 'TIME!'}
+          {ended.died === 'me' ? 'OVERRUN!' : ended.died === 'them' ? 'THEY FELL!' : ended.won === null ? 'DRAW' : ended.won ? 'YOU WIN' : 'YOU LOSE'}
         </div>
       )}
     </>
   );
 }
 
-/** Bottom-right, by the thumb: peek (one per phase) and sound. */
+/** Bottom-right, by the thumb: peek (one per stage) and sound. */
 function ThumbControls() {
-  const { peekUsed, peeking, status, set } = useHud();
+  const { peekUsed, peeking, phase, set } = useHud();
   const [sound, setSound] = useState(soundEnabled());
-  const canPeek = !peekUsed && status === 'playing';
+  const canPeek = !peekUsed && (phase[0] === 'fight' || phase[0] === 'raid');
   return (
     <div className="hud thumb" onPointerDown={(e) => e.stopPropagation()}>
       <button
         className={`round ${peeking ? 'on' : ''}`}
         disabled={!canPeek && !peeking}
         onClick={() => set({ peeking: !peeking })}
-        title="Peek at one of your gates (once per phase)"
+        title="Peek at one of your gates (once per stage)"
       >
         👁
       </button>
