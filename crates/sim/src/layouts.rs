@@ -1,5 +1,6 @@
-//! The level pool (SPEC §9). A layout is 3 stages: Fight 1 (one tower), Fight 2 (two towers) and
-//! the Raid (no towers). Each stage lists its towers, gate rows, gates and crates. Both players
+//! The level pool (SPEC §9). A layout is 2 stages: Fight 1 (one tower) and Fight 2 (two towers,
+//! the town hall behind them, raided on the same gates once they fall). Each stage lists its
+//! towers, gate rows, gates and crates. Both players
 //! get identical copies; the seed picks the layout (`layout_for(seed)`, public once seeded).
 //!
 //! Gate slots: a stage's gates in list order (sorted by row, then x). Rig and Peek name a slot.
@@ -37,7 +38,7 @@ pub struct GateDef {
 }
 
 impl GateDef {
-    /// Centre x `t` ticks into the player's Fight/Raid phase (SPEC §6). Pure, so the bot can
+    /// Centre x `t` ticks into the player's Fight (the Raid keeps the Fight's clock, SPEC §6). Pure, so the bot can
     /// predict it.
     pub fn x_at(&self, t: u32) -> i16 {
         let (lo, hi) = (i64::from(self.x_min), i64::from(self.x_max));
@@ -139,7 +140,7 @@ pub fn layout(id: u8) -> &'static Layout {
     LAYOUTS.get(usize::from(id)).unwrap_or(&LAYOUTS[0])
 }
 
-/// One stage of a layout (out of range → the Raid of that layout).
+/// One stage of a layout (out of range → the final stage of that layout).
 pub fn stage(layout_id: u8, stage: u8) -> &'static StageDef {
     let l = layout(layout_id);
     l.stages
@@ -260,18 +261,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 ],
                 crates: &[lock(1_500, 2_400, 25)],
             },
-            StageDef {
-                towers: &[],
-                rows: &ROWS3,
-                gates: &[
-                    gate(0, 700),
-                    gate(0, 2_300),
-                    slide(1, 1_500, 600, 2_400, 30),
-                    big(2, 700),
-                    gate(2, 2_300),
-                ],
-                crates: &[lock(700, 3_400, 40)],
-            },
         ],
     },
     // 1. Almost everything slides: timing over aiming.
@@ -299,17 +288,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                     slide(3, 1_500, 400, 2_600, 50),
                 ],
                 crates: &[lock(1_500, 3_200, 30)],
-            },
-            StageDef {
-                towers: &[],
-                rows: &ROWS3,
-                gates: &[
-                    slide(0, 600, 400, 2_600, 35),
-                    gate(1, 900),
-                    big(1, 2_350),
-                    slide(2, 1_500, 500, 2_500, -45),
-                ],
-                crates: &[lock(2_350, 2_400, 45)],
             },
         ],
     },
@@ -340,17 +318,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 ],
                 crates: &[lock(400, 1_400, 30)],
             },
-            StageDef {
-                towers: &[],
-                rows: &ROWS3,
-                gates: &[
-                    gate(0, 1_500),
-                    gate(1, 1_200),
-                    big(1, 2_600),
-                    slide(2, 1_500, 500, 2_500, 40),
-                ],
-                crates: &[lock(2_600, 2_400, 50)],
-            },
         ],
     },
     // 3. Everything funnels through the middle; the towers sit out on the flanks.
@@ -379,18 +346,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 ],
                 crates: &[],
             },
-            StageDef {
-                towers: &[],
-                rows: &ROWS4,
-                gates: &[
-                    narrow(0, 1_500, 700),
-                    narrow(1, 1_000, 500),
-                    narrow(1, 2_000, 500),
-                    big(2, 1_500),
-                    slide(3, 1_500, 700, 2_300, 40),
-                ],
-                crates: &[lock(1_500, 3_200, 45)],
-            },
         ],
     },
     // 4. Rows alternate sides: no straight line through, pick which rows to take.
@@ -412,18 +367,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                 rows: &ROWS3,
                 gates: &[gate(0, 2_400), gate(1, 600), big(1, 1_800), gate(2, 2_400)],
                 crates: &[lock(1_800, 2_400, 30)],
-            },
-            StageDef {
-                towers: &[],
-                rows: &ROWS3,
-                gates: &[
-                    gate(0, 600),
-                    gate(0, 2_400),
-                    slide(1, 1_500, 600, 2_400, -35),
-                    big(2, 600),
-                    gate(2, 2_400),
-                ],
-                crates: &[lock(600, 3_400, 40)],
             },
         ],
     },
@@ -452,17 +395,6 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
                     slide(3, 600, 400, 1_400, 25),
                 ],
                 crates: &[lock(1_100, 3_200, 30)],
-            },
-            StageDef {
-                towers: &[],
-                rows: &ROWS3,
-                gates: &[
-                    gate(0, 500),
-                    gate(0, 2_500),
-                    slide(1, 1_500, 500, 2_500, 40),
-                    big(2, 1_500),
-                ],
-                crates: &[lock(1_500, 3_400, 60)],
             },
         ],
     },
@@ -495,8 +427,8 @@ mod tests {
             let (mut sliding, mut locked) = (0, 0);
             for (s, st) in l.stages.iter().enumerate() {
                 let ctx = format!("layout {id} ({}) stage {s}", l.name);
-                // Towers: 1 in Fight 1, 2 in Fight 2, none in the Raid; different columns.
-                assert_eq!(st.towers.len(), [1, 2, 0][s], "{ctx}");
+                // Towers: 1 in Fight 1, 2 in Fight 2; different columns.
+                assert_eq!(st.towers.len(), [1, 2][s], "{ctx}");
                 for t in st.towers {
                     assert!(t.hp > 0 && t.wave_base > 0, "{ctx}");
                     assert!((300..=2_700).contains(&i32::from(t.x)), "{ctx}");
@@ -635,7 +567,7 @@ mod tests {
     #[test]
     fn lookups_never_panic() {
         assert_eq!(layout(200).name, LAYOUTS[0].name);
-        assert_eq!(stage(0, 9), &LAYOUTS[0].stages[2]);
+        assert_eq!(stage(0, 9), &LAYOUTS[0].stages[STAGES - 1]);
         assert_eq!(layout_for(7), 1);
     }
 }

@@ -23,10 +23,13 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
         prev_gold[s] = side.gold;
         assert!(usize::from(side.stage) < STAGES);
         assert!(u32::from(side.phase_ticks) < MATCH_TICKS);
-        if side.stage == RAID_STAGE {
-            assert!(side.phase != Phase::Fight);
-        } else {
+        // The raid and Done only come after the final stage's fight; the raid clock only runs
+        // in the raid (and stays put once done).
+        if side.stage < FINAL_STAGE {
             assert!(!matches!(side.phase, Phase::Raid | Phase::Done));
+        }
+        if !matches!(side.phase, Phase::Raid | Phase::Done) {
+            assert_eq!(side.raid_ticks, 0);
         }
         // Cannon and aim on the lane.
         assert!((0..LANE_WIDTH).contains(&i32::from(side.cannon_x)));

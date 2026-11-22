@@ -1,4 +1,4 @@
-//! One or more tests per rule (SPEC v3 section in each test's comment). Most use layout 0
+//! One or more tests per rule (SPEC v4 section in each test's comment). Most use layout 0
 //! (Twin Lanes): Fight 1 has one tower at x 1,500, rows at 1,400 / 2,400 / 3,400, gates
 //! 0 (row 0, x 700), 1 (row 0, x 2,300), 2 (row 1, x 700), 3 (row 1, x 2,300) and the sliding
 //! gate 4 (row 2); Fight 2 locks its big gate 2 (x 1,500) behind a crate at y 2,100.
@@ -911,12 +911,141 @@ fn clearing_a_fight_wipes_the_field_and_moves_on() {
         .all(|(_, e)| !matches!(e, Event::Volley { side: 0, .. })));
 }
 
+/// Side 0 in the raid of the final stage at raid tick 0 (towers down, field empty).
+fn raiding(layout: u8) -> MatchState {
+    let mut m = new_match(layout);
+    enter(&mut m, 0, FINAL_STAGE, Phase::Raid);
+    m.public.sides[0].towers = [0; TOWERS_MAX];
+    m
+}
+
+#[test]
+fn the_final_stages_last_tower_starts_the_raid_in_place() {
+    // SPEC §3: no Transit and no wipe: cohorts in flight and leftover enemies stay, the gates
+    // keep sliding from where they are, no new waves; the cannon keeps firing.
+    let mut m = new_match(1); // Conveyor: Fight 2 has sliding gates (slots 1, 2, 4).
+    enter(&mut m, 0, FINAL_STAGE, Phase::Fight);
+    let st = LAYOUTS[1].stages[usize::from(FINAL_STAGE)];
+    assert!(st.gates[1].moving());
+    m.public.sides[0].phase_ticks = 77;
+    m.public.sides[0].towers = [0, 1];
+    let tx = st.towers[1].x;
+    place(&mut m, 0, cohort(900, 5, tx, (TOWER_Y - 10) as i16, 4));
+    place(&mut m, 0, cohort(901, 6, 1_500, 6_000, 4));
+    place(&mut m, 0, cohort(902, 2, 1_500, 1_000, 0));
+    place_enemy(&mut m, 0, enemy(903, 4, 300, 9_000));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Phase {
+        side: 0,
+        stage: FINAL_STAGE,
+        phase: Phase::Raid
+    }));
+    assert!(ev.iter().all(|e| !matches!(e, Event::Wave { .. })));
+    let s = &m.public.sides[0];
+    assert_eq!((s.stage, s.phase), (FINAL_STAGE, Phase::Raid));
+    assert_eq!((s.phase_ticks, s.raid_ticks), (78, 1));
+    assert_eq!(s.gates[1].x, st.gates[1].x_at(77));
+    assert!(find(&m, 0, 901).is_some() && find(&m, 0, 902).is_some());
+    assert_eq!(m.public.sides[0].enemies()[0].id, 903);
+    // The next tick: the gates carry on from there (no jump back to the start x).
+    let next = m.public.tick + 1;
+    let ev = run_safe(&mut m, next, Inputs::default());
+    assert_eq!(m.public.sides[0].gates[1].x, st.gates[1].x_at(78));
+    assert!(ev.iter().all(|(_, e)| !matches!(e, Event::Wave { .. })));
+    // Fight 1's last tower still means Transit.
+    let mut m = new_match(1);
+    enter(&mut m, 0, 0, Phase::Fight);
+    m.public.sides[0].towers[0] = 1;
+    let tx = LAYOUTS[1].stages[0].towers[0].x;
+    place(&mut m, 0, cohort(900, 5, tx, (TOWER_Y - 10) as i16, 3));
+    idle(&mut m);
+    assert_eq!(
+        (m.public.sides[0].stage, m.public.sides[0].phase),
+        (1, Phase::Transit)
+    );
+}
+
+#[test]
+fn the_final_stages_plant_leads_to_a_fight() {
+    // SPEC §3: Plant → Fight in both stages; only the towers falling starts the raid.
+    let mut m = new_match(0);
+    enter(&mut m, 0, FINAL_STAGE, Phase::Plant);
+    let ev = run_to(&mut m, PLANT_TICKS);
+    assert!(ev.iter().any(|(_, e)| *e
+        == Event::Phase {
+            side: 0,
+            stage: FINAL_STAGE,
+            phase: Phase::Fight
+        }));
+    assert_eq!(m.public.sides[0].phase, Phase::Fight);
+}
+
+#[test]
+fn raid_cohorts_home_in_on_the_town_hall_and_loot_anywhere() {
+    // SPEC §4/§5: past the last row, the nearest enemy ahead first, else the hall's centre;
+    // loot on reaching VAULT_Y anywhere across the lane.
+    let mut m = raiding(0);
+    place(&mut m, 0, cohort(900, 3, 500, 5_000, 3));
+    place(&mut m, 0, cohort(901, 3, 2_900, 5_000, 3));
+    place(&mut m, 0, cohort(902, 3, 1_000, 6_000, 3));
+    place(&mut m, 0, cohort(903, 4, 60, (VAULT_Y - 10) as i16, 3));
+    place_enemy(&mut m, 0, enemy(904, 1, 300, 9_000));
+    let ev = idle(&mut m);
+    assert_eq!(find(&m, 0, 900).unwrap().x, 500 - STEER_STEP as i16);
+    assert_eq!(find(&m, 0, 901).unwrap().x, 2_900 - STEER_STEP as i16);
+    assert_eq!(find(&m, 0, 902).unwrap().x, 1_000 - STEER_STEP as i16);
+    assert!(find(&m, 0, 903).is_none());
+    assert!(ev.contains(&Event::Loot {
+        side: 0,
+        cohort_id: 903,
+        units: 4,
+        gold: 4 * LOOT_PER_UNIT
+    }));
+    // No enemy left ahead: straight for the hall.
+    let mut m = raiding(0);
+    place(&mut m, 0, cohort(900, 3, 500, 5_000, 3));
+    place(&mut m, 0, cohort(901, 3, (HALL_X + 20) as i16, 5_000, 3));
+    idle(&mut m);
+    assert_eq!(find(&m, 0, 900).unwrap().x, 500 + STEER_STEP as i16);
+    assert_eq!(find(&m, 0, 901).unwrap().x, HALL_X as i16);
+}
+
+#[test]
+fn leftover_enemies_can_still_kill_in_the_raid() {
+    // SPEC §3/§4: the raid does not wipe the field.
+    let mut m = raiding(0);
+    place_enemy(&mut m, 0, enemy(900, 2, 100, CRUISE_SPEED as i16));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Death { side: 0 }));
+    assert!(m.public.result.unwrap().ko);
+}
+
+#[test]
+fn the_raid_ends_with_the_last_dude_and_leftover_enemies_leave() {
+    // SPEC §3: Done = raid fire over and no dudes of mine left; nothing hangs.
+    let mut m = raiding(0);
+    m.public.sides[0].raid_ticks = RAID_TICKS as u16;
+    m.public.sides[0].phase_ticks = 500;
+    place_enemy(&mut m, 0, enemy(900, 2, 100, 9_000));
+    let ev = idle(&mut m);
+    assert!(ev.contains(&Event::Phase {
+        side: 0,
+        stage: FINAL_STAGE,
+        phase: Phase::Done
+    }));
+    let s = &m.public.sides[0];
+    assert_eq!(s.phase, Phase::Done);
+    assert!(s.enemies().is_empty() && s.cohorts().is_empty());
+    assert!(ev
+        .iter()
+        .all(|e| !matches!(e, Event::Volley { .. } | Event::Death { .. })));
+}
+
 #[test]
 fn raid_fires_for_raid_ticks_loots_and_then_is_done() {
-    // SPEC §3/§5: fire RAID_TICKS, LOOT_PER_UNIT per dude reaching the vault, Done when the
-    // lane is empty.
-    let mut m = new_match(0);
-    enter(&mut m, 0, RAID_STAGE, Phase::Raid);
+    // SPEC §3/§5: fire RAID_TICKS, LOOT_PER_UNIT per dude reaching the town hall, Done when
+    // the lane is empty.
+    let mut m = raiding(0);
     place(&mut m, 0, cohort(9_000, 7, 1_500, (VAULT_Y - 10) as i16, 3));
     let ev = idle(&mut m);
     assert!(ev.contains(&Event::Loot {
@@ -926,7 +1055,15 @@ fn raid_fires_for_raid_ticks_loots_and_then_is_done() {
         gold: 7 * LOOT_PER_UNIT
     }));
     assert_eq!(m.public.sides[0].gold, 7 * LOOT_PER_UNIT);
-    let ev = run_safe(&mut m, 600, Inputs::default());
+    // Aim down the left lane (the middle is locked behind Fight 2's crate).
+    let left = input(
+        0,
+        SideInput {
+            aim: Some(700),
+            ..SideInput::default()
+        },
+    );
+    let ev = run_safe(&mut m, 600, left);
     let volleys = ev
         .iter()
         .filter(|(_, e)| matches!(e, Event::Volley { side: 0, .. }))
@@ -938,7 +1075,7 @@ fn raid_fires_for_raid_ticks_loots_and_then_is_done() {
         .find(|(_, e)| {
             *e == Event::Phase {
                 side: 0,
-                stage: RAID_STAGE,
+                stage: FINAL_STAGE,
                 phase: Phase::Done,
             }
         })
