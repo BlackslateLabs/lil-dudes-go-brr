@@ -94,18 +94,20 @@ PROGRESS_LOG entry tagged `CONTRACT`.
 
 ### Accounts
 
-| Account | Layer | Visibility | Size (rules v3) | Holds |
+| Account | Layer | Visibility | Size (rules v4) | Holds |
 |---|---|---|---|---|
-| `Match` `["match", id]` | delegated → TEE | **public** (no permission) | 1,792 B (8 + 314 header + 1,470 state) | id, stake S, both picks, create/join times, ready/seed-request/start slots, players (stake wallets), burners (TEE signers), treasury, names, status, flags, bumps, last GOTCHA per copy (`[tick u16, gate slot, rigged by]` at data offset 288), seed + rig/peek history (24 B at data offset 296, published at `finish`), and the sim's **public state** (codec, data offset 322) |
-| `Secrets` `["secrets", id]` | delegated → TEE | **private, no members** | 168 B | raw VRF output, both players' salts, the sim's **secret state** (codec, data offset 112: seed, every stage's true gate values, the per-stage rig/peek history) |
-| `Peek[s]` `["peek", id, s]` | delegated → TEE | **private, member = burner s** | 56 B | that player's view of their current stage (= the sim's `PrivateView`), data offsets 49–55: `stage` (255 = never written), `rig_stage`, `rig_slot` (the victim's stage and gate slot, 255 = none), `peek_stage` (255 = none), `peek_slot`, `peek_op` (`GateOp::to_byte`), pad. Stale when `stage` is behind the side's public stage |
+| `Match` `["match", id]` | delegated → TEE | **public** (no permission) | 1,792 B (8 + 310 header + 1,474 state) | id, stake S, both picks, create/join times, ready/seed-request/start slots, players (stake wallets), burners (TEE signers), treasury, names, status, flags, bumps, last GOTCHA per copy (`[tick u16, gate slot, rigged by]` at data offset 288), seed + rig/peek history (16 B at data offset 296, published at `finish`), 6 B pad, and the sim's **public state** (codec, data offset 318) |
+| `Secrets` `["secrets", id]` | delegated → TEE | **private, no members** | 152 B | raw VRF output, both players' salts, the sim's **secret state** (codec, data offset 112: seed, every stage's true gate values, the per-stage rig/peek history) |
+| `Peek[s]` `["peek", id, s]` | delegated → TEE | **private, member = burner s** | 56 B | that player's view of their current stage (= the sim's `PrivateView`), data offsets 49–55: `stage` (255 = never written), `rig_stage`, `rig_slot` (the victim's stage and gate slot, 255 = none; rules v4: `rig_stage` always equals `stage`), `peek_stage` (255 = none), `peek_slot`, `peek_op` (`GateOp::to_byte`), pad. Stale when `stage` is behind the side's public stage |
 | `Vault` `["vault", id]` | base, never delegated | public | 0 data (SOL) | both stakes (2S) until settled |
 
 No `Config` account (M3): the treasury is a constant (the deploy wallet) and `delegate_match` only
 accepts the TEE validator; the test build (`--features magicsvm`) lifts both for MagicSVM.
 Codec (`crates/sim/src/codec.rs`, TS decoder `packages/client/src/codec.ts`): fixed offsets, little
-endian, only live cohorts copied; rules v3: public part 1,470 B, secret part 56 B (seed, values,
-then the 24-byte history last, so `finish` copies the seed and the history as-is).
+endian, only live cohorts copied; rules v4 (codec 3): public part 1,474 B (a side is 720 B, with
+the raid timer `raid_ticks` u16 at side offset 718), secret part 40 B (seed, 2 stages × 8 values,
+then the 16-byte history last: 2 stages × 2 sides × [rig stage, rig slot, peek slot, peek op], so
+`finish` copies the seed and the history as-is).
 
 All far under the 10,240 B commit limit ✅. Commit **once** at the end (commit + undelegate), so the
 10-commit nonce limit and the per-commit fees don't matter ✅.
@@ -141,10 +143,13 @@ permission is public.
   seed's layout, both players in the Plant of Fight 1, every stage's values in Secrets),
   `start` (tick 0 = now, schedules the crank; any player), `advance` (anyone; catch-up ≤ 8),
   `set_aim(x)` (public, writes the aim byte-wise, ~3.3k CU), `plant_rig(cell)` / `peek_cell(cell)`
-  (rules v3: `cell` is a **gate slot** 0..8 of the stage; catch up ≤ 2, apply with the sim's
-  rules, write Secrets + my Peek from the sim's private view; refused = error. Rig: only in my own
-  Plant, once per stage, an unrevealed gate of the opponent's current stage (their next one if
-  they are in Transit), never a stage that already holds a rig. Peek: only in my own Fight/Raid,
+  (`cell` is a **gate slot** 0..8 of the stage; catch up ≤ 2, apply with the sim's
+  rules, write Secrets + my Peek from the sim's private view; refused = error, nothing spent.
+  Rig (rules v4, `lil_dudes_sim::can_rig`; the program has no phase check of its own): in any
+  phase while I am alive and not done, once per stage of mine, a slot of MY current stage, applied
+  to the opponent's copy of that stage; refused if they are dead or done, already past that stage,
+  on it with that gate revealed, the slot is missing, or that stage already holds a rig. A rig on a
+  stage they have not reached yet springs when they get there. Peek: only in my own Fight/Raid,
   once per stage, an unrevealed gate of my current stage), `finish` (anyone with a result,
   or an abort of a match that never started: a player at once before the permissions / ~60 s
   after, **anyone ~5 min (30,000 slots) after READY**: publishes seed + history in the Match,
@@ -152,7 +157,10 @@ permission is public.
   action `settle_action`). `advance` (the crank) does not touch the Peeks, so a Peek changes only
   on its owner's own rig/peek and at `finish`.
 - ⚠️ Rules v3 port not yet built or run (no SBF toolchain where it was written): `anchor build`,
-  redeploy and the MagicSVM suite are pending (Kai).
+  redeploy and the MagicSVM suite are pending (Kai). The same holds for the rules v4 port (two
+  stages, the raid in place, any-phase rig; Match still 1,792 B, state at data offset 318; Secrets
+  152 B): host `cargo test -p lil_dudes` passes and `tests-magicsvm` type-checks; the SBF build,
+  the IDL regeneration and the MagicSVM run are pending.
 - Tested in MagicSVM (17 tests, `tests-magicsvm/`, every instruction + refused cases, the M5
   anyone-after-timeout refunds) and on devnet (live matches, the privacy re-check, the sweeper e2e).
 
@@ -162,7 +170,7 @@ permission is public.
   `target_tick = (Clock.slot − start_slot) / 5`.
 - `advance()` is **idempotent catch-up**: it steps from `last_tick` to `target_tick` (capped per tx,
   see the compute budget below) and returns OK if already current. **Every** player instruction calls it first.
-- The crank calls `advance` every 50 ms. Rules v3: **5,400 runs** (1.5 × 3,600; M3 had 3,600 = 1.5 × 2,400: the interval is wall time
+- The crank calls `advance` every 50 ms. Rules v3 and v4: **5,400 runs** (1.5 × 3,600; M3 had 3,600 = 1.5 × 2,400: the interval is wall time
   but ticks follow slots, so this covers slots up to 15 ms), not cancelled (the legacy
   `CancelTask` needs an undocumented task-context account); `advance` is a no-op after the end. ✅ The docs
   say cranks don't guarantee exact timing, so correctness never depends on the crank firing on time.
@@ -192,8 +200,8 @@ permission is public.
 Caps: **8 ticks per `advance` (crank), 2 in player txs** (`plant_rig`, `peek_cell`). Rerun:
 `tests-magicsvm/tests/bench.rs` (program feature `bench`) and `tests/tee.rs`.
 
-⚠️ **Rules v3: needs a re-bench.** The numbers above are the v2.1 state. v3 adds enemy cohorts
-(16 per lane), towers, crates, homing and a 1,470 B codec; `bench.rs` now measures full lanes
+⚠️ **Rules v3/v4: needs a re-bench.** The numbers above are the v2.1 state. v3 adds enemy cohorts
+(16 per lane), towers, crates, homing and a 1,470 B codec (v4: 1,474 B, the raid in place); `bench.rs` now measures full lanes
 (40 cohorts + 16 enemies per side) and a bot match's busiest tick, but nobody has run it yet, so
 the 8 / 2 caps are unconfirmed for v3. `finish` now also decodes the state once to refresh the
 Peeks (~6k CU at v2.1 codec cost).
@@ -407,7 +415,7 @@ Also: ✅ a burner with 0 SOL can send ER transactions; ❌ `advance` with 40 st
 | VRF callback fails (SDK macro, check 4) | ✅ Declare `vrf_program_identity` with a `const` address; keep the callback infallible |
 | A failed VRF callback leaks the randomness | Seed = `H(vrf ‖ private salts)`; the callback never fails |
 | `advance` over the CU limit (extra b) | ✅ M3: codec 68k → 6k CU, worst tick 38k; caps 8 (crank) / 2 (player tx) |
-| Crank ends before the match (slow ER slots) | ✅ M3: 1.5 × MATCH_TICKS runs (5,400 for v3's 3:00 cap; covers 15 ms slots); LiveSource sends a heartbeat `advance` after 1 s without a tick |
+| Crank ends before the match (slow ER slots) | ✅ M3: 1.5 × MATCH_TICKS runs (5,400 for the 3:00 cap of v3 and v4; covers 15 ms slots); LiveSource sends a heartbeat `advance` after 1 s without a tick |
 | 0-SOL burner can't schedule the crank / escrow the action | ✅ Did not fail (M3 devnet, three runs) |
 | Program upgrade needs ~2× rent in SOL | Small .so (`opt-level = "z"`, sim at 3); keep ≥ 5 SOL; or deploy fresh + close the old program |
 | Anchor macro crates drift to 1.2.2 | Keep them pinned to 1.0.2 in `Cargo.lock` |
