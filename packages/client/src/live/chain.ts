@@ -194,7 +194,8 @@ export const ixs = {
     new DataView(b.buffer).setInt16(0, x, true);
     return ix('set_aim', b, { player, game: a.game });
   },
-  /** Rig gate `slot` of the opponent's current stage (rules v3; the IDL still calls the arg `cell`). */
+  /** Rig from my own lane: gate `slot` of MY current stage, trapped in the opponent's copy of
+   *  that stage (rules v4; the IDL still calls the arg `cell`). */
   plantRig(a: MatchAccounts, player: PublicKey, side: 0 | 1, slot: number) {
     return ix('plant_rig', Uint8Array.of(slot), { player, game: a.game, secrets: a.secrets, peek: a.peeks[side] });
   },
@@ -209,18 +210,22 @@ export const ixs = {
 
 // --- account decoders (byte offsets of state.rs, after the 8-byte discriminator) ----------------
 
-// Rules v3 Match (programs/lil_dudes/src/state.rs): the v2.1 fields in the same order; only the
-// published history (30 → 24 bytes) and the codec state (1,046 → 1,470) changed length. The
-// zero-copy struct must have no padding, so `_pad` shrinks to 2 bytes: 1,784 bytes + 8.
-/** Codec history length (verify.ts HISTORY_LEN). */
-const HISTORY_BYTES = 24;
+// Rules v4 Match (programs/lil_dudes/src/state.rs): the same fields in the same order; the
+// published history shrinks 24 → 16 bytes (2 stages) and the codec state grows 1,470 → 1,474,
+// and `_pad` grows 2 → 6, so the account keeps its size: 1,784 bytes + 8. Offsets here are in
+// the account data (they include the 8-byte discriminator).
+/** Codec history length (verify.ts HISTORY_LEN): 2 stages × 2 sides × 4 bytes. */
+const HISTORY_BYTES = 16;
 const OFF = {
   id: 8, stake: 16, picks: 24, createdAt: 40, joinedAt: 48, readySlot: 56, seedReqSlot: 64, startSlot: 72, seed: 80,
-  players: 88, burners: 152, treasury: 216, names: 248, status: 280, flags: 281, gotcha: 288, history: 296, state: 322,
+  players: 88, burners: 152, treasury: 216, names: 248, status: 280, flags: 281, gotcha: 288, history: 296, state: 318,
 } as const;
 /** Offset of the codec public state in the Match account data. */
 export const STATE_OFFSET = OFF.state;
+/** 1,792 bytes (the getProgramAccounts size filter). */
 export const MATCH_LEN = STATE_OFFSET + PUBLIC_LEN;
+/** Secrets account data: 8 + id, VRF output, both salts, the codec secret part (40 B) at 112. */
+export const SECRETS_LEN = 152;
 
 export interface MatchHeader {
   id: bigint;
@@ -283,13 +288,13 @@ export function decodeMatch(data: Uint8Array): MatchAccount {
   };
 }
 
-/** One player's private Peek account (rules v3): the rig they planted and the peek they made,
+/** One player's private Peek account: the rig they planted and the peek they made,
  *  each tagged with the stage it belongs to (an entry from an earlier stage is stale). */
 export interface PeekAccount {
   side: number;
   /** The owner's stage when the program last wrote this account (null = never written). */
   stage: number | null;
-  /** The opponent gate rigged in `stage`: the victim's stage and slot. */
+  /** The opponent gate rigged in `stage`: the victim's stage (v4: = `stage`) and slot. */
   rig: { stage: number; slot: number } | null;
   /** The owner's peek: in its stage `stage`, gate `slot`, true value `op` (`div` = rigged). */
   peek: { stage: number; slot: number; op: GateOp } | null;
@@ -298,7 +303,7 @@ export interface PeekAccount {
 export const PEEK_LEN = 8 + 48;
 const NONE = 255;
 
-/** Peek account v3: after the discriminator, `id u64, owner Pubkey, side u8`, then `stage`
+/** Peek account (unchanged in v4): after the discriminator, `id u64, owner Pubkey, side u8`, then `stage`
  *  (255 = never written), `rig_stage` (255 = none), `rig_slot`, `peek_stage` (255 = none),
  *  `peek_slot`, `peek_op` (k = ×k, 0x80 | k = ÷k), `_pad`. */
 export function decodePeek(data: Uint8Array): PeekAccount {

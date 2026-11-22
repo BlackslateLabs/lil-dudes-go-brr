@@ -1,7 +1,7 @@
 export * from './constants';
 export * from './types';
 export * from './source';
-export { layoutDef, stageDef, gateXAt, gateMoving, crateOfGate, fightGold, applyOp, opFromByte, opFromSigned } from './layout';
+export { layoutDef, stageDef, gateXAt, gateMoving, covers, gateAt, crateOfGate, fightGold, applyOp, opFromByte, opFromSigned } from './layout';
 export { laneView, lanePhase, matchView, resultOf } from './view';
 export type { LaneState, EnemyState, RawResult } from './view';
 export { MockSource } from './mock';

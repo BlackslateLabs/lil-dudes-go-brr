@@ -1,6 +1,6 @@
 // The full reveal of a finished match (result screen, Verify): the layout and every stage's gate
 // values rebuilt from the published seed with the same Rust code (WASM), plus every stage's rigs
-// and peeks from the published history (rules v3, docs/SPEC.md §6, §11).
+// and peeks from the published history (rules v4: two stages, docs/SPEC.md §6, §11).
 import { deals_for } from '@lil-dudes/sim-wasm';
 import * as C from './constants';
 import { layoutDef, opFromByte, stageDef } from './layout';
@@ -8,7 +8,7 @@ import { initSim } from './offline';
 import type { GateOp, MatchResult, Side } from './types';
 
 const NONE = 255;
-/** Codec history: 3 stages × 2 sides × [rig stage, rig slot, peek slot, peek op]. */
+/** Codec history: 2 stages × 2 sides × [rig stage, rig slot, peek slot, peek op] = 16 bytes. */
 export const HISTORY_LEN = C.STAGES * 2 * 4;
 
 /** The level and every stage's true gate values of a match (identical in both copies; a rig
@@ -20,7 +20,8 @@ export interface Deals {
   values: GateOp[][];
 }
 
-/** A rig: the victim's stage and gate slot. */
+/** A rig: the victim's stage and gate slot (v4: the victim's stage is the rigger's own stage at
+ *  the time, and the slot is the gate the rigger tapped in their own lane). */
 export interface RigLog {
   stage: number;
   slot: number;
@@ -32,11 +33,12 @@ export interface PeekLog {
   op: GateOp;
 }
 
-/** What both players did during one of their OWN stages (`stage` = the actor's stage; a rig
- *  names the victim's stage, which can differ when the players are at different stages). */
+/** What both players did during one of their OWN stages (`stage` = the actor's stage; in v4 a
+ *  rig always names that same stage of the opponent's copy). */
 export interface StageLog {
   stage: number;
-  /** `rigs[s]` = the gate of the opponent's copy side s rigged during its plant of this stage. */
+  /** `rigs[s]` = the gate of the opponent's copy side s rigged during this stage of its own (any
+   *  phase). */
   rigs: [RigLog | null, RigLog | null];
   /** `peeks[s]` = side s's peek during this stage. */
   peeks: [PeekLog | null, PeekLog | null];
@@ -67,7 +69,7 @@ export function dealsFor(seed: bigint): Deals {
   return { layout, layoutName: layoutDef(layout).name, values };
 }
 
-/** Decodes the 24-byte history (codec layout: 3 stages × 2 sides × [rig stage (255 none), rig
+/** Decodes the 16-byte history (codec layout: 2 stages × 2 sides × [rig stage (255 none), rig
  *  slot, peek slot (255 none), peek op byte]). */
 export function decodeHistory(bytes: Uint8Array): StageLog[] {
   const out: StageLog[] = [];

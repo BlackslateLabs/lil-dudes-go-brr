@@ -1,29 +1,33 @@
-// MatchEvents for the live feed (rules v3). The chain stores state, not events, so they are
+// MatchEvents for the live feed (rules v4). The chain stores state, not events, so they are
 // derived by diffing consecutive snapshots of the public Match state (each snapshot is one or
 // more ticks later than the last). Same event types and meanings as OfflineSource.
 //
 // With consecutive snapshots (one tick apart, what the TEE feed delivers):
-// - exact: volley (new cohort ids), wave (new enemy ids), reveal (+ gotcha: v3 gates only
+// - exact: volley (new cohort ids), wave (new enemy ids), reveal (+ gotcha: gates only
 //   multiply, so a gate revealed as ÷ is always the opponent's sprung rig), gate and crate (the
 //   cohorts' movement through the stage's crates and gate rows is re-run with the now-revealed
-//   values), stage, death, end;
-// - summed per snapshot: towerHit (one per tower), loot (one per lane), clash (one per lane: the
-//   enemy units lost, at their average position); towerDown when a tower reaches 0 or its stage
-//   is left (the last tower falling moves the lane on in the same tick);
+//   values, gate edges + GATE_GRACE, nearest centre), stage, death, end;
+// - summed per snapshot: towerHit (one per tower), loot (one per lane: gold not explained by
+//   towers, in the raid), clash (one per lane: the enemy units lost, at their average position);
+//   towerDown when a tower reaches 0 or its stage is left (Fight 1's last tower moves the lane to
+//   Transit in the same tick; Fight 2's starts the town hall raid in place, same stage).
+// - v4 flow: Fight 2 → Raid keeps the stage, the field and the phase clock, so cohorts are
+//   re-run straight through the switch. Raid → Done wipes the leftover enemies (they leave, not
+//   killed): that tick's clash is my units lost that the loot doesn't explain (clashes are 1:1).
 // - approximate: a wave that merged into an existing enemy cohort (at ENEMY_CAP) shows as the
 //   count increase net of that cohort's clash losses.
 // Gaps of several ticks collapse phase changes, and the reveals, gates and crates of a stage the
 // lane left inside the gap are not recovered.
 import * as C from '../constants';
 import { matchResultOf, type PublicState, type SideState } from '../codec';
-import { applyOp, gateXAt, stageDef } from '../layout';
+import { applyOp, covers, gateAt, gateXAt, stageDef } from '../layout';
 import type { LanePhase, MatchEvent, Side } from '../types';
 
 const PHASES: readonly LanePhase[] = ['plant', 'fight', 'transit', 'raid', 'done'];
 const FIGHT = 1;
 const RAID = 3;
+const DONE = 4;
 const active = (phase: number) => phase === FIGHT || phase === RAID;
-const within = (x: number, centre: number, width: number) => Math.abs(x - centre) * 2 <= Math.abs(width);
 
 /** The events that happened between two snapshots of the public state (`prev` null = first one). */
 export function diffEvents(prev: PublicState | null, next: PublicState): MatchEvent[] {
@@ -46,15 +50,19 @@ export function diffEvents(prev: PublicState | null, next: PublicState): MatchEv
 
 function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState, b: SideState, dt: number): void {
   const sameStage = a.stage === b.stage;
-  const samePhase = sameStage && a.phase === b.phase;
   const st = stageDef(layout, a.stage);
+  // Raid → Done: the leftover enemies leave the field (not clash losses).
+  const enemiesLeft = sameStage && a.phase === RAID && b.phase === DONE;
 
-  // Cohorts through crates and gate rows, re-run tick by tick while the phase holds.
-  if (samePhase && active(a.phase) && !a.dead) {
+  // Cohorts through crates and gate rows, re-run tick by tick while the lane stays active in this
+  // stage (Fight → Raid keeps the field and the clock; the clock of a tick is the phase ticks
+  // before it, so count from `a`).
+  const cohorts = a.cohorts.map((c) => ({ ...c }));
+  const rerun = sameStage && active(a.phase) && !a.dead;
+  if (rerun) {
     const crates = [...a.crates];
-    const cohorts = a.cohorts.map((c) => ({ ...c }));
     for (let k = 0; k < dt; k++) {
-      const t = b.phaseTicks - dt + k;
+      const t = a.phaseTicks + k;
       for (const c of cohorts) {
         if (c.count === 0) continue;
         const prevY = c.y;
@@ -62,7 +70,7 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
         c.age = Math.min(255, c.age + 1);
         st.crates.forEach((def, index) => {
           const hp = crates[index] ?? 0;
-          if (hp === 0 || c.count === 0 || prevY >= def.y || c.y < def.y || !within(c.x, def.x, def.width)) return;
+          if (hp === 0 || c.count === 0 || prevY >= def.y || c.y < def.y || !covers(c.x, def.x, def.width)) return;
           const absorbed = Math.min(c.count, hp);
           crates[index] = hp - absorbed;
           c.count -= absorbed;
@@ -70,7 +78,7 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
         });
         while (c.lastRow < st.rows.length && c.count > 0 && c.y >= st.rows[c.lastRow]!) {
           const row = c.lastRow++;
-          const slot = st.gates.findIndex((g) => g.row === row && within(c.x, gateXAt(g, t), g.width));
+          const slot = gateAt(st, row, c.x, (_, g) => gateXAt(g, t));
           const op = slot >= 0 ? b.gates[slot]?.revealed : null;
           if (!op) continue;
           const before = c.count;
@@ -88,8 +96,8 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
       out.push({ type: 'reveal', side, stage: b.stage, slot, op: g.revealed });
       if (g.revealed.kind === 'div') out.push({ type: 'gotcha', side, stage: b.stage, slot, riggedBy: side === 0 ? 1 : 0 });
     });
-    // Crate damage outside the re-run (e.g. a phase change inside the gap): one event per crate.
-    if (!samePhase) {
+    // Crate damage outside the re-run: one event per crate.
+    if (!rerun) {
       b.crates.forEach((hp, index) => {
         const was = a.crates[index] ?? 0;
         if (hp < was) out.push({ type: 'crate', side, index, hp, broken: hp === 0 });
@@ -97,8 +105,37 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
     }
   }
 
+  // Towers: summed hits; leaving a fight for the next stage means every tower still standing fell.
+  const fell = !sameStage && a.phase === FIGHT;
+  let towerGold = 0;
+  st.towers.forEach((_, tower) => {
+    const was = a.towers[tower] ?? 0;
+    const hp = fell ? 0 : sameStage ? (b.towers[tower] ?? 0) : was;
+    if (hp >= was) return;
+    out.push({ type: 'towerHit', side, tower, damage: was - hp, hp, gold: was - hp });
+    towerGold += was - hp;
+    if (hp === 0) {
+      out.push({ type: 'towerDown', side, tower, gold: C.TOWER_BONUS });
+      towerGold += C.TOWER_BONUS;
+    }
+  });
+
+  // Loot: in the town hall raid, gold the towers don't explain came from the hall.
+  const raiding = sameStage && (b.phase === RAID || b.phase === DONE);
+  const lootGold = raiding ? b.gold - a.gold - towerGold : 0;
+  if (lootGold > 0) out.push({ type: 'loot', side, count: Math.floor(lootGold / C.LOOT_PER_UNIT), gold: lootGold });
+
   // Enemy units lost in clashes (the field is wiped when the stage changes).
-  if (sameStage) {
+  if (enemiesLeft) {
+    // The raid's last tick: my units that are gone and didn't loot fell in clashes (1:1).
+    const mine = cohorts.reduce((n, c) => n + c.count, 0) - b.cohorts.reduce((n, c) => n + c.count, 0);
+    const killed = Math.max(0, mine - Math.max(0, Math.floor(lootGold / C.LOOT_PER_UNIT)));
+    if (killed > 0 && a.enemies.length > 0) {
+      const x = a.enemies.reduce((n, e) => n + e.x, 0) / a.enemies.length;
+      const y = a.enemies.reduce((n, e) => n + Math.max(0, e.y - C.CRUISE_SPEED), 0) / a.enemies.length;
+      out.push({ type: 'clash', side, x: Math.round(x), y: Math.round(y), killed });
+    }
+  } else if (sameStage) {
     const now = new Map(b.enemies.map((e) => [e.id, e]));
     let killed = 0;
     let sx = 0;
@@ -114,22 +151,6 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
       at++;
     }
     if (killed > 0) out.push({ type: 'clash', side, x: Math.round(sx / at), y: Math.round(sy / at), killed });
-  }
-
-  // Towers: summed hits; leaving a fight means every tower still standing fell.
-  const fell = !sameStage && a.phase === FIGHT;
-  st.towers.forEach((_, tower) => {
-    const was = a.towers[tower] ?? 0;
-    const hp = fell ? 0 : sameStage ? (b.towers[tower] ?? 0) : was;
-    if (hp >= was) return;
-    out.push({ type: 'towerHit', side, tower, damage: was - hp, hp, gold: was - hp });
-    if (hp === 0) out.push({ type: 'towerDown', side, tower, gold: C.TOWER_BONUS });
-  });
-
-  // Loot: in the raid, gold only comes from the vault.
-  if (a.stage === C.RAID_STAGE && sameStage && b.gold > a.gold) {
-    const gold = b.gold - a.gold;
-    out.push({ type: 'loot', side, count: Math.floor(gold / C.LOOT_PER_UNIT), gold });
   }
 
   // Waves: new enemy ids; a merged wave shows as a count increase.
