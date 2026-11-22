@@ -83,10 +83,11 @@ pub fn handle_create_match(
         p.id = id;
         p.side = side;
         p.owner = if side == 0 { burner } else { Pubkey::default() };
-        p.rig_phase = NONE;
-        p.rig_cell = NONE;
-        p.peek_phase = NONE;
-        p.peek_cell = NONE;
+        p.stage = NONE;
+        p.rig_stage = NONE;
+        p.rig_slot = NONE;
+        p.peek_stage = NONE;
+        p.peek_slot = NONE;
     }
     Ok(())
 }
@@ -312,7 +313,9 @@ pub struct Settle<'info> {
 }
 
 /// Fallback settlement (TECH §4): anyone, once the Match is back on the base layer, if the Magic
-/// Action did not pay. Refused when already paid.
+/// Action did not pay. Refused when already paid. Pays the result the sim stored in the final
+/// state (SPEC §8 v3: a death moves the loser's whole stake, otherwise the pot splits by gold;
+/// the fee comes out of the money moved; a draw or an abort refunds both).
 pub fn handle_settle(ctx: Context<Settle>, _id: u64) -> Result<()> {
     let a = &ctx.accounts;
     let g = *a.game.load()?;
@@ -361,7 +364,8 @@ pub struct SettleAction<'info> {
     pub escrow: UncheckedAccount<'info>,
 }
 
-/// Post-commit Magic Action scheduled by `finish`: pays out from the committed Match.
+/// Post-commit Magic Action scheduled by `finish`: pays out from the committed Match (the same
+/// split as `settle`).
 pub fn handle_settle_action(ctx: Context<SettleAction>, _id: u64) -> Result<()> {
     let a = &ctx.accounts;
     let g = read_match(&a.game.try_borrow_data()?)?;
