@@ -4,7 +4,7 @@
 //! so the TEE redacts it for everyone who is not a member. `set_aim` is public on purpose (the
 //! aim is public state). Nothing secret is ever logged.
 use crate::errors::GameError;
-use crate::game::{catch_up, load, phase_now, store};
+use crate::game::{catch_up, load, store, write_peek};
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
@@ -25,7 +25,7 @@ use ephemeral_rollups_sdk::vrf::instructions::{
 use ephemeral_rollups_sdk::vrf::types::SerializableAccountMeta;
 use ephemeral_rollups_sdk::{ActionArgs, ShortAccountMeta};
 use lil_dudes_sim::codec::history_bytes;
-use lil_dudes_sim::{apply_input, MatchOptions, MatchState, SideInput};
+use lil_dudes_sim::{apply_input, MatchOptions, MatchState, PublicSide, SideInput};
 use solana_sha256_hasher::hashv;
 
 const PROGRAM_IDENTITY: Pubkey = program_identity_pubkey(&crate::ID);
@@ -239,7 +239,8 @@ pub struct CallbackSeed<'info> {
 
 /// VRF callback. Infallible by design (a failed callback is public and retried with the same
 /// bytes, Stage 0 check 2): fixed accounts, no checks that can fail, small compute. Writes the
-/// seed and the initial match (phase 1 dealt face-down) into Secrets / Match.
+/// seed and the initial match into Secrets / Match: the seed's layout, both players in the Plant
+/// of Fight 1 with face-down gates, every stage's true values in Secrets only.
 pub fn handle_callback_seed(ctx: Context<CallbackSeed>, randomness: [u8; 32]) -> Result<()> {
     let mut g = ctx.accounts.game.load_mut()?;
     let mut s = ctx.accounts.secrets.load_mut()?;
@@ -395,13 +396,13 @@ pub struct SetAim<'info> {
 /// SPEC §2: the cannon chases the aim. Public and cheap: writes the aim straight into the
 /// encoded state (equal to `apply_input` with only `aim`; the crank keeps the sim current).
 pub fn handle_set_aim(ctx: Context<SetAim>, x: i16) -> Result<()> {
+    use lil_dudes_sim::codec::{HEADER_LEN, SIDE_AIM, SIDE_LEN};
     let mut g = ctx.accounts.game.load_mut()?;
     require!(g.status == status::PLAYING, GameError::WrongStatus);
     let side = side_of(&g, &ctx.accounts.player.key())?;
     require!(!has_result(&g), GameError::WrongStatus);
     let aim = x.clamp(0, (lil_dudes_sim::LANE_WIDTH - 1) as i16);
-    let at =
-        lil_dudes_sim::codec::HEADER_LEN + usize::from(side) * lil_dudes_sim::codec::SIDE_LEN + 4;
+    let at = HEADER_LEN + usize::from(side) * SIDE_LEN + SIDE_AIM;
     if let Some(dst) = g.state.get_mut(at..at + 2) {
         dst.copy_from_slice(&aim.to_le_bytes());
     }
@@ -420,13 +421,15 @@ pub struct PlayerSecret<'info> {
     pub peek: AccountLoader<'info, Peek>,
 }
 
-/// Shared by plant_rig and peek: catch up (≤ PLAYER_CATCH_UP ticks), apply the input, store.
+/// Shared by plant_rig and peek_cell: catch up (≤ PLAYER_CATCH_UP ticks), apply the input with
+/// the sim's own rules (`apply_input`), store, and rewrite my Peek from the sim's private view.
+/// The sim ignores an input it refuses and leaves it unspent; `used` reads the per-stage flag it
+/// sets when it takes one, so "not set by this input" = refused = an error (nothing is written).
 fn with_input(
     ctx: Context<PlayerSecret>,
     input: SideInput,
-    took: impl Fn(&MatchState, u8) -> bool,
+    used: fn(&PublicSide) -> bool,
     refused: GameError,
-    record: impl Fn(&MatchState, u8, &mut Peek),
 ) -> Result<()> {
     let slot = Clock::get()?.slot;
     let a = &ctx.accounts;
@@ -439,17 +442,23 @@ fn with_input(
     require!(p.id == g.id && p.side == side, GameError::WrongAccount);
     let mut m = load(&g, &s);
     catch_up(&mut m, &mut g, slot, PLAYER_CATCH_UP);
-    let before = took(&m, side);
+    let spent = |m: &MatchState| m.public.side(side).is_some_and(used);
+    let before = spent(&m);
     apply_input(&mut m, side, &input);
-    if before || !took(&m, side) {
+    if before || !spent(&m) {
         return Err(refused.into());
     }
-    record(&m, side, &mut p);
+    write_peek(&m, side, &mut p);
     store(&m, &mut g, &mut s);
     Ok(())
 }
 
-/// SPEC §5: rig one opponent cell during the plant window (once per phase, never gold).
+/// SPEC §6 Rig: during my own Plant, once per stage, turn gate `cell` of the opponent's copy into
+/// a trap, in the stage they are in now (in their Transit: the stage they enter next). `cell`
+/// keeps its v2 name (the IDL is unchanged) but is a gate SLOT now (0..8, the stage's gates in
+/// layout order). Refused (error, nothing spent): not my Plant, already rigged this stage, I am
+/// dead, the opponent is dead or done, the gate is revealed or not in that stage, or that
+/// opponent stage already holds a rig.
 pub fn handle_plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
     with_input(
         ctx,
@@ -457,17 +466,15 @@ pub fn handle_plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
             rig: Some(cell),
             ..SideInput::default()
         },
-        |m, side| m.private_view(side).rig.is_some(),
+        |s| s.rig_used,
         GameError::RigRefused,
-        |m, _side, p| {
-            p.rig_phase = phase_now(m);
-            p.rig_cell = cell;
-        },
     )
 }
 
-/// SPEC §5: peek one of my own unrevealed cells during play (once per phase). The result lands
-/// in my Peek only.
+/// SPEC §6 Peek: during my own Fight or Raid, once per stage, see the true value of gate `cell`
+/// (a gate SLOT, as in plant_rig) of my current stage: frozen at this moment, a rigged gate peeks
+/// as ÷2. The result lands in my Peek only. Refused (error, nothing spent): not my Fight/Raid,
+/// already peeked this stage, I am dead, the gate is revealed or not in this stage.
 pub fn handle_peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
     with_input(
         ctx,
@@ -475,18 +482,8 @@ pub fn handle_peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
             peek: Some(cell),
             ..SideInput::default()
         },
-        |m, side| m.private_view(side).peek.is_some(),
+        |s| s.peek_used,
         GameError::PeekRefused,
-        |m, side, p| {
-            if let Some(pk) = m.private_view(side).peek {
-                let (kind, value) = pk.op.code();
-                p.peek_phase = phase_now(m);
-                p.peek_cell = pk.cell;
-                p.peek_kind = kind;
-                p.peek_value = value;
-                p.peek_gold = u8::from(pk.gold);
-            }
-        },
     )
 }
 
