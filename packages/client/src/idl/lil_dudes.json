@@ -1821,7 +1821,7 @@
     {
       "code": 6006,
       "name": "RigRefused",
-      "msg": "the rig was refused (not your plant, used this stage, revealed, already rigged or a bad slot)"
+      "msg": "the rig was refused (used this stage, opponent dead, done or past your stage, revealed or a bad slot)"
     },
     {
       "code": 6007,
@@ -2020,16 +2020,20 @@
             "type": {
               "array": [
                 "u8",
-                24
+                16
               ]
             }
           },
           {
             "name": "_pad",
+            "docs": [
+              "Rules v4: the history shrank 24 → 16 bytes and the public state grew 1,470 → 1,474, so",
+              "6 bytes here keep the struct at 1,784 with no padding (Pod) and `history` where it was."
+            ],
             "type": {
               "array": [
                 "u8",
-                2
+                6
               ]
             }
           },
@@ -2041,7 +2045,7 @@
             "type": {
               "array": [
                 "u8",
-                1470
+                1474
               ]
             }
           }
@@ -2166,7 +2170,7 @@
             "type": {
               "array": [
                 "u8",
-                56
+                40
               ]
             }
           }

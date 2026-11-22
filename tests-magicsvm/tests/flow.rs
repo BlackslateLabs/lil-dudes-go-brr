@@ -25,6 +25,14 @@ fn create_join_delegate_permissions() {
     assert!(a0 - g.balance(&g.players[0].wallet.pubkey()) > 50_000_000);
     assert!(b0 - g.balance(&g.players[1].wallet.pubkey()) >= 50_000_000);
     assert_eq!(g.status(Ephemeral), status::READY);
+    // Rules v4 layout: Match 8 + 1,784, Secrets 8 + 144, the sim's rules version in the header.
+    assert_eq!(d.len(), MATCH_LEN);
+    assert_eq!(d[off::RULES_VERSION], lil_dudes_sim::RULES_VERSION as u8);
+    let secrets = g.svm.get_shared_account_for(Ephemeral, &g.secrets).unwrap();
+    assert_eq!(
+        magicblock_account::ReadableAccount::data(&secrets).len(),
+        SECRETS_LEN
+    );
     // Privacy (MagicSVM's viewer filter): Secrets is private to nobody, Peek[s] to burner s.
     let (s, p0, p1) = (g.secrets, g.peeks[0], g.peeks[1]);
     for viewer in [

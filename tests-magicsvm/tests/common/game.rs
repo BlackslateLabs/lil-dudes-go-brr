@@ -35,11 +35,14 @@ pub mod off {
     pub const SEED: usize = 8 + 72;
     pub const STATUS: usize = 8 + 272;
     pub const FLAGS: usize = 8 + 273;
+    pub const RULES_VERSION: usize = 8 + 274;
     pub const GOTCHA: usize = 8 + 280;
     pub const HISTORY: usize = 8 + 288;
-    pub const STATE: usize = 8 + 314;
+    pub const STATE: usize = 8 + 310;
 }
 pub const SECRETS_STATE: usize = 8 + 104;
+/// Size of the Secrets account (8-byte discriminator + 144, rules v4).
+pub const SECRETS_LEN: usize = 8 + 144;
 /// Byte offsets in a Peek account (state.rs): side, then the 7 view bytes.
 pub mod peek_off {
     pub const SIDE: usize = 8 + 40;
