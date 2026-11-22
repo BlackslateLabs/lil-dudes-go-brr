@@ -236,3 +236,39 @@ export function payoutOf(stake: number, result: MatchResultLike | null, opts: Pa
 
 /** The MatchResult fields payoutOf reads. */
 export type MatchResultLike = Pick<MatchResult, 'winner' | 'died' | 'gold'>;
+
+// --- the reveal -------------------------------------------------------------------------------
+
+/** Everything hidden during the match, published at the end, plus what the result screen shows.
+ *  The fields after `history` are filled by `OfflineSource.reveal()` and `LiveSource.reveal()`. */
+export interface MatchReveal extends Deals {
+  seed: bigint;
+  /** One entry per stage (the actor's own stage), with `sprung` marked from the GOTCHAs. */
+  history: StageLog[];
+  matchId?: string;
+  names?: [string, string];
+  result?: MatchResult | null;
+  gold?: [number, number];
+  /** Who died (both can, on the same tick). */
+  dead?: [boolean, boolean];
+  finalTick?: number;
+  gotchas?: GotchaLog[];
+  payout?: PayoutInfo;
+  txs?: TxRecord[];
+  settlement?: SettlementInfo;
+  /** Explorer link of the Match account on the base layer (live only). */
+  matchUrl?: string;
+}
+
+/** The seed's layout and values plus the decoded history (`sprung` all false until markSprung). */
+export function revealOf(seed: bigint, history: Uint8Array): MatchReveal {
+  return { seed, ...dealsFor(seed), history: decodeHistory(history) };
+}
+
+/** The value `side`'s gate `slot` of `stage` really had: the dealt value, or ÷2 if the opponent
+ *  rigged it (Verify checks every revealed gate against this). */
+export function trueOp(r: Pick<MatchReveal, 'values' | 'history'>, side: Side, stage: number, slot: number): GateOp {
+  const opp: Side = side === 0 ? 1 : 0;
+  const rigged = r.history.some((h) => h.rigs[opp]?.stage === stage && h.rigs[opp]?.slot === slot);
+  return rigged ? { kind: 'div', value: 2 } : (r.values[stage]?.[slot] ?? { kind: 'mul', value: 1 });
+}
