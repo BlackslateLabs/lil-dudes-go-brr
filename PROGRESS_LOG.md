@@ -691,3 +691,11 @@ staked top-ups or ~80 free ones + bot matches; watch `GET /faucet`); devnet fauc
   'offline'`, `txs: []`).
 - **Server URL:** local `http://<laptop-ip>:8787` (`pnpm --filter server start`); deployed URL after
   Kai runs TECH §9 "Deploy".
+
+## 2026-11-22 · Kai · sponsor funded · [STAGE]
+**Did:** the sponsor wallet `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr` is funded with **3 SOL** from
+the deploy wallet (now 4.432 SOL, still above the ~2.33 SOL upgrade buffer). This replaces the
+"sponsor at 0 SOL, Kai funds 3 SOL" line in the M4-M5 summary: the faucet, online bot and sweeper
+can run locally (`pnpm --filter server start`, key paths in the gitignored `apps/server/.env`).
+**Left:** deploy the server (TECH §9 "Deploy", not done), then Suparno wires `apps/web` per the
+last [HANDOFF].
