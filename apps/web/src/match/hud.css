@@ -1,0 +1,722 @@
+/* ---------- Match HUD v5 (SPEC v5 §8): top bar, progress line, thumb, cog, end sequence ---------- */
+
+/* Gradient numerals (orange → yellow) over a thick ink outline: two stacked copies of the text. */
+.grad {
+  position: relative;
+  display: inline-block;
+  font-family: var(--display);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.grad-o,
+.grad-f {
+  display: block;
+}
+
+.grad-o {
+  position: absolute;
+  inset: 0;
+  color: var(--outline);
+  -webkit-text-stroke: 0.16em var(--outline);
+  text-shadow:
+    0 0.07em 0 var(--outline),
+    0 0.12em 0.18em #1b153066;
+}
+
+.grad-f {
+  position: relative;
+  color: transparent;
+  background: linear-gradient(to top, #ff6a12 8%, #ff9a1a 40%, #ffd21f 70%, #fff4a0 96%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* ---------- Top bar: your score big, a slim timer pill, the stake; the cog sits over the right ---------- */
+.match .hud.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: auto;
+  min-height: 0;
+  padding: max(6px, env(safe-area-inset-top)) 56px 6px 10px;
+  background: linear-gradient(#1b1530c8, #1b153000);
+}
+
+.tb-me {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tb-score {
+  font-size: 36px;
+  letter-spacing: 0.5px;
+}
+
+.tb-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tb-who b {
+  font-family: var(--ui);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  color: #fff;
+  text-shadow:
+    0 1px 0 var(--outline),
+    0 0 3px var(--outline);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 90px;
+}
+
+.tb-timer {
+  position: absolute;
+  left: 50%;
+  top: max(10px, calc(env(safe-area-inset-top) + 4px));
+  transform: translateX(-50%);
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 1px;
+  color: #fff;
+  padding: 4px 12px 5px;
+  border-radius: 999px;
+  border: 2.5px solid var(--outline);
+  background: linear-gradient(#3b2f6e, #1b1530);
+  box-shadow:
+    inset 0 2px 0 #ffffff30,
+    0 3px 0 #0006;
+}
+
+.tb-timer.low {
+  background: linear-gradient(#ff7a86, var(--bad));
+  animation: pip-pulse 1s ease-in-out infinite;
+}
+
+.tb-right {
+  display: flex;
+  align-items: center;
+}
+
+.tb-stake {
+  font-family: var(--ui);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #fff;
+  padding: 1px 8px 2px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: var(--grape);
+  box-shadow: 0 2px 0 var(--outline);
+}
+
+/* ---------- Opponent progress line (replaces the mini-lane) ---------- */
+.hud.progress-line {
+  top: calc(max(6px, env(safe-area-inset-top)) + 50px);
+  left: 10px;
+  right: 10px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 4px;
+  border-radius: 999px;
+  border: 2.5px solid var(--outline);
+  background: #1b1530d0;
+  box-shadow: 0 3px 0 #1b153066;
+  color: #fff;
+  font-family: var(--ui);
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.pl-name {
+  flex: 0 1 auto;
+  max-width: 28%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px 4px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: linear-gradient(#ff8a95, var(--them));
+  box-shadow: inset 0 1.5px 0 #ffffff70;
+  font-weight: 800;
+}
+
+.pl-stage {
+  flex: none;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+  color: var(--gold-light);
+  text-shadow: 0 1.5px 0 var(--outline);
+}
+
+.progress-line.ahead .pl-stage {
+  color: var(--gold);
+}
+
+.progress-line.dead .pl-stage {
+  color: #ff9aa4;
+}
+
+.pl-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: #ffffff24;
+  overflow: hidden;
+}
+
+.pl-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(#ff98a1, var(--them) 60%, var(--them-dark));
+  box-shadow: inset 0 1.5px 0 #ffffff80;
+  transition: width 0.25s ease;
+}
+
+.pl-bar em {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-style: normal;
+  font-size: 10px;
+  line-height: 10px;
+  color: #fff;
+  text-shadow:
+    0 1px 0 var(--outline),
+    0 0 2px var(--outline);
+}
+
+.pl-gold {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 14px;
+  padding: 2px 8px 3px 3px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: linear-gradient(var(--gold-light), var(--gold));
+  color: var(--outline);
+  box-shadow: inset 0 1.5px 0 #ffffff90;
+}
+
+.pl-gold::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--gold-dark);
+  background: radial-gradient(circle at 35% 35%, #fff6c8 0 25%, var(--gold) 30%);
+  box-shadow: 0 0 0 1.5px var(--outline);
+}
+
+/* ---------- Thumb: Scout above, Champion at the bottom ---------- */
+.round.scout {
+  width: 54px;
+  height: 54px;
+  font-size: 24px;
+}
+
+.champ {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  padding: 0;
+  border-radius: 50%;
+  border: var(--edge);
+  background: linear-gradient(#b49cff, var(--grape) 60%, var(--grape-dark));
+  box-shadow:
+    var(--gloss),
+    var(--ledge),
+    0 8px 14px #1b153044;
+  cursor: pointer;
+  transition: transform 0.12s var(--bounce);
+}
+
+.champ svg {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  pointer-events: none;
+}
+
+.champ-track {
+  fill: none;
+  stroke: #1b153066;
+  stroke-width: 7;
+}
+
+.champ-fill {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.12s linear;
+}
+
+.champ-face {
+  position: relative;
+  font-size: 30px;
+  line-height: 1;
+  filter: grayscale(0.7);
+  opacity: 0.75;
+}
+
+.champ.charged .champ-face,
+.champ.pending .champ-face {
+  filter: none;
+  opacity: 1;
+}
+
+.champ.charged {
+  background: linear-gradient(var(--gold-light), var(--gold) 55%, var(--gold-dark));
+  animation: champ-glow 0.7s ease-in-out infinite alternate;
+}
+
+.champ.charged .champ-fill {
+  stroke: #fff;
+}
+
+.champ.pending {
+  transform: scale(0.94);
+}
+
+.champ:active:not(:disabled) {
+  transform: translateY(4px) scale(0.94);
+  box-shadow:
+    var(--gloss),
+    0 1px 0 var(--outline);
+}
+
+.champ:disabled {
+  cursor: default;
+}
+
+@keyframes champ-glow {
+  from {
+    box-shadow:
+      var(--gloss),
+      var(--ledge),
+      0 0 0 0 #ffc21a00;
+  }
+  to {
+    box-shadow:
+      var(--gloss),
+      var(--ledge),
+      0 0 0 8px #ffc21a99,
+      0 0 26px 10px #ffd21f88;
+  }
+}
+
+/* ---------- Cog menu (no pause in PvP) ---------- */
+.cog {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  right: 8px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 0 2px;
+  border-radius: 50%;
+  border: var(--edge);
+  background: linear-gradient(#ffffff, #dcd6ff);
+  color: var(--outline);
+  font-size: 24px;
+  line-height: 1;
+  box-shadow:
+    var(--gloss),
+    0 3px 0 var(--outline);
+  cursor: pointer;
+}
+
+.cog:active {
+  transform: translateY(2px) scale(0.94);
+}
+
+.cog-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 16px max(20px, env(safe-area-inset-bottom));
+  background: #1b153099;
+  animation: fade-in 0.2s ease-out;
+}
+
+.cog-sheet {
+  width: min(100%, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 24px;
+  border: var(--edge);
+  background: var(--cream);
+  box-shadow:
+    var(--ledge),
+    var(--soft);
+  animation: sheet-up 0.3s var(--bounce);
+}
+
+.cog-sheet h3 {
+  margin: 0;
+  text-align: center;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 26px;
+  color: var(--outline);
+}
+
+.cog-note {
+  margin: -6px 0 2px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cog-row,
+.cog-leave,
+.cog-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: var(--edge);
+  background: #fff;
+  font-weight: 800;
+  font-size: 17px;
+  box-shadow: 0 3px 0 var(--outline);
+  cursor: pointer;
+}
+
+.cog-row i {
+  font-style: normal;
+  font-size: 14px;
+  padding: 2px 12px 3px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: #ddd8ee;
+  color: var(--muted);
+}
+
+.cog-row.on i {
+  background: var(--mint);
+  color: #fff;
+  text-shadow: 0 1px 0 var(--outline);
+}
+
+.cog-leave {
+  justify-content: center;
+  background: linear-gradient(#ff8a95, var(--bad));
+  color: #fff;
+  text-shadow: 0 2px 0 var(--outline);
+}
+
+.cog-back {
+  justify-content: center;
+  background: linear-gradient(#9fd6ff, var(--good));
+  color: #fff;
+  text-shadow: 0 2px 0 var(--outline);
+}
+
+.cog-row:active,
+.cog-leave:active,
+.cog-back:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px) scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* ---------- Loading (the flow's logo wipe will cover this) ---------- */
+.match-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(var(--sky-top), var(--bg) 70%);
+}
+
+.match-loading span {
+  font-family: var(--display);
+  font-size: 30px;
+  color: #fff;
+  -webkit-text-stroke: 6px var(--outline);
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 var(--outline);
+  animation: pip-pulse 1s ease-in-out infinite;
+}
+
+/* ---------- Danger: an enemy in the last quarter of my lane ---------- */
+.danger-edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20%;
+  pointer-events: none;
+  background: linear-gradient(to top, #ff2a3c80, #ff2a3c00);
+  animation: danger-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes danger-pulse {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.85;
+  }
+}
+
+/* ---------- End sequence ---------- */
+.stamp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 27%;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 64px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* BREACH!: a 1 s punch, then gone. */
+.breach-stamp {
+  font-size: 70px;
+  animation:
+    stamp-punch 0.4s var(--bounce) both,
+    stamp-out 0.25s 0.85s ease-in forwards;
+}
+
+.time-stamp {
+  font-size: 76px;
+  top: 34%;
+  animation: stamp-punch 0.4s var(--bounce) both;
+}
+
+.overrun-stamp,
+.fell-stamp {
+  top: 34%;
+  color: var(--bad);
+  -webkit-text-stroke: 9px var(--outline);
+  paint-order: stroke fill;
+  text-shadow:
+    0 6px 0 var(--outline),
+    0 14px 22px #1b153066;
+  animation: stamp-punch 0.45s var(--bounce) both;
+}
+
+.fell-stamp {
+  color: var(--gold);
+}
+
+/* The 3-2-1 and TIME!, with the hall counter climbing beside them. */
+.rush-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.rush-row.over {
+  animation: stamp-out 0.35s 2s ease-in forwards;
+}
+
+.count-num {
+  font-size: 150px;
+  animation: count-pop 0.95s ease-out both;
+}
+
+.count-num.time {
+  font-size: 84px;
+  animation: stamp-punch 0.4s var(--bounce) both;
+}
+
+.hall-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px 5px 6px;
+  border-radius: 999px;
+  border: var(--edge);
+  background: linear-gradient(var(--gold-light), var(--gold));
+  box-shadow:
+    var(--gloss),
+    0 4px 0 var(--outline);
+}
+
+.hall-count i {
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.hall-count b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--outline);
+  min-width: 1.2em;
+  text-align: center;
+}
+
+.hall-count b.bump {
+  animation: count-bump 0.2s var(--bounce);
+}
+
+.overrun-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(ellipse at center, #ff2a3c00 42%, #ff2a3ccc 100%);
+  box-shadow: inset 0 0 0 6px #ff2a3c;
+  animation: overrun-flash 1.2s ease-out forwards;
+}
+
+@keyframes overrun-flash {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.5;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes stamp-punch {
+  0% {
+    transform: scale(2.6) rotate(-7deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92) rotate(1deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+
+@keyframes stamp-out {
+  to {
+    transform: scale(1.15) translateY(-12px);
+    opacity: 0;
+  }
+}
+
+@keyframes count-pop {
+  0% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  18% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  30% {
+    transform: scale(1);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.35;
+  }
+}
+
+@keyframes count-bump {
+  from {
+    transform: scale(1.35);
+  }
+}
+
+/* Small phones (360 px): tighter top bar and progress line. */
+@media (max-width: 380px) {
+  .tb-score {
+    font-size: 31px;
+  }
+
+  .tb-who b {
+    max-width: 64px;
+  }
+
+  .tb-timer {
+    font-size: 16px;
+    padding: 3px 9px 4px;
+  }
+
+  .hud.progress-line {
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .pl-stage,
+  .pl-gold {
+    font-size: 13px;
+  }
+
+  .count-num {
+    font-size: 128px;
+  }
+
+  .breach-stamp {
+    font-size: 58px;
+  }
+}

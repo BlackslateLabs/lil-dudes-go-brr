@@ -1,33 +1,56 @@
 import { useRef, useState, type PointerEvent } from 'react';
-import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, RAID_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
+import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
-import { setSoundEnabled, soundEnabled } from '../feel/sound';
+import { modelsReady } from '../arena/models/assets';
+import { setBattleDuck, setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
-import { MiniLane } from '../match/MiniLane';
+import { ChampionButton } from '../match/ChampionButton';
+import { EndSequence, GradText } from '../match/EndSequence';
+import { ProgressLine } from '../match/ProgressLine';
 import { Tutorial } from '../match/Tutorial';
 import type { MatchFeed } from '../match/feed';
-import { canRig } from '../match/rig';
 import { useFeed } from '../match/useFeed';
-import { useMatchHud } from '../match/useMatchHud';
+import { isBreach, useMatchHud } from '../match/useMatchHud';
+import { useApp } from '../store';
+import '../match/hud.css';
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
 const DRAG_SPAN = 0.7;
 const STAGE_LABELS = Array.from({ length: STAGES }, (_, i) => `Fight ${i + 1}`);
+/** The vibration preference (read by `haptic()` in feel/sound.ts): 'on' (default) or 'off'. */
+const VIBE_KEY = 'ldgb.vibe';
+/** "Done! Waiting…" waits until the TIME! stamp has had its moment. */
+const TIME_STAMP_MS = 2200;
 
-/** Match screen (MVP §3.6, v3): your lane full size, the opponent's lane as a mini-view. */
-export function Match() {
-  const feed = useFeed(() => {
-    // `?seed=123` replays a specific match (testing); the seed also picks the layout.
-    // `?autoplay=1` lets the bot drive your side too (demos, screenshots).
-    const params = new URLSearchParams(window.location.search);
-    const raw = params.get('seed');
-    const seed = raw && /^\d+$/.test(raw) ? BigInt(raw) : undefined;
-    const selfBot = params.get('autoplay') === '1';
-    // `?speed=4` plays the match faster (testing, screenshots). Clamped to 1–16.
-    const speedRaw = Number(params.get('speed'));
-    const speed = Number.isFinite(speedRaw) && speedRaw >= 1 ? Math.min(16, speedRaw) : 1;
-    return new OfflineSource(seed === undefined ? { myName: 'You', selfBot, speed } : { myName: 'You', selfBot, speed, seed });
+/** Wait for `n` animation frames (lets the arena mount and compile before the clock starts). */
+const frames = (n: number) =>
+  new Promise<void>((resolve) => {
+    const step = (left: number) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
+    step(n);
   });
+
+/** Match screen (SPEC v5 §8): your lane full size, the opponent as a thin progress line. */
+export function Match() {
+  const [ready, setReady] = useState(false);
+  const feed = useFeed(
+    () => {
+      // `?seed=123` replays a specific match (testing); the seed also picks the layout.
+      // `?autoplay=1` lets the bot drive your side too (demos, screenshots).
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('seed');
+      const seed = raw && /^\d+$/.test(raw) ? BigInt(raw) : undefined;
+      const selfBot = params.get('autoplay') === '1';
+      // `?speed=4` plays the match faster (testing, screenshots). Clamped to 1–16.
+      const speedRaw = Number(params.get('speed'));
+      const speed = Number.isFinite(speedRaw) && speedRaw >= 1 ? Math.min(16, speedRaw) : 1;
+      return new OfflineSource(seed === undefined ? { myName: 'You', selfBot, speed } : { myName: 'You', selfBot, speed, seed });
+    },
+    // Don't start the clock until the models are in and the arena has drawn (no first-frame stall).
+    () =>
+      modelsReady()
+        .then(() => frames(2))
+        .finally(() => setReady(true)),
+  );
   useMatchHud(feed);
 
   const drag = useRef<{ x: number } | null>(null);
@@ -57,13 +80,18 @@ export function Match() {
     >
       <Arena feed={feed} interactive />
       <TopBar />
-      <div className="mini-wrap">
-        <MiniLane feed={feed} />
-      </div>
+      <ProgressLine />
       <Tutorial feed={feed} />
       <Prompts />
-      <Overlays />
+      <Banner />
+      <EndSequence />
       <ThumbControls feed={feed} />
+      <CogMenu />
+      {!ready && (
+        <div className="match-loading">
+          <span>Loading…</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -78,48 +106,54 @@ function StagePips({ stage, phase }: { stage: number; phase: string }) {
   );
 }
 
+/** Top bar: your score big on the left, a slim timer pill, the stake (the cog sits over the right end). */
 function TopBar() {
-  const { names, gold, stage, phase, tick, status, stake } = useHud();
+  const name = useHud((s) => s.names[0]);
+  const gold = useHud((s) => s.gold[0]);
+  const stage = useHud((s) => s.stage[0]);
+  const phase = useHud((s) => s.phase[0]);
+  const tick = useHud((s) => s.tick);
+  const status = useHud((s) => s.status);
+  const stake = useHud((s) => s.stake);
   const left = Math.max(0, Math.ceil((MATCH_TICKS - tick) / TICKS_PER_SEC));
   return (
     <div className="hud topbar">
-      <div className="who me">
-        <b>{names[0]}</b>
-        <span className="pill gold">{gold[0]}</span>
-        <StagePips stage={stage[0]} phase={phase[0]} />
+      <div className="tb-me">
+        <GradText text={gold} className="tb-score" />
+        <span className="tb-who">
+          <b>{name}</b>
+          <StagePips stage={stage} phase={phase} />
+        </span>
       </div>
-      <div className="centre">
-        <div className="timer">{status === 'ended' ? '0:00' : formatTime(left)}</div>
-        <div className="meta">
-          <span>{stake > 0 ? `${stake / 1e9} SOL` : 'FREE'}</span>
-        </div>
-      </div>
-      <div className="who them">
-        {phase[1] === 'dead' ? <span className="tag dead">DEAD</span> : <StagePips stage={stage[1]} phase={phase[1]} />}
-        <span className="pill gold">{gold[1]}</span>
-        <b>{names[1]}</b>
+      <div className={`tb-timer ${status !== 'ended' && left <= 10 ? 'low' : ''}`}>{status === 'ended' ? '0:00' : formatTime(left)}</div>
+      <div className="tb-right">
+        <span className="tb-stake">{stake > 0 ? `${stake / 1e9} SOL` : 'FREE'}</span>
       </div>
     </div>
   );
 }
 
-/** One-line prompts just above your cannon (TECH §5). */
+/** One-line prompts just above your cannon (TECH §5). The breach has its own end sequence. */
 function Prompts() {
-  const { phase, myPhaseTick, raidTicks, peeking, rigging, names, stage } = useHud();
+  const phase = useHud((s) => s.phase);
+  const myPhaseTick = useHud((s) => s.myPhaseTick);
+  const peeking = useHud((s) => s.peeking);
+  const names = useHud((s) => s.names);
+  const stage = useHud((s) => s.stage[0]);
+  const timeAt = useHud((s) => s.timeAt);
+  const ended = useHud((s) => s.ended);
+  useHud((s) => s.tick);
   let text: string | null = null;
-  if (rigging) {
-    text = `Tap a red gate: it becomes a trap on ${names[1]}'s side`;
+  if (ended) {
+    text = null;
   } else if (peeking) {
-    text = 'Tap one of your ? gates to peek';
+    text = 'Scout: tap one of your ? gates';
   } else if (phase[0] === 'plant') {
     const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
-    text = `${STAGE_LABELS[stage[0]]}: fire in ${secs}…`;
-  } else if (phase[0] === 'raid') {
-    const secs = Math.ceil((RAID_TICKS - raidTicks) / TICKS_PER_SEC);
-    text = secs > 0 ? `Into the town hall! · ${secs}` : 'Into the town hall!';
+    text = `${STAGE_LABELS[stage]}: fire in ${secs}…`;
   } else if (phase[0] === 'transit') {
     text = 'Stage cleared!';
-  } else if (phase[0] === 'done') {
+  } else if (phase[0] === 'done' && (timeAt === null || performance.now() - timeAt > TIME_STAMP_MS)) {
     text = phase[1] === 'done' || phase[1] === 'dead' ? 'Done!' : `Done! Waiting for ${names[1]}…`;
   }
   return text ? (
@@ -129,67 +163,134 @@ function Prompts() {
   ) : null;
 }
 
-function Overlays() {
-  const { gotcha, banner, ended } = useHud();
+/** Short centre banners (FIGHT 2, TOWER DOWN). Quiet once the end sequence starts. */
+function Banner() {
+  const banner = useHud((s) => s.banner);
+  const ended = useHud((s) => s.ended);
+  const breachAt = useHud((s) => s.breachAt);
+  if (!banner || ended || (breachAt !== null && banner.at >= breachAt)) return null;
   return (
-    <>
-      {banner && !ended && (
-        <div key={banner.at} className={`banner-pop flash ${banner.tone}`}>
-          {banner.text}
-        </div>
-      )}
-      {gotcha && (
-        <div key={gotcha.at} className={`gotcha ${gotcha.onMe ? 'bad' : 'good'}`}>
-          <span>GOTCHA!</span>
-          <small>{gotcha.onMe ? 'you ran into their rig' : 'they ran into your rig'}</small>
-        </div>
-      )}
-      {ended && (
-        <div className={`banner-pop end ${ended.won === null ? '' : ended.won ? 'good' : 'bad'}`}>
-          {ended.died === 'me' ? 'OVERRUN!' : ended.died === 'them' ? 'THEY FELL!' : ended.won === null ? 'DRAW' : ended.won ? 'YOU WIN' : 'YOU LOSE'}
-        </div>
-      )}
-    </>
+    <div key={banner.at} className={`banner-pop flash ${banner.tone}`}>
+      {banner.text}
+    </div>
   );
 }
 
-/** Bottom-right, by the thumb: rig and peek (one each per stage) and sound. */
+/** Bottom-right, by the thumb: Scout (once per stage) and the Champion (v5 sources only). */
 function ThumbControls({ feed }: { feed: MatchFeed }) {
-  // The HUD fields re-render this at ≤ 10 Hz, so `canRig` (read from the feed) stays fresh.
-  const { peekUsed, peeking, rigging, phase, set } = useHud();
-  useHud((s) => s.tick);
-  const [sound, setSound] = useState(soundEnabled());
-  const canPeek = !peekUsed && (phase[0] === 'fight' || phase[0] === 'raid');
-  const rigOk = canRig(feed);
+  const peekUsed = useHud((s) => s.peekUsed);
+  const peeking = useHud((s) => s.peeking);
+  const phase = useHud((s) => s.phase[0]);
+  const set = useHud((s) => s.set);
+  const canScout = !peekUsed && (phase === 'fight' || isBreach(phase));
   return (
     <div className="hud thumb" onPointerDown={(e) => e.stopPropagation()}>
       <button
-        className={`round rig ${rigging ? 'on' : ''}`}
-        disabled={!rigOk && !rigging}
-        onClick={() => set({ rigging: !rigging, peeking: false })}
-        title="Rig one of your gates on their side (once per stage)"
-      >
-        😈
-      </button>
-      <button
-        className={`round ${peeking ? 'on' : ''}`}
-        disabled={!canPeek && !peeking}
-        onClick={() => set({ peeking: !peeking, rigging: false })}
-        title="Peek at one of your gates (once per stage)"
+        className={`round scout ${peeking ? 'on' : ''}`}
+        disabled={!canScout && !peeking}
+        onClick={() => set({ peeking: !peeking })}
+        title="Scout: privately reveal one of your gates (once per stage)"
       >
         👁
       </button>
-      <button
-        className="round small"
-        onClick={() => {
-          setSoundEnabled(!sound);
-          setSound(!sound);
-        }}
-        title={sound ? 'Sound on' : 'Sound off'}
-      >
-        {sound ? '🔊' : '🔈'}
-      </button>
+      <ChampionButton feed={feed} />
     </div>
+  );
+}
+
+function readVibe(): boolean {
+  try {
+    return localStorage.getItem(VIBE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function writeVibe(on: boolean) {
+  try {
+    localStorage.setItem(VIBE_KEY, on ? 'on' : 'off');
+  } catch {
+    /* private mode: the toggle still works for this screen */
+  }
+}
+
+/**
+ * The cog (no pause in PvP, SPEC v5 §8): sound, vibration, and "Leave match (forfeit)" behind an
+ * in-page confirm. The match keeps running while the sheet is open.
+ */
+function CogMenu() {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [sound, setSound] = useState(soundEnabled());
+  const [vibe, setVibe] = useState(readVibe());
+  const stake = useHud((s) => s.stake);
+  const close = () => {
+    setOpen(false);
+    setConfirming(false);
+  };
+  return (
+    <>
+      <button className="cog" onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(true)} title="Menu" aria-label="Menu">
+        ⚙
+      </button>
+      {open && (
+        <div className="cog-veil" onPointerDown={(e) => e.stopPropagation()} onClick={close}>
+          <div className="cog-sheet" role="dialog" aria-label="Match menu" onClick={(e) => e.stopPropagation()}>
+            {!confirming ? (
+              <>
+                <h3>Menu</h3>
+                <p className="cog-note">The match keeps going.</p>
+                <button
+                  className={`cog-row ${sound ? 'on' : ''}`}
+                  onClick={() => {
+                    setSoundEnabled(!sound);
+                    setSound(!sound);
+                  }}
+                >
+                  <span>Sound</span>
+                  <i>{sound ? 'On' : 'Off'}</i>
+                </button>
+                <button
+                  className={`cog-row ${vibe ? 'on' : ''}`}
+                  onClick={() => {
+                    writeVibe(!vibe);
+                    setVibe(!vibe);
+                  }}
+                >
+                  <span>Vibration</span>
+                  <i>{vibe ? 'On' : 'Off'}</i>
+                </button>
+                <button className="cog-leave" onClick={() => setConfirming(true)}>
+                  Leave match (forfeit)
+                </button>
+                <button className="cog-back" onClick={close}>
+                  Back to the match
+                </button>
+              </>
+            ) : (
+              <>
+                <h3>Leave the match?</h3>
+                <p className="cog-note">{stake > 0 ? 'You forfeit and lose your stake.' : 'You forfeit this match.'}</p>
+                <button
+                  className="cog-leave"
+                  onClick={() => {
+                    // Unmounting the match stops the source (useFeed). A live source will also
+                    // need to tell the chain (forfeit) once LiveSource has that call.
+                    setBattleDuck(false);
+                    useApp.getState().go('home');
+                  }}
+                >
+                  Leave (forfeit)
+                </button>
+                <button className="cog-back" onClick={() => setConfirming(false)}>
+                  Stay
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

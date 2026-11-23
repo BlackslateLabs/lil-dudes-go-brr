@@ -9,22 +9,32 @@ export interface HudState {
   names: [string, string];
   gold: [number, number];
   stage: [number, number];
+  /** v4 phases; a v5 source may also say 'rush' for the post-breach Rush. */
   phase: [LanePhase, LanePhase];
   /** Ticks since my current phase started (plant countdown). */
   myPhaseTick: number;
-  /** Ticks since my town hall raid started (0 before it). */
+  /** Ticks since my breach (v4 raid / v5 Rush) started (0 before it). */
   raidTicks: number;
-  rigUsed: boolean;
+  /** The opponent's current-stage towers: HP left as a fraction of max (0..1). */
+  theirTowers: number;
   peekUsed: boolean;
-  /** Peek mode: the next tap on one of your `?` gates peeks it. */
+  /** Scout mode (v4 "peek"): the next tap on one of your `?` gates reveals it, privately. */
   peeking: boolean;
-  /** Rig mode: the next tap on one of your gates rigs the opponent's copy of it (SPEC v4 §6). */
-  rigging: boolean;
-  /** Last GOTCHA: whether it hit me, and when (performance.now()) to restart the animation. */
-  gotcha: { onMe: boolean; at: number } | null;
-  /** A short centre banner ("STAGE 2", "RAID!", "TOWER DOWN"). */
+  /** A short centre banner ("FIGHT 2", "TOWER DOWN"). */
   banner: { text: string; tone: 'good' | 'bad' | 'gold'; at: number } | null;
-  ended: { won: boolean | null; died: 'me' | 'them' | null } | null;
+  /** End sequence: when (performance.now()) my last Fight 2 tower fell (BREACH!). */
+  breachAt: number | null;
+  /** Rush countdown number on screen: 3, 2, 1 (0 = none yet / over). */
+  countdown: number;
+  /** When "TIME!" was stamped (the Rush clock ran out, or the 3:00 cap). */
+  timeAt: number | null;
+  /** My dudes that reached the town hall since the breach (v4 raid loot / v5 Rush count). */
+  hallCount: number;
+  /** When an enemy reached my cannon line (OVERRUN!). */
+  overrunAt: number | null;
+  /** An enemy is within the last quarter of my lane. */
+  danger: boolean;
+  ended: { won: boolean | null; died: 'me' | 'them' | null; at: number } | null;
   set: (patch: Partial<Omit<HudState, 'set'>>) => void;
 }
 
@@ -38,12 +48,16 @@ export const HUD_RESET: Omit<HudState, 'set'> = {
   phase: ['plant', 'plant'],
   myPhaseTick: 0,
   raidTicks: 0,
-  rigUsed: false,
+  theirTowers: 1,
   peekUsed: false,
   peeking: false,
-  rigging: false,
-  gotcha: null,
   banner: null,
+  breachAt: null,
+  countdown: 0,
+  timeAt: null,
+  hallCount: 0,
+  overrunAt: null,
+  danger: false,
   ended: null,
 };
 
