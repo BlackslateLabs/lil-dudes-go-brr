@@ -1,4 +1,5 @@
-//! Lil Dudes Go Brr: match rules (docs/SPEC.md v4, a 1v1 race on identical copies of a level).
+//! Lil Dudes Go Brr: match rules (docs/SPEC.md v4 + docs/SPEC_V5.md, a 1v1 race on identical
+//! copies of a level).
 //!
 //! Rules for this crate:
 //! - Integer-only and deterministic: no floats, no `HashMap`, no clock, no external RNG. Time

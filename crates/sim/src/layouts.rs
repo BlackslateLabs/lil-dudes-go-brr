@@ -236,18 +236,18 @@ const fn tower(x: i16, hp: u16, wave_base: u16) -> TowerDef {
 
 /// SPEC_V5 §3b: first row ~1,400, gaps ~1,300, the last row at ~5,500.
 const ROWS: [i16; 4] = [1_400, 2_750, 4_100, 5_500];
-const ROWS_LONG: [i16; 4] = [1_400, 2_800, 4_200, 5_700];
+const ROWS_LONG: [i16; 4] = [1_400, 2_800, 4_200, 5_600];
 
 /// Tower strength per layout: (Fight 1 HP, Fight 1 wave_base, Fight 2 HP per tower, Fight 2
 /// wave_base). Tuned per layout with `cargo run -p lil-dudes-sim --example balance --release`
 /// so every layout plays about as long and as dangerously as the others.
 const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
-    (370, 40, 200, 11),
-    (120, 30, 120, 12),
-    (190, 45, 290, 38),
-    (70, 17, 250, 24),
-    (140, 19, 150, 7),
-    (190, 52, 90, 26),
+    (716, 14, 354, 6),
+    (533, 26, 1798, 103),
+    (655, 27, 696, 13),
+    (304, 10, 819, 12),
+    (1811, 30, 59, 5),
+    (411, 19, 276, 6),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
@@ -582,7 +582,10 @@ mod tests {
                 }
             }
             assert!(sliding >= 1, "layout {id}: no sliding gate");
-            assert!(locked <= 1, "layout {id}: more than one crate-locked big gate");
+            assert!(
+                locked <= 1,
+                "layout {id}: more than one crate-locked big gate"
+            );
         }
     }
 

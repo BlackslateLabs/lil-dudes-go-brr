@@ -9,8 +9,8 @@ use lil_dudes_sim::rng::SplitMix64;
 use lil_dudes_sim::*;
 
 const SEEDS: u64 = 1_200;
-/// The biggest cohort any layout allows: at most ×10 or +30 per row.
-const MAX_COUNT: u32 = max_count(VOLLEY_SIZE);
+/// The biggest cohort any layout allows: a Champion, then at most ×10 or +30 per row.
+const MAX_COUNT: u32 = max_count(CHAMP_COUNT);
 
 const fn max_count(start: u32) -> u32 {
     let mut c = start;
@@ -33,13 +33,30 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
         prev_gold[s] = side.gold;
         assert!(usize::from(side.stage) < STAGES);
         assert!(u32::from(side.phase_ticks) < MATCH_TICKS);
-        // The raid and Done only come after the final stage's fight; the raid clock only runs
-        // in the raid (and stays put once done).
+        // The Rush and Done only come after the final stage's fight; the Rush clock only runs
+        // in the Rush (and stays put once done) and never passes RUSH_TICKS.
         if side.stage < FINAL_STAGE {
-            assert!(!matches!(side.phase, Phase::Raid | Phase::Done));
+            assert!(!matches!(side.phase, Phase::Rush | Phase::Done));
         }
-        if !matches!(side.phase, Phase::Raid | Phase::Done) {
-            assert_eq!(side.raid_ticks, 0);
+        if !matches!(side.phase, Phase::Rush | Phase::Done) {
+            assert_eq!(side.rush_ticks, 0);
+        }
+        assert!(u32::from(side.rush_ticks) <= RUSH_TICKS);
+        // The Champion meter stays in range.
+        assert!(u32::from(side.champ_meter) <= CHAMP_TICKS);
+        // Breach ticks: a fight is cleared once, in order, at a tick already played; the
+        // Rush and Done mean the final fight was cleared.
+        for (k, &b) in side.breach_tick.iter().enumerate() {
+            assert!(u32::from(b) < p.tick.max(1));
+            if b != 0 && k > 0 {
+                assert!(side.breach_tick[k - 1] != 0 && side.breach_tick[k - 1] < b);
+            }
+            if usize::from(side.stage) < k {
+                assert_eq!(b, 0);
+            }
+        }
+        if matches!(side.phase, Phase::Rush | Phase::Done) {
+            assert!(side.breach_tick[usize::from(FINAL_STAGE)] != 0);
         }
         // Cannon and aim on the lane.
         assert!((0..LANE_WIDTH).contains(&i32::from(side.cannon_x)));
@@ -90,6 +107,10 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
                 None => assert_eq!(*g, PublicGate::default()),
                 Some(def) => {
                     assert!(def.x_min.min(def.x) <= g.x && g.x <= def.x_max.max(def.x));
+                    // The timing gate is public and never flips.
+                    if def.slot == Slot::Timing {
+                        assert_eq!(g.revealed, None);
+                    }
                     if let Some(op) = g.revealed {
                         assert_eq!(op, m.secret.true_op(side.stage, slot));
                     }

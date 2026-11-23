@@ -1,4 +1,4 @@
-//! Browser bindings for the match rules (docs/SPEC.md v4): one `SimMatch` handle per match, with
+//! Browser bindings for the match rules (docs/SPEC.md v4 + docs/SPEC_V5.md): one `SimMatch` handle per match, with
 //! the Warlord bot built in. Cheap at 20 Hz: the view and events cross into JS as flat
 //! `Float64Array`s, decoded by packages/client/src/offline.ts. Rebuild with
 //! `packages/sim-wasm/build.sh`.
@@ -7,19 +7,21 @@
 //!   header (10): layout version, tick, ended (0/1), layout id, stake, has result (0/1),
 //!           winner (0, 1, -1 = draw or none), ko (0/1), moved, fee
 //!   then per side (0, 1):
-//!           stage (0 fight 1, 1 fight 2), phase (0 plant, 1 fight, 2 transit, 3 raid (the
-//!           town hall raid of fight 2), 4 done), phase ticks (the raid keeps counting the
-//!           fight's), dead, cannon x, aim, gold, 0 (reserved, was rig used), peek used, is bot,
-//!           raid ticks,
+//!           stage (0 fight 1, 1 fight 2), phase (0 plant, 1 fight, 2 transit, 3 rush (after
+//!           the breach of fight 2), 4 done), phase ticks (the rush keeps counting the
+//!           fight's), dead, cannon x, aim, gold, champion meter (0..CHAMP_TICKS), peek used,
+//!           is bot, rush ticks, champion pending (0/1), breach tick fight 1, breach tick
+//!           fight 2 (match ticks, 0 = not yet),
 //!           2 tower hp, 2 crate hp,
 //!           8 gates × [x, op byte] (0 = face-down; see OP BYTE below; slots past the
-//!           stage's gate count are [0, 0]),
-//!           n cohorts, n × [id, count, x, y, age],
-//!           n enemies, n × [id, count, x, y, tower]
+//!           stage's gate count are [0, 0]; the timing gate is always 0, its value is
+//!           `timing_value(phase ticks)`),
+//!           n cohorts, n × [id, count, x, y, age, champion (0/1)],
+//!           n enemies, n × [id, count, x, y, tower, giant (0/1)]
 //!   Tower, crate and gate slots index the current stage's lists in `constants_json().LAYOUTS`.
 //!
 //! EVENT LAYOUT (`events()`), EVENT_STRIDE numbers per event: type, then up to 7 fields:
-//!    0 volley [side, id, x, count]
+//!    0 volley [side, id, x, count, champion (0/1)]
 //!    1 gate [side, slot, cohort id, op byte, before, after, reveal (0/1)]
 //!    2 (unused since rules v5)
 //!    3 crate hit [side, crate, cohort id, absorbed, hp left]
@@ -28,10 +30,13 @@
 //!    6 clash [side, x, y, killed]
 //!    7 tower hit [side, tower, damage, hp left, gold]
 //!    8 tower destroyed [side, tower, gold]
-//!    9 loot [side, cohort id, units, gold]
+//!    9 loot (Rush) [side, cohort id, units, gold]
 //!   10 phase [side, stage, phase]
 //!   11 death [side]
 //!   12 end [winner (-1 draw), ko, moved, fee]
+//!   13 first [side, stage, gold]
+//!   14 rush end [side, dudes still on the lane (not counted)]
+//!   15 champion called [side]
 //!
 //! PRIVATE LAYOUT (`private_view(side)`), for that side's current stage:
 //!   stage, peek slot (-1 none), peek op byte (0 none)
@@ -44,10 +49,12 @@ use lil_dudes_sim::*;
 use wasm_bindgen::prelude::*;
 
 /// Bump when any layout above changes (offline.ts refuses a mismatch).
-pub const LAYOUT_VERSION: u32 = 3;
+pub const LAYOUT_VERSION: u32 = 4;
 pub const EVENT_STRIDE: usize = 8;
 pub const HEADER_LEN: usize = 10;
-pub const SIDE_FIXED: usize = 11 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
+pub const SIDE_FIXED: usize = 14 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
+/// Numbers per cohort and per enemy in the view.
+pub const UNIT_STRIDE: usize = 6;
 
 #[wasm_bindgen]
 pub struct SimMatch {
@@ -81,14 +88,16 @@ impl SimMatch {
     }
 
     /// Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-    /// `peek` (Scout) is a gate slot of `side`'s own current stage. Later calls before the step
-    /// win.
-    pub fn set_input(&mut self, side: u8, aim: Option<i32>, peek: Option<u8>) {
+    /// `peek` (Scout) is a gate slot of `side`'s own current stage; `champion` calls the
+    /// Champion (refused unless charged, in a Fight). Later calls before the step win; a
+    /// Champion call sticks until the step.
+    pub fn set_input(&mut self, side: u8, aim: Option<i32>, peek: Option<u8>, champion: bool) {
         let Some(p) = self.pending.sides.get_mut(usize::from(side)) else {
             return;
         };
         p.aim = aim.or(p.aim);
         p.peek = peek.or(p.peek);
+        p.champion |= champion;
     }
 
     /// Advance one tick: bots decide on the public state, then the rules run. Returns `false`
@@ -120,8 +129,9 @@ impl SimMatch {
     /// The public state (VIEW LAYOUT).
     pub fn view(&self) -> Vec<f64> {
         let p = &self.state.public;
-        let mut v =
-            Vec::with_capacity(HEADER_LEN + 2 * (SIDE_FIXED + 2 + COHORT_CAP * 5 + ENEMY_CAP * 5));
+        let mut v = Vec::with_capacity(
+            HEADER_LEN + 2 * (SIDE_FIXED + 2 + (COHORT_CAP + ENEMY_CAP) * UNIT_STRIDE),
+        );
         let r = p.result;
         v.extend([
             f64::from(LAYOUT_VERSION),
@@ -144,11 +154,13 @@ impl SimMatch {
                 f64::from(side.cannon_x),
                 f64::from(side.aim),
                 f64::from(side.gold),
-                0.0,
+                f64::from(side.champ_meter),
                 flag(side.peek_used),
                 flag(is_bot),
-                f64::from(side.raid_ticks),
+                f64::from(side.rush_ticks),
+                flag(side.champ_pending),
             ]);
+            v.extend(side.breach_tick.iter().map(|&t| f64::from(t)));
             v.extend(side.towers.iter().map(|&hp| f64::from(hp)));
             v.extend(side.crates.iter().map(|&hp| f64::from(hp)));
             for g in &side.gates {
@@ -162,6 +174,7 @@ impl SimMatch {
                     f64::from(c.x),
                     f64::from(c.y),
                     f64::from(c.age),
+                    flag(c.champion),
                 ]);
             }
             v.push(f64::from(side.enemy_len));
@@ -172,6 +185,7 @@ impl SimMatch {
                     f64::from(e.x),
                     f64::from(e.y),
                     f64::from(e.tower),
+                    flag(e.giant),
                 ]);
             }
         }
@@ -239,14 +253,19 @@ impl Bot {
     }
 
     /// The bot's input for the tick the given public state is about to process:
-    /// `[aim, peek slot]`, each -1 for none. Garbage or short input gives `[-1, -1]`.
+    /// `[aim, peek slot, champion]`: aim and slot -1 for none, champion 0/1. Garbage or short
+    /// input gives `[-1, -1, 0]`.
     pub fn decide(&mut self, public_bytes: &[u8]) -> Vec<i32> {
         let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
-            return vec![-1, -1];
+            return vec![-1, -1, 0];
         };
         codec::decode_public(bytes, &mut self.view);
         let i = self.inner.decide(&self.view);
-        vec![i.aim.unwrap_or(-1), i.peek.map_or(-1, i32::from)]
+        vec![
+            i.aim.unwrap_or(-1),
+            i.peek.map_or(-1, i32::from),
+            i32::from(i.champion),
+        ]
     }
 }
 
@@ -280,7 +299,8 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
             cohort_id,
             x,
             count,
-        } => f(&[0.0, b(side), n(cohort_id), i(x), n(count)]),
+            champion,
+        } => f(&[0.0, b(side), n(cohort_id), i(x), n(count), flag(champion)]),
         Event::Gate {
             side,
             slot,
@@ -347,6 +367,9 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
             result.moved as f64,
             result.fee as f64,
         ]),
+        Event::First { side, stage, gold } => f(&[13.0, b(side), b(stage), n(gold)]),
+        Event::RushEnd { side, lost } => f(&[14.0, b(side), n(lost)]),
+        Event::Champion { side } => f(&[15.0, b(side)]),
     }
 }
 
@@ -373,7 +396,7 @@ pub fn deals_for(seed: u64) -> Vec<u8> {
 }
 
 /// Centre x of gate `slot` in `stage` of `layout`, `t` ticks into that player's Fight (pass the
-/// side's phase ticks; the Raid keeps counting the Fight's, so this stays smooth through the
+/// side's phase ticks; the Rush keeps counting the Fight's, so this stays smooth through the
 /// switch). For smooth drawing of sliding gates between ticks. 0 for a missing gate.
 #[wasm_bindgen]
 pub fn gate_x_at(layout: u8, stage: u8, slot: u8, t: u32) -> i32 {
@@ -381,6 +404,13 @@ pub fn gate_x_at(layout: u8, stage: u8, slot: u8, t: u32) -> i32 {
         .gates
         .get(usize::from(slot))
         .map_or(0, |g| i32::from(g.x_at(t)))
+}
+
+/// The timing gate's value `t` ticks into a Fight (pass the side's phase ticks): ×1 → ×5,
+/// one step per second (SPEC_V5 §3).
+#[wasm_bindgen]
+pub fn timing_value(t: u32) -> u8 {
+    layouts::timing_value(t)
 }
 
 /// crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
@@ -391,8 +421,9 @@ pub fn codec_version() -> u8 {
 
 /// Every constant packages/client mirrors, plus the level pool, as JSON (the TS parity test
 /// compares them). `NORMAL_ODDS` = [[op byte, percent]] with ±N written as +0 / −0 (N =
-/// `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]]. `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
-/// gates: [{row, x, width, big, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
+/// `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]].
+/// `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
+/// gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
 /// tower and crate indices are the slots used everywhere else.
 #[wasm_bindgen]
 pub fn constants_json() -> String {
@@ -404,7 +435,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 46] = [
+    let pairs: [(&str, String); 53] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -412,7 +443,14 @@ pub fn constants_json() -> String {
         ("FINAL_STAGE", FINAL_STAGE.to_string()),
         ("PLANT_TICKS", PLANT_TICKS.to_string()),
         ("TRANSIT_TICKS", TRANSIT_TICKS.to_string()),
-        ("RAID_TICKS", RAID_TICKS.to_string()),
+        ("RUSH_TICKS", RUSH_TICKS.to_string()),
+        ("CHAMP_TICKS", CHAMP_TICKS.to_string()),
+        ("CHAMP_COUNT", CHAMP_COUNT.to_string()),
+        ("FIRST_BONUS", FIRST_BONUS.to_string()),
+        ("GIANT_COUNT", GIANT_COUNT.to_string()),
+        ("GIANT_SPEED", GIANT_SPEED.to_string()),
+        ("TIMING_STEP_TICKS", TIMING_STEP_TICKS.to_string()),
+        ("TIMING_MAX", TIMING_MAX.to_string()),
         ("FIRE_TICKS", FIRE_TICKS.to_string()),
         ("VOLLEY_SIZE", VOLLEY_SIZE.to_string()),
         ("CRUISE_SPEED", CRUISE_SPEED.to_string()),
@@ -462,11 +500,12 @@ pub fn constants_json() -> String {
 fn layouts_json() -> String {
     let gate = |g: &GateDef| {
         format!(
-            "{{\"row\":{},\"x\":{},\"width\":{},\"big\":{},\"x_min\":{},\"x_max\":{},\"speed\":{}}}",
+            "{{\"row\":{},\"x\":{},\"width\":{},\"big\":{},\"timing\":{},\"x_min\":{},\"x_max\":{},\"speed\":{}}}",
             g.row,
             g.x,
             g.width,
             g.slot == Slot::Big,
+            g.slot == Slot::Timing,
             g.x_min,
             g.x_max,
             g.speed
@@ -519,7 +558,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 7_802_420_624_183_953_081;
+const PARITY_DIGEST: u64 = 10_144_432_015_304_223_342;
 
 #[cfg(test)]
 mod tests {
@@ -529,9 +568,9 @@ mod tests {
     fn walk_side(v: &[f64], mut i: usize) -> usize {
         i += SIDE_FIXED;
         let n = v[i] as usize;
-        i += 1 + n * 5;
+        i += 1 + n * UNIT_STRIDE;
         let n = v[i] as usize;
-        i + 1 + n * 5
+        i + 1 + n * UNIT_STRIDE
     }
 
     /// Walks a view and returns its length, checking the documented structure.
@@ -557,7 +596,7 @@ mod tests {
         assert_eq!(v[3], f64::from(m.state.public.layout));
         // Side 0's first gate: x and face-down / revealed op.
         let g = m.state.public.sides[0].gates[0];
-        let at = HEADER_LEN + 11 + TOWERS_MAX + CRATES_MAX;
+        let at = HEADER_LEN + 14 + TOWERS_MAX + CRATES_MAX;
         assert_eq!(v[at], f64::from(g.x));
         assert_eq!(v[at + 1], op_num(g.revealed));
     }
@@ -594,14 +633,22 @@ mod tests {
         for _ in 0..PLANT_TICKS {
             h.step();
         }
-        h.set_input(0, Some(0), Some(1));
-        h.set_input(1, Some(2999), None); // bot side: ignored
+        h.state.public.sides[0].champ_meter = CHAMP_TICKS as u8;
+        h.set_input(0, Some(0), Some(1), true);
+        h.set_input(0, None, None, false); // a later call keeps the Champion
+        h.set_input(1, Some(2999), None, false); // bot side: ignored
         h.step();
         assert_eq!(h.state.public.sides[0].aim, 0);
         let pv = h.private_view(0);
         assert_eq!(&pv[..2], &[0.0, 1.0]);
         assert_eq!(pv[2], op_num(Some(h.state.secret.values[0][1])));
         assert_ne!(h.state.public.sides[1].aim, 2999);
+        // The Champion rode fight tick 0's volley.
+        assert!(h.state.public.sides[0].cohorts().iter().any(|c| c.champion));
+        let ev = h.events();
+        assert!(ev
+            .chunks(EVENT_STRIDE)
+            .any(|e| e[0] == 0.0 && e[1] == 0.0 && e[4] == 8.0 && e[5] == 1.0));
     }
 
     /// packages/client/test/offline.test.ts plays the same match through the bundled WASM and
@@ -637,9 +684,13 @@ mod tests {
         let i = direct.decide(&m.public);
         assert_eq!(
             handle.decide(&bytes),
-            vec![i.aim.unwrap_or(-1), i.peek.map_or(-1, i32::from)]
+            vec![
+                i.aim.unwrap_or(-1),
+                i.peek.map_or(-1, i32::from),
+                i32::from(i.champion)
+            ]
         );
-        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1]);
+        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1, 0]);
     }
 
     #[test]
@@ -663,19 +714,26 @@ mod tests {
     }
 
     #[test]
-    fn raid_ticks_sit_after_is_bot_in_the_view() {
+    fn v5_side_fields_sit_where_documented() {
         let mut h = SimMatch::new(3, 4, 0, 0b11, false);
-        h.state.public.sides[1].raid_ticks = 77;
+        let s = &mut h.state.public.sides[1];
+        s.rush_ticks = 77;
+        s.champ_meter = 66;
+        s.champ_pending = true;
+        s.breach_tick = [500, 1_200];
         let v = h.view();
         let side1 = walk_side(&v, HEADER_LEN);
-        assert_eq!(v[side1 + 10], 77.0);
+        assert_eq!(v[side1 + 7], 66.0);
+        assert_eq!(&v[side1 + 10..side1 + 14], &[77.0, 1.0, 500.0, 1_200.0]);
         assert_eq!(v[HEADER_LEN + 10], 0.0);
     }
 
     #[test]
     fn gate_x_at_matches_the_layouts() {
-        let g = LAYOUTS[0].stages[0].gates[4];
-        assert_eq!(gate_x_at(0, 0, 4, 37), i32::from(g.x_at(37)));
+        let g = LAYOUTS[0].stages[0].gates[3];
+        assert!(g.moving());
+        assert_eq!(gate_x_at(0, 0, 3, 37), i32::from(g.x_at(37)));
+        assert_eq!(timing_value(99), 5);
         assert_eq!(gate_x_at(0, 0, 200, 37), 0);
     }
 
@@ -689,6 +747,9 @@ mod tests {
         assert!(j.contains("\"GATE_GRACE\":100"));
         assert!(j.contains("\"HALL_X\":1500"));
         assert!(j.contains("\"name\":\"Twin Lanes\""));
+        assert!(j.contains("\"RUSH_TICKS\":70"));
+        assert!(j.contains("\"CHAMP_TICKS\":160"));
+        assert!(j.contains("\"timing\":true"));
         // ±N as +0 (0x40) / −0 (0xC0): N comes from PM_BY_ROW.
         assert!(j.contains(
             "\"NORMAL_ODDS\":[[2,30],[3,20],[4,8],[5,2],[64,12],[130,14],[192,12],[131,2]]"

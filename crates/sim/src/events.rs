@@ -7,12 +7,13 @@ use crate::types::{GateOp, Phase};
 /// Mirrors `MatchEvent` in packages/client/src/types.ts. `side` is always the lane it happened in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// `side`'s cannon fired a cohort (SPEC §7).
+    /// `side`'s cannon fired a cohort (SPEC §7); `champion`: a Champion (SPEC_V5 §4).
     Volley {
         side: u8,
         cohort_id: u32,
         x: i16,
         count: u32,
+        champion: bool,
     },
     /// A cohort passed gate `slot` of `side`'s current stage: `before` → `after` (SPEC §6).
     /// `reveal`: this was the first pass, so the gate just flipped face-up showing `op`.
@@ -62,13 +63,21 @@ pub enum Event {
     },
     /// Tower `tower` fell; `gold` = TOWER_BONUS (SPEC §5).
     TowerDestroyed { side: u8, tower: u8, gold: u32 },
-    /// A raid cohort of `units` dudes reached the town hall for `gold` (SPEC §5).
+    /// A Rush cohort of `units` dudes reached the town hall for `gold` (SPEC_V5 §2).
     Loot {
         side: u8,
         cohort_id: u32,
         units: u32,
         gold: u32,
     },
+    /// `side` cleared `stage` first (lower match tick) and scores `gold` = FIRST_BONUS
+    /// (SPEC_V5 §6). Pushed on the tick of that breach.
+    First { side: u8, stage: u8, gold: u32 },
+    /// `side`'s Rush ran out: `lost` dudes still on the lane do not count (SPEC_V5 §2). The
+    /// lane is cleared and `side` is Done.
+    RushEnd { side: u8, lost: u32 },
+    /// `side` called the Champion; it rides the next volley (SPEC_V5 §4).
+    Champion { side: u8 },
     /// `side` entered `phase` of `stage` (SPEC §3). Transit already names the next stage.
     Phase { side: u8, stage: u8, phase: Phase },
     /// An enemy reached `side`'s cannon line (SPEC §4).

@@ -3,7 +3,7 @@
 //!     cargo run -p lil-dudes-sim --example balance --release [-- MATCHES_PER_LAYOUT]
 //!
 //! Prints, per layout: death rate (target ~10–20%) and where deaths happen (Fight 1 / Fight 2 /
-//! the town hall raid), how matches end, match length, Fight and Raid times, gold per side, the
+//! the Rush), how matches end, match length, Fight and Raid times, gold per side, the
 //! raid's share of gold, and the payout as a share of S.
 
 use lil_dudes_sim::rng::mix64;
@@ -64,7 +64,7 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
                         // Fight 1's towers fell.
                         Phase::Transit => ended(0, st),
                         // Fight 2's towers fell: the raid starts on this very tick.
-                        Phase::Raid => {
+                        Phase::Rush => {
                             ended(1, st);
                             started[s][2] = t;
                         }
@@ -96,7 +96,7 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         st.deaths += 1;
         for s in &p.sides {
             if s.dead {
-                let k = if s.phase == Phase::Raid {
+                let k = if s.phase == Phase::Rush {
                     2
                 } else {
                     usize::from(s.stage)
@@ -130,9 +130,9 @@ fn main() {
         "len s",
         "F1 s",
         "F2 s",
-        "raid s",
+        "rush s",
         "gold",
-        "raid%",
+        "rush%",
         "pay%S",
     );
     let mut all = Stats::default();

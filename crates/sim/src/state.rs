@@ -33,14 +33,21 @@ pub struct PublicGate {
 /// One player's copy of the level as everyone sees it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PublicSide {
-    /// 0 = Fight 1, 1 = Fight 2 (and its raid). In Transit it already names the next stage.
+    /// 0 = Fight 1, 1 = Fight 2 (and its Rush). In Transit it already names the next stage.
     pub stage: u8,
     pub phase: Phase,
     /// Ticks of `phase` already played (moving gates and waves are timed from 0 = fight start).
-    /// The Raid keeps counting the Fight's ticks, so sliding gates never jump.
+    /// The Rush keeps counting the Fight's ticks, so sliding and timing gates never jump.
     pub phase_ticks: u16,
-    /// Ticks of the town hall raid played (0 before it): the raid fires while < RAID_TICKS.
-    pub raid_ticks: u16,
+    /// Ticks of the Rush played (0 before it): it ends at RUSH_TICKS (SPEC_V5 §2).
+    pub rush_ticks: u16,
+    /// SPEC_V5 §4: Fight ticks toward the next Champion (full at CHAMP_TICKS). Carries over
+    /// from Fight 1 into Fight 2.
+    pub champ_meter: u8,
+    /// A Champion was called: the next volley is a Champion cohort.
+    pub champ_pending: bool,
+    /// SPEC_V5 §6: the match tick each fight was cleared at (0 = not yet), for FIRST.
+    pub breach_tick: [u16; STAGES],
     /// An enemy reached the cannon line (SPEC §4).
     pub dead: bool,
     /// Where the cannon is (volleys spawn here, SPEC §2).
@@ -70,7 +77,10 @@ impl PublicSide {
         stage: 0,
         phase: Phase::Plant,
         phase_ticks: 0,
-        raid_ticks: 0,
+        rush_ticks: 0,
+        champ_meter: 0,
+        champ_pending: false,
+        breach_tick: [0; STAGES],
         dead: false,
         cannon_x: 0,
         aim: 0,
@@ -89,6 +99,7 @@ impl PublicSide {
             y: 0,
             age: 0,
             last_row: 0,
+            champion: false,
         }; COHORT_CAP],
         cohort_len: 0,
         enemies: [Enemy {
@@ -97,6 +108,7 @@ impl PublicSide {
             x: 0,
             y: 0,
             tower: 0,
+            giant: false,
         }; ENEMY_CAP],
         enemy_len: 0,
     };
@@ -123,7 +135,7 @@ impl PublicSide {
         self.gates.get(usize::from(slot))
     }
 
-    /// The match is over for this player: dead, or the raid is finished.
+    /// The match is over for this player: dead, or the Rush is finished.
     pub fn finished(&self) -> bool {
         self.dead || self.phase == Phase::Done
     }
@@ -134,7 +146,7 @@ impl PublicSide {
         let st = layouts::stage(layout, stage);
         self.stage = stage;
         self.phase_ticks = 0;
-        self.raid_ticks = 0;
+        self.rush_ticks = 0;
         self.peek_used = false;
         self.towers = [0; TOWERS_MAX];
         for (hp, t) in self.towers.iter_mut().zip(st.towers) {
@@ -334,7 +346,10 @@ impl MatchState {
             h.u8(s.stage);
             h.u8(s.phase.code());
             h.u32(u32::from(s.phase_ticks));
-            h.u32(u32::from(s.raid_ticks));
+            h.u32(u32::from(s.rush_ticks));
+            h.u8(s.champ_meter);
+            h.bool(s.champ_pending);
+            s.breach_tick.iter().for_each(|&t| h.u32(u32::from(t)));
             h.bool(s.dead);
             h.i16(s.cannon_x);
             h.i16(s.aim);
@@ -354,6 +369,7 @@ impl MatchState {
                 h.i16(c.y);
                 h.u8(c.age);
                 h.u8(c.last_row);
+                h.bool(c.champion);
             }
             h.u8(s.enemy_len);
             for e in &s.enemies {
@@ -362,6 +378,7 @@ impl MatchState {
                 h.i16(e.x);
                 h.i16(e.y);
                 h.u8(e.tower);
+                h.bool(e.giant);
             }
         }
         let x = &self.secret;
@@ -387,8 +404,10 @@ impl MatchState {
 pub struct SideInput {
     /// Target cannon x; clamped to the lane.
     pub aim: Option<i32>,
-    /// Scout (peek) this gate slot of my current stage. During my Fight/Raid only, once per stage.
+    /// Scout (peek) this gate slot of my current stage. During my Fight/Rush only, once per stage.
     pub peek: Option<u8>,
+    /// SPEC_V5 §4: call the Champion (during my Fight, with a full meter).
+    pub champion: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -486,8 +505,14 @@ mod tests {
         d.public.sides[0].gates[7].x = 1;
         assert_ne!(a.digest(), d.digest());
         let mut e = a;
-        e.public.sides[1].raid_ticks = 1;
+        e.public.sides[1].rush_ticks = 1;
         assert_ne!(a.digest(), e.digest());
+        let mut f = a;
+        f.public.sides[0].breach_tick[1] = 1;
+        assert_ne!(a.digest(), f.digest());
+        let mut g = a;
+        g.public.sides[1].cohorts[39].champion = true;
+        assert_ne!(a.digest(), g.digest());
         assert_ne!(
             a.digest(),
             MatchState::new(2, MatchOptions::default()).digest()

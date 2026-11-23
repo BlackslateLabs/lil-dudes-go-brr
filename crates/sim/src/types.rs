@@ -85,6 +85,8 @@ pub struct Cohort {
     pub age: u8,
     /// Gate rows of the stage already passed. A row applies once per cohort (SPEC §6).
     pub last_row: u8,
+    /// A Champion (SPEC_V5 §4): drawn as one giant; the rules treat it like any cohort.
+    pub champion: bool,
 }
 
 /// An enemy troop cohort walking down toward the cannon line (SPEC §4).
@@ -97,6 +99,8 @@ pub struct Enemy {
     pub y: i16,
     /// The tower that released it (wave merging, SPEC §7).
     pub tower: u8,
+    /// A giant (SPEC_V5 §5): walks at GIANT_SPEED instead of CRUISE_SPEED.
+    pub giant: bool,
 }
 
 /// Where one player is inside the current stage (SPEC §3).
@@ -109,21 +113,21 @@ pub enum Phase {
     Fight,
     /// 2 s: field wiped, the next stage's gates are already in place.
     Transit,
-    /// The final stage after its last tower fell: the town hall raid, started in place (no
-    /// wipe). Fire for RAID_TICKS more, then wait until no dudes of yours are left.
-    Raid,
-    /// The raid is over (the lane is empty): waiting for the match to end.
+    /// The final stage after its last tower fell (the breach): the Rush, started in place (no
+    /// wipe). RUSH_TICKS of firing at the town hall, then Done (SPEC_V5 §2).
+    Rush,
+    /// The Rush is over (the lane is cleared): waiting for the match to end.
     Done,
 }
 
 impl Phase {
-    /// 0 plant, 1 fight, 2 transit, 3 raid, 4 done (codec and WASM encoding).
+    /// 0 plant, 1 fight, 2 transit, 3 rush, 4 done (codec and WASM encoding).
     pub fn code(self) -> u8 {
         match self {
             Phase::Plant => 0,
             Phase::Fight => 1,
             Phase::Transit => 2,
-            Phase::Raid => 3,
+            Phase::Rush => 3,
             Phase::Done => 4,
         }
     }
@@ -132,15 +136,15 @@ impl Phase {
         match c {
             1 => Phase::Fight,
             2 => Phase::Transit,
-            3 => Phase::Raid,
+            3 => Phase::Rush,
             4 => Phase::Done,
             _ => Phase::Plant,
         }
     }
 
-    /// Cannon firing / units moving (Fight, Raid).
+    /// Cannon firing / units moving (Fight, Rush).
     pub fn active(self) -> bool {
-        matches!(self, Phase::Fight | Phase::Raid)
+        matches!(self, Phase::Fight | Phase::Rush)
     }
 }
 
@@ -190,6 +194,6 @@ mod tests {
         for c in 0..5 {
             assert_eq!(Phase::from_code(c).code(), c);
         }
-        assert!(Phase::Fight.active() && Phase::Raid.active() && !Phase::Plant.active());
+        assert!(Phase::Fight.active() && Phase::Rush.active() && !Phase::Plant.active());
     }
 }

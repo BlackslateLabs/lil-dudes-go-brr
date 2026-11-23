@@ -1,4 +1,5 @@
-//! The Warlord bot (SPEC §10).
+//! The Warlord bot (SPEC §10, SPEC_V5 §1: no rig; Scouts at the start of a fight; calls the
+//! Champion when charged).
 //!
 //! It is handed `&PublicState` only. Hidden gate values, peeks and the match seed live in
 //! `SecretState`, which it never receives, so it cannot read secrets by construction. Its own
@@ -6,12 +7,13 @@
 //! seed. It also ignores its own peek results (they are private state it is not given).
 
 use crate::constants::{
-    CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, VOLLEY_SIZE,
+    CHAMP_TICKS, CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS,
+    VOLLEY_SIZE,
 };
-use crate::layouts::{covers, Slot, StageDef};
+use crate::layouts::{covers, timing_value, Slot, StageDef};
 use crate::rng::SplitMix64;
 use crate::state::{PublicSide, PublicState, SideInput};
-use crate::types::GateOp;
+use crate::types::{GateOp, Phase};
 
 /// SPEC §10: pick a target every 2 ticks.
 pub const THINK_TICKS: u32 = 2;
@@ -64,8 +66,12 @@ impl Warlord {
         // SPEC §10: a random own `?` at the start of each fight.
         if me.phase.active() && !me.peek_used {
             let n = view.stage_def(self.side).gates.len();
-            input.peek = self.random_hidden(me, n);
+            input.peek = self.random_hidden(me, view.stage_def(self.side), n);
         }
+        // SPEC_V5 §4: the Champion as soon as it is charged.
+        input.champion = me.phase == Phase::Fight
+            && !me.champ_pending
+            && u32::from(me.champ_meter) >= CHAMP_TICKS;
         if view.tick.checked_rem(THINK_TICKS) != Some(0) {
             return input;
         }
@@ -78,10 +84,14 @@ impl Warlord {
         input
     }
 
-    fn random_hidden(&mut self, side: &PublicSide, n: usize) -> Option<u8> {
+    fn random_hidden(&mut self, side: &PublicSide, st: &StageDef, n: usize) -> Option<u8> {
         let mut slots = [0u8; GATES_MAX];
         let mut k = 0usize;
-        for (slot, g) in (0u8..).zip(side.gates.iter().take(n)) {
+        for ((slot, g), def) in (0u8..).zip(side.gates.iter().take(n)).zip(st.gates) {
+            // The timing gate is public: nothing to scout.
+            if def.slot == Slot::Timing {
+                continue;
+            }
             if let (None, Some(dst)) = (g.revealed, slots.get_mut(k)) {
                 *dst = slot;
                 k = k.saturating_add(1);
@@ -202,6 +212,8 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
                 let guess = match def.slot {
                     Slot::Normal => GUESS_NORMAL_PM,
                     Slot::Big => GUESS_BIG_PM,
+                    // SPEC_V5 §3: public, so the bot knows its value on arrival.
+                    Slot::Timing => u64::from(timing_value(at)).saturating_mul(1_000),
                 };
                 score.saturating_mul(guess) / 1_000
             }

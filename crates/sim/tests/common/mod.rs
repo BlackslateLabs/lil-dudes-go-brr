@@ -40,7 +40,8 @@ pub fn play_bots(seed: u64, stake: u64) -> (MatchState, Vec<Event>) {
     (m, all)
 }
 
-/// A player mashing everything: random aims (some off the lane) and peeks (some invalid).
+/// A player mashing everything: random aims (some off the lane), peeks (some invalid) and
+/// Champion taps (most refused).
 pub fn random_input(r: &mut SplitMix64) -> SideInput {
     let mut i = SideInput::default();
     if r.below(100) < 30 {
@@ -49,5 +50,6 @@ pub fn random_input(r: &mut SplitMix64) -> SideInput {
     if r.below(100) < 5 {
         i.peek = Some(r.below(12) as u8);
     }
+    i.champion = r.below(100) < 5;
     i
 }

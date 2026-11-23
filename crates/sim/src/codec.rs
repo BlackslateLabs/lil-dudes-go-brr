@@ -8,7 +8,7 @@
 //! Lossless for every state the rules can reach: ids, tower/crate HP and phase timers fit their
 //! narrower fields (checked at compile time below). Decoding never panics on garbage; it clamps.
 //!
-//! PUBLIC (PUBLIC_LEN = 1,474 bytes)
+//! PUBLIC (PUBLIC_LEN = 1,484 bytes)
 //! ```text
 //!   0  u8   CODEC_VERSION
 //!   1  u8   flags: 1 bot side 0 | 2 bot side 1 | 4 tutorial | 8 has result | 16 ko
@@ -19,17 +19,19 @@
 //!  16  u64  moved
 //!  24  u64  fee
 //!  32  u16  next_cohort_id
-//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 720 each:
-//!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 32 peek used
+//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 725 each:
+//!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 champion pending | 32 peek used
 //!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
 //!       12 u8 cohort_len | 13 u8 enemy_len
 //!       14 towers 2 × u16 hp | 18 crates 2 × u16 hp
 //!       22 gates 8 × [i16 x, u8 revealed op (0 = face-down)]
-//!       46 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age, u8 last_row]
-//!      526 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 0]
-//!      718 u16 raid_ticks
+//!       46 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age,
+//!                               u8 last_row | 128 champion]
+//!      526 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 1 = giant]
+//!      718 u16 rush_ticks | 720 u8 champ_meter | 721 2 × u16 breach_tick (per fight)
 //! ```
-//! phase: 0 plant, 1 fight, 2 transit, 3 raid, 4 done. Op byte: `k` = ×k, `0x80 | k` = ÷k.
+//! phase: 0 plant, 1 fight, 2 transit, 3 rush, 4 done. Op byte: `k` = ×k, `0x40 | n` = +n,
+//! `0x80 | k` = ÷k, `0xC0 | n` = −n.
 //!
 //! SECRET (SECRET_LEN = 32 bytes)
 //! ```text
@@ -47,7 +49,7 @@ use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, Secr
 use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Bump when either layout changes (the TS decoder checks byte 0 of the public part).
-pub const CODEC_VERSION: u8 = 4;
+pub const CODEC_VERSION: u8 = 5;
 
 pub const HEADER_LEN: usize = 34;
 pub const GATE_LEN: usize = 3;
@@ -57,8 +59,10 @@ pub const SIDE_CRATES: usize = SIDE_TOWERS + TOWERS_MAX * 2;
 pub const SIDE_GATES: usize = SIDE_CRATES + CRATES_MAX * 2;
 pub const SIDE_COHORTS: usize = SIDE_GATES + GATES_MAX * GATE_LEN;
 pub const SIDE_ENEMIES: usize = SIDE_COHORTS + COHORT_CAP * UNIT_LEN;
-pub const SIDE_RAID: usize = SIDE_ENEMIES + ENEMY_CAP * UNIT_LEN;
-pub const SIDE_LEN: usize = SIDE_RAID + 2;
+pub const SIDE_RUSH: usize = SIDE_ENEMIES + ENEMY_CAP * UNIT_LEN;
+pub const SIDE_CHAMP: usize = SIDE_RUSH + 2;
+pub const SIDE_BREACH: usize = SIDE_CHAMP + 1;
+pub const SIDE_LEN: usize = SIDE_BREACH + STAGES * 2;
 pub const PUBLIC_LEN: usize = HEADER_LEN + 2 * SIDE_LEN;
 /// Offset of the aim inside a side (the program writes it directly).
 pub const SIDE_AIM: usize = 4;
@@ -77,10 +81,16 @@ const F_RESULT: u8 = 8;
 const F_KO: u8 = 16;
 const F_PHASE: u8 = 7;
 const F_DEAD: u8 = 8;
+const F_CHAMP: u8 = 16;
 const F_PEEK: u8 = 32;
+/// Cohort `last_row` byte: the Champion flag above the row count.
+const C_CHAMP: u8 = 128;
 
 const _: () = {
-    assert!(PUBLIC_LEN == 1_474);
+    assert!(SIDE_LEN == 725);
+    assert!(PUBLIC_LEN == 1_484);
+    // last_row (≤ ROWS_MAX) never reaches the Champion bit.
+    assert!(crate::constants::ROWS_MAX < C_CHAMP as usize);
     assert!(SECRET_LEN == 32);
     assert!(HISTORY_LEN == 8);
     // The on-chain commit limit is 10,240 bytes including the account header.
@@ -181,6 +191,7 @@ pub fn encode_public(p: &PublicState, out: &mut [u8; PUBLIC_LEN]) {
 fn encode_side(s: &PublicSide, buf: &mut [u8]) {
     let flags = (s.phase.code() & F_PHASE)
         | (if s.dead { F_DEAD } else { 0 })
+        | (if s.champ_pending { F_CHAMP } else { 0 })
         | (if s.peek_used { F_PEEK } else { 0 });
     let live = s.cohorts();
     let foes = s.enemies();
@@ -208,7 +219,8 @@ fn encode_side(s: &PublicSide, buf: &mut [u8]) {
         put(rec, 2, c.count.to_le_bytes());
         put(rec, 6, c.x.to_le_bytes());
         put(rec, 8, c.y.to_le_bytes());
-        put(rec, 10, [c.age, c.last_row]);
+        let champ = if c.champion { C_CHAMP } else { 0 };
+        put(rec, 10, [c.age, c.last_row | champ]);
     }
     if let Some(rest) = cohorts.get_mut(live.len().saturating_mul(UNIT_LEN)..) {
         rest.fill(0);
@@ -219,12 +231,16 @@ fn encode_side(s: &PublicSide, buf: &mut [u8]) {
         put(rec, 2, e.count.to_le_bytes());
         put(rec, 6, e.x.to_le_bytes());
         put(rec, 8, e.y.to_le_bytes());
-        put(rec, 10, [e.tower, 0]);
+        put(rec, 10, [e.tower, u8::from(e.giant)]);
     }
     if let Some(rest) = enemies.get_mut(foes.len().saturating_mul(UNIT_LEN)..) {
         rest.fill(0);
     }
-    put(buf, SIDE_RAID, s.raid_ticks.to_le_bytes());
+    put(buf, SIDE_RUSH, s.rush_ticks.to_le_bytes());
+    put(buf, SIDE_CHAMP, [s.champ_meter]);
+    for (t, at) in s.breach_tick.iter().zip((SIDE_BREACH..).step_by(2)) {
+        put(buf, at, t.to_le_bytes());
+    }
 }
 
 /// Reads the public state back. Every field of `p` is overwritten.
@@ -257,10 +273,15 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
     s.phase = Phase::from_code(flags & F_PHASE);
     s.dead = flags & F_DEAD != 0;
     s.peek_used = flags & F_PEEK != 0;
+    s.champ_pending = flags & F_CHAMP != 0;
+    s.champ_meter = byte(buf, SIDE_CHAMP);
+    for (t, at) in s.breach_tick.iter_mut().zip((SIDE_BREACH..).step_by(2)) {
+        *t = u16_at(buf, at);
+    }
     s.cannon_x = i16_at(buf, 2);
     s.aim = i16_at(buf, SIDE_AIM);
     s.phase_ticks = u16_at(buf, 6);
-    s.raid_ticks = u16_at(buf, SIDE_RAID);
+    s.rush_ticks = u16_at(buf, SIDE_RUSH);
     s.gold = u32_at(buf, 8);
     s.cohort_len = byte(buf, 12).min(COHORT_CAP as u8);
     s.enemy_len = byte(buf, 13).min(ENEMY_CAP as u8);
@@ -293,7 +314,8 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
             x: i16_at(rec, 6),
             y: i16_at(rec, 8),
             age,
-            last_row,
+            last_row: last_row & !C_CHAMP,
+            champion: last_row & C_CHAMP != 0,
         };
     }
     if let Some(rest) = s.cohorts.get_mut(live..) {
@@ -312,6 +334,7 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
             x: i16_at(rec, 6),
             y: i16_at(rec, 8),
             tower: byte(rec, 10),
+            giant: byte(rec, 11) != 0,
         };
     }
     if let Some(rest) = s.enemies.get_mut(foes..) {
@@ -376,6 +399,7 @@ mod tests {
             y: 9,
             age: 9,
             last_row: 9,
+            champion: true,
         }; COHORT_CAP];
         back.public.sides[1].enemies = [Enemy {
             id: 9,
@@ -383,6 +407,7 @@ mod tests {
             x: 9,
             y: 9,
             tower: 9,
+            giant: true,
         }; ENEMY_CAP];
         back.secret.history[1].peeks[0] = Some(Peek {
             slot: 9,
@@ -399,7 +424,7 @@ mod tests {
 
     #[test]
     fn roundtrip_whole_matches() {
-        let mut saw = [false; 2]; // a peek, enemies on the field
+        let mut saw = [false; 4]; // a peek, enemies, a Champion, a giant
         for seed in 0..40u64 {
             let mut m = MatchState::new(
                 seed,
@@ -420,10 +445,21 @@ mod tests {
                     inputs.sides[0] = SideInput {
                         aim: Some(rng.below(LANE_WIDTH as u64) as i32),
                         peek: Some(rng.below(9) as u8),
+                        champion: rng.below(3) == 0,
                     };
                 }
                 step(&mut m, &inputs, &mut NoEvents);
                 saw[1] |= m.public.sides.iter().any(|s| s.enemy_len > 0);
+                saw[2] |= m
+                    .public
+                    .sides
+                    .iter()
+                    .any(|s| s.cohorts().iter().any(|c| c.champion));
+                saw[3] |= m
+                    .public
+                    .sides
+                    .iter()
+                    .any(|s| s.enemies().iter().any(|e| e.giant));
                 if m.public.tick % 7 == 0 || m.public.result.is_some() {
                     roundtrip(&m);
                 }
@@ -432,7 +468,7 @@ mod tests {
                 saw[0] |= log.peeks.iter().any(Option::is_some);
             }
         }
-        assert_eq!(saw, [true; 2]);
+        assert_eq!(saw, [true; 4]);
     }
 
     #[test]
