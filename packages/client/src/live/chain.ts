@@ -194,6 +194,10 @@ export const ixs = {
     new DataView(b.buffer).setInt16(0, x, true);
     return ix('set_aim', b, { player, game: a.game });
   },
+  /** Press / let go of my trigger (rules v6); letting go with a full meter calls the Champion. */
+  setFire(a: MatchAccounts, player: PublicKey, on: boolean) {
+    return ix('set_fire', new Uint8Array([on ? 1 : 0]), { player, game: a.game, secrets: a.secrets });
+  },
   /** Call my Champion (rules v5): public, refused unless my meter is full in my Fight. */
   champion(a: MatchAccounts, player: PublicKey) {
     return ix('champion', new Uint8Array(), { player, game: a.game, secrets: a.secrets });

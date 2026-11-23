@@ -1,4 +1,4 @@
-// The online bot's per-tick decision (botTurn) on rules v5, against a local match: the WASM
+// The online bot's per-tick decision (botTurn) on rules v6, against a local match: the WASM
 // Warlord deciding from the public codec bytes alone, exactly as on the live feed.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -25,6 +25,7 @@ test('botTurn drives side 0 through a whole v5 match: scouts its fights, calls i
       const me = src.view.sides[0];
       botTurn(brain, src.publicBytes(), {
         setAim: (x) => src.setAim(x),
+        setFiring: (on) => src.setFiring(on),
         peek: (slot) => {
           // What LiveSource would check before sending.
           if (me.peekUsed || me.gates[slot]?.revealed || me.gates[slot]?.timing) refused.push(`peek ${slot}`);

@@ -56,6 +56,7 @@ export class MockSource implements MatchSource {
 
   /** Ignored: the bot plays this side too. */
   setAim(_x: number): void {}
+  setFiring(_on: boolean): void {}
   champion(): void {}
   /** Always false: the bot plays this side. */
   canChampion(): boolean {

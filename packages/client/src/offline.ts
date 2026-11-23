@@ -122,6 +122,11 @@ export class OfflineSource implements MatchSource {
     this.sim.set_input(this.mySide, aim, undefined, false);
   }
 
+  /** Rules v6 trigger: applied at once (between ticks), like the program's `set_fire`. */
+  setFiring(on: boolean): void {
+    this.sim.set_fire(this.mySide, on);
+  }
+
   /** Call the Champion (SPEC_V5 §4): it rides my next volley. The sim refuses it unless
    *  `canChampion()`. */
   champion(): void {

@@ -117,17 +117,19 @@ export function onlineBot(opts: BotOptions): BotService {
 }
 
 /** The inputs a match source takes from the bot. */
-export type BotInputs = Pick<MatchSource, 'setAim' | 'peek' | 'champion'>;
+export type BotInputs = Pick<MatchSource, 'setAim' | 'setFiring' | 'peek' | 'champion'>;
 
 /**
  * One decision of the Warlord on the newest public state (codec bytes), applied to `src`.
- * Rules v5: decide → [aim, peek slot, champion] (-1 / 0 = none). The Bot scouts at the start of
- * each of its fights and calls the Champion as soon as it is charged; LiveSource sends each only
- * when the sim would take it.
+ * Rules v6: decide → [aim, peek slot, champion, trigger] (-1 / 0 = none; trigger -1 unchanged,
+ * 0 let go, 1 hold). The Bot holds the trigger, scouts at the start of each of its fights and lets
+ * go for a tick to release the Champion as soon as it is charged; LiveSource sends each only when
+ * the sim would take it (and dedupes the trigger).
  */
 export function botTurn(brain: Pick<Bot, 'decide'>, publicBytes: Uint8Array, src: BotInputs): void {
-  const [aim = -1, peek = -1, champion = 0] = brain.decide(publicBytes);
+  const [aim = -1, peek = -1, champion = 0, fire = -1] = brain.decide(publicBytes);
   if (aim >= 0) src.setAim(aim);
+  if (fire >= 0) src.setFiring(fire === 1);
   if (peek >= 0) src.peek(peek);
   if (champion === 1) src.champion();
 }
