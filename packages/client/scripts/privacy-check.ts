@@ -222,20 +222,12 @@ async function main() {
   for (const [side, src] of sources.entries()) {
     src.subscribe((view) => {
       if (view.status !== 'playing') return;
-      const [aim, rig, peek] = bots[side]!.decide(src.latestBytes);
+      const [aim, peek, champion] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
+      if (champion === 1) src.champion();
       const me = view.sides[side]!;
-      // v4: rig from my own lane in any phase (the bot picks 1-3 s into its fight; in the plant,
-      // rig the first gate canRig allows so every stage's rig path is exercised).
-      if (!me.rigUsed) {
-        const cell = rig! >= 0 ? rig! : me.phase === 'plant' ? me.gates.findIndex((g) => src.canRig(g.slot)) : -1;
-        if (cell >= 0 && src.canRig(cell)) {
-          src.rig(cell);
-          note(side, 'rig', cell, me.stage);
-        }
-      }
-      if ((me.phase === 'fight' || me.phase === 'raid') && !me.peekUsed && (peek! >= 0 || view.tick % 40 === 0)) {
-        const cell = peek! >= 0 ? peek! : me.gates.findIndex((g) => !g.revealed);
+      if ((me.phase === 'fight' || me.phase === 'rush') && !me.peekUsed && (peek! >= 0 || view.tick % 40 === 0)) {
+        const cell = peek! >= 0 ? peek! : me.gates.findIndex((g) => !g.revealed && !g.timing);
         if (cell >= 0) {
           src.peek(cell);
           note(side, 'peek', cell, me.stage);
@@ -374,9 +366,8 @@ async function main() {
     needles['secret state bytes 8..40'] = hex(sec.subarray(112 + 8, 112 + 40));
   }
   if (peekABytes) needles['A Peek account bytes (56 B)'] = Buffer.from(peekABytes, 'base64').toString('hex');
-  // Rig / peek instruction data (discriminator + cell, 9 B) of both sides, every phase.
-  const ixData = (c: { side: number; what: string; cell: number }) =>
-    hex((c.what === 'rig' ? chain.ixs.plantRig(a, PublicKey.default, 0, c.cell) : chain.ixs.peekCell(a, PublicKey.default, 0, c.cell)).data);
+  // Scout instruction data (discriminator + cell, 9 B) of both sides, every phase.
+  const ixData = (c: { side: number; what: string; cell: number }) => hex(chain.ixs.peekCell(a, PublicKey.default, 0, c.cell).data);
   const leaks: string[] = [];
   for (const who of ['B', 'C', 'anon'] as Who[]) {
     const pre = corpus[who].filter((e) => e.t < finishedAt).map((e) => e.s);

@@ -1,9 +1,10 @@
 // Mirrors crates/sim/src/constants.rs, the odds in crates/sim/src/deal.rs and the level pool in
-// crates/sim/src/layouts.rs (rules v4, docs/SPEC.md). Change both together (CONTRACT log entry);
+// crates/sim/src/layouts.rs (rules v5, docs/SPEC_V5.md on top of docs/SPEC.md). Change both
+// together (CONTRACT log entry);
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
@@ -12,13 +13,27 @@ export const MATCH_TICKS = 180 * TICKS_PER_SEC;
 
 /** SPEC §3: Fight 1 (one tower) and Fight 2 (two towers, the town hall behind them). */
 export const STAGES = 2;
-/** The last stage: when its towers fall, the town hall raid starts in place (no transit, no plant). */
+/** The last stage: when its towers fall (the breach), the Rush starts in place (no transit, no plant). */
 export const FINAL_STAGE = STAGES - 1;
 export const PLANT_TICKS = 3 * TICKS_PER_SEC;
 export const TRANSIT_TICKS = 2 * TICKS_PER_SEC;
-/** The raid fires for this long once the final stage's last tower falls (`LaneView.raidTicks`
- *  counts it); dudes already on the way still count. */
-export const RAID_TICKS = 8 * TICKS_PER_SEC;
+/** SPEC_V5 §2: the Rush lasts this long after the breach (`LaneView.rushTicks` counts it). Dudes
+ *  that reach the town hall score LOOT_PER_UNIT each; dudes still on the lane when it runs out
+ *  do not count, and the player is done at once. */
+export const RUSH_TICKS = 70;
+/** SPEC_V5 §4: the Champion meter fills 1 per Fight tick (`LaneView.champMeter`), full at
+ *  CHAMP_TICKS (8 s); a called Champion is the next volley, worth CHAMP_COUNT dudes. */
+export const CHAMP_TICKS = 8 * TICKS_PER_SEC;
+export const CHAMP_COUNT = 8;
+/** SPEC_V5 §6: whoever clears a fight on the lower match tick scores this. */
+export const FIRST_BONUS = 50;
+/** SPEC_V5 §5: Fight 2's small waves bring a giant enemy of GIANT_COUNT walking at GIANT_SPEED. */
+export const GIANT_COUNT = 5;
+export const GIANT_SPEED = 48;
+/** SPEC_V5 §3: the timing gate steps ×1 → ×TIMING_MAX, one step every TIMING_STEP_TICKS of the
+ *  lane's phase clock (`timingValue(phaseTick)`). */
+export const TIMING_STEP_TICKS = TICKS_PER_SEC;
+export const TIMING_MAX = 5;
 
 /** SPEC §7: one volley of VOLLEY_SIZE dude every FIRE_TICKS. */
 export const FIRE_TICKS = 8;
@@ -31,11 +46,11 @@ export const LAUNCH_SPEED = CRUISE_SPEED * 3;
 /** x across the lane, y from the cannon line (0) to the base edge. */
 export const LANE_WIDTH = 3_000;
 export const LANE_LENGTH = 12_000;
-/** Towers sit on this line; a raid cohort loots when it reaches VAULT_Y (the town hall spans
+/** Towers sit on this line; a Rush cohort loots when it reaches VAULT_Y (the town hall spans
  *  the whole base). */
 export const TOWER_Y = 11_000;
 export const VAULT_Y = TOWER_Y;
-/** Past the last gate row, raid cohorts steer toward the town hall's centre. */
+/** Past the last gate row, Rush cohorts steer toward the town hall's centre. */
 export const HALL_X = LANE_WIDTH / 2;
 export const TOWER_HALF_W = 300;
 /** A cohort this far outside a gate's (or crate's) edge still goes through it. */
@@ -67,7 +82,7 @@ export const LOOT_PER_UNIT = 2;
 /** SPEC §10: the bot defends when an enemy is this close to its cannon. */
 export const DEFEND_Y = 3_000;
 
-/** SPEC §8: fee = 5% of the money moved. */
+/** SPEC_V5 §7: fee = 5% of the money moved. */
 export const FEE_BPS = 500;
 
 /** Layout limits (fixed-size state): rows, gates, towers and crates per stage. */
@@ -76,8 +91,10 @@ export const GATES_MAX = 8;
 export const TOWERS_MAX = 2;
 export const CRATES_MAX = 2;
 
-/** SPEC §6 gate odds: [multiplier, percent]. */
-export const NORMAL_ODDS = [[2, 47], [3, 34], [4, 12], [5, 4], [6, 3]];
+/** SPEC_V5 §3 normal `?` odds: [op byte, percent]; ±N is written +0 (64) / −0 (192), with N =
+ *  PM_BY_ROW[row] (row index 0 has no ±N: re-drawn as × or ÷). */
+export const NORMAL_ODDS = [[2, 30], [3, 20], [4, 8], [5, 2], [64, 12], [130, 14], [192, 12], [131, 2]];
+export const PM_BY_ROW = [0, 5, 15, 30];
 export const BIG_ODDS = [[6, 30], [8, 40], [10, 30]];
 
 // --- the level pool (SPEC §9) ----------------------------------------------------------------
@@ -97,6 +114,8 @@ export interface GateDef {
   width: number;
   /** A "big" slot (×6–×10), usually behind a crate. */
   big: boolean;
+  /** The stage's timing gate: public, its value cycles ×1 → ×5 (`timingValue`). */
+  timing: boolean;
   /** Sliding gates ping-pong between xMin and xMax by |speed| per tick (toward +x if speed > 0). */
   xMin: number;
   xMax: number;
@@ -114,14 +133,14 @@ export interface StageDef {
   towers: TowerDef[];
   /** Gate row y, ascending. */
   rows: number[];
-  /** Gate slots (rig/peek name these), sorted by row then x. */
+  /** Gate slots (Scout names these), sorted by row then x. */
   gates: GateDef[];
   crates: CrateDef[];
 }
 
 export interface LayoutDef {
   name: string;
-  /** Fight 1, Fight 2 (STAGES); the town hall raid happens in Fight 2's lane. */
+  /** Fight 1, Fight 2 (STAGES); the Rush happens in Fight 2's lane. */
   stages: StageDef[];
 }
 
@@ -131,28 +150,30 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Twin Lanes',
     stages: [
       {
-        towers: [{ x: 1500, hp: 370, waveBase: 40 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 1500, hp: 716, waveBase: 14 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 700, width: 600, big: false, xMin: 700, xMax: 700, speed: 0 },
-          { row: 0, x: 2300, width: 600, big: false, xMin: 2300, xMax: 2300, speed: 0 },
-          { row: 1, x: 700, width: 600, big: false, xMin: 700, xMax: 700, speed: 0 },
-          { row: 1, x: 2300, width: 600, big: false, xMin: 2300, xMax: 2300, speed: 0 },
-          { row: 2, x: 1500, width: 600, big: false, xMin: 900, xMax: 2100, speed: 25 },
+          { row: 0, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 0, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 1, x: 1500, width: 600, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 2, x: 1500, width: 600, big: false, timing: false, xMin: 900, xMax: 2100, speed: 25 },
+          { row: 3, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 3, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
         ],
         crates: [],
       },
       {
-        towers: [{ x: 700, hp: 200, waveBase: 11 }, { x: 2300, hp: 200, waveBase: 11 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 700, hp: 354, waveBase: 6 }, { x: 2300, hp: 354, waveBase: 6 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 700, width: 600, big: false, xMin: 700, xMax: 700, speed: 0 },
-          { row: 0, x: 2300, width: 600, big: false, xMin: 2300, xMax: 2300, speed: 0 },
-          { row: 1, x: 1500, width: 1000, big: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 2, x: 700, width: 600, big: false, xMin: 700, xMax: 700, speed: 0 },
-          { row: 2, x: 2300, width: 600, big: false, xMin: 2300, xMax: 2300, speed: 0 },
+          { row: 0, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 0, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 1, x: 1500, width: 600, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 2, x: 1500, width: 1000, big: true, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 3, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 3, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
         ],
-        crates: [{ x: 1500, width: 1000, y: 2100, hp: 25 }],
+        crates: [{ x: 1500, width: 1000, y: 3800, hp: 25 }],
       },
     ],
   },
@@ -160,26 +181,29 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Conveyor',
     stages: [
       {
-        towers: [{ x: 2200, hp: 120, waveBase: 30 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 2200, hp: 533, waveBase: 26 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 800, width: 600, big: false, xMin: 500, xMax: 2500, speed: 30 },
-          { row: 1, x: 2200, width: 600, big: false, xMin: 2200, xMax: 2200, speed: 0 },
-          { row: 2, x: 1500, width: 600, big: false, xMin: 500, xMax: 2500, speed: -40 },
+          { row: 0, x: 1200, width: 600, big: false, timing: false, xMin: 600, xMax: 2400, speed: 30 },
+          { row: 1, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 1, x: 2100, width: 600, big: false, timing: true, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 2, x: 1500, width: 600, big: false, timing: false, xMin: 600, xMax: 2400, speed: -40 },
+          { row: 3, x: 1500, width: 600, big: false, timing: false, xMin: 700, xMax: 2300, speed: 35 },
         ],
         crates: [],
       },
       {
-        towers: [{ x: 600, hp: 120, waveBase: 12 }, { x: 2400, hp: 120, waveBase: 12 }],
-        rows: [1400, 2300, 3200, 4100],
+        towers: [{ x: 600, hp: 1798, waveBase: 103 }, { x: 2400, hp: 1798, waveBase: 103 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 1500, width: 600, big: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 700, width: 600, big: false, xMin: 400, xMax: 1000, speed: 30 },
-          { row: 1, x: 2300, width: 600, big: false, xMin: 2000, xMax: 2600, speed: -30 },
-          { row: 2, x: 1500, width: 1000, big: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 3, x: 1500, width: 600, big: false, xMin: 400, xMax: 2600, speed: 50 },
+          { row: 0, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 0, x: 2150, width: 1000, big: true, timing: false, xMin: 2150, xMax: 2150, speed: 0 },
+          { row: 1, x: 800, width: 600, big: false, timing: false, xMin: 600, xMax: 1000, speed: 30 },
+          { row: 1, x: 2200, width: 600, big: false, timing: false, xMin: 2000, xMax: 2400, speed: -30 },
+          { row: 2, x: 1500, width: 600, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 3, x: 1500, width: 600, big: false, timing: false, xMin: 700, xMax: 2300, speed: 50 },
         ],
-        crates: [{ x: 1500, width: 1000, y: 2900, hp: 30 }],
+        crates: [],
       },
     ],
   },
@@ -187,27 +211,28 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Long Shot',
     stages: [
       {
-        towers: [{ x: 1000, hp: 190, waveBase: 45 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 1000, hp: 655, waveBase: 27 }],
+        rows: [1400, 2800, 4200, 5600],
         gates: [
-          { row: 0, x: 1100, width: 600, big: false, xMin: 1100, xMax: 1100, speed: 0 },
-          { row: 0, x: 2450, width: 1000, big: true, xMin: 2450, xMax: 2450, speed: 0 },
-          { row: 1, x: 1000, width: 600, big: false, xMin: 1000, xMax: 1000, speed: 0 },
-          { row: 2, x: 1500, width: 600, big: false, xMin: 700, xMax: 2300, speed: 30 },
+          { row: 0, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 0, x: 2200, width: 1000, big: true, timing: false, xMin: 2200, xMax: 2200, speed: 0 },
+          { row: 1, x: 1300, width: 600, big: false, timing: false, xMin: 1300, xMax: 1300, speed: 0 },
+          { row: 2, x: 1000, width: 600, big: false, timing: true, xMin: 1000, xMax: 1000, speed: 0 },
+          { row: 3, x: 1500, width: 600, big: false, timing: false, xMin: 700, xMax: 2300, speed: 30 },
         ],
-        crates: [{ x: 2450, width: 1000, y: 1100, hp: 20 }],
+        crates: [{ x: 2200, width: 1000, y: 1100, hp: 20 }],
       },
       {
-        towers: [{ x: 500, hp: 290, waveBase: 38 }, { x: 2000, hp: 290, waveBase: 38 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 500, hp: 696, waveBase: 13 }, { x: 2000, hp: 696, waveBase: 13 }],
+        rows: [1400, 2800, 4200, 5600],
         gates: [
-          { row: 0, x: 550, width: 1000, big: true, xMin: 550, xMax: 550, speed: 0 },
-          { row: 0, x: 1750, width: 600, big: false, xMin: 1750, xMax: 1750, speed: 0 },
-          { row: 1, x: 1500, width: 600, big: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2650, width: 500, big: false, xMin: 2650, xMax: 2650, speed: 0 },
-          { row: 2, x: 1000, width: 600, big: false, xMin: 500, xMax: 2000, speed: 35 },
+          { row: 0, x: 1500, width: 600, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 1, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 1, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 2, x: 2000, width: 600, big: false, timing: true, xMin: 2000, xMax: 2000, speed: 0 },
+          { row: 3, x: 1000, width: 600, big: false, timing: false, xMin: 600, xMax: 1800, speed: 35 },
         ],
-        crates: [{ x: 550, width: 1000, y: 1100, hp: 30 }],
+        crates: [],
       },
     ],
   },
@@ -215,24 +240,26 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Funnel',
     stages: [
       {
-        towers: [{ x: 2500, hp: 70, waveBase: 17 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 2500, hp: 304, waveBase: 10 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 1500, width: 700, big: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 1050, width: 500, big: false, xMin: 1050, xMax: 1050, speed: 0 },
-          { row: 1, x: 1950, width: 500, big: false, xMin: 1950, xMax: 1950, speed: 0 },
-          { row: 2, x: 1500, width: 1000, big: true, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 1500, width: 700, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 1, x: 1050, width: 500, big: false, timing: false, xMin: 1050, xMax: 1050, speed: 0 },
+          { row: 1, x: 1950, width: 500, big: false, timing: false, xMin: 1950, xMax: 1950, speed: 0 },
+          { row: 2, x: 1500, width: 600, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 3, x: 1500, width: 1000, big: true, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
         ],
-        crates: [{ x: 1500, width: 1000, y: 3100, hp: 25 }],
+        crates: [{ x: 1500, width: 1000, y: 5200, hp: 25 }],
       },
       {
-        towers: [{ x: 500, hp: 250, waveBase: 24 }, { x: 2500, hp: 250, waveBase: 24 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 500, hp: 819, waveBase: 12 }, { x: 2500, hp: 819, waveBase: 12 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 1050, width: 500, big: false, xMin: 1050, xMax: 1050, speed: 0 },
-          { row: 0, x: 1950, width: 500, big: false, xMin: 1950, xMax: 1950, speed: 0 },
-          { row: 1, x: 1500, width: 600, big: false, xMin: 900, xMax: 2100, speed: 20 },
-          { row: 2, x: 1500, width: 700, big: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 1050, width: 500, big: false, timing: false, xMin: 1050, xMax: 1050, speed: 0 },
+          { row: 0, x: 1950, width: 500, big: false, timing: false, xMin: 1950, xMax: 1950, speed: 0 },
+          { row: 1, x: 1500, width: 600, big: false, timing: false, xMin: 900, xMax: 2100, speed: 20 },
+          { row: 2, x: 1500, width: 700, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 3, x: 1500, width: 600, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
         ],
         crates: [],
       },
@@ -242,25 +269,28 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Zigzag',
     stages: [
       {
-        towers: [{ x: 500, hp: 140, waveBase: 19 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 500, hp: 1811, waveBase: 30 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 600, width: 600, big: false, xMin: 600, xMax: 600, speed: 0 },
-          { row: 1, x: 2400, width: 600, big: false, xMin: 2400, xMax: 2400, speed: 0 },
-          { row: 2, x: 1500, width: 600, big: false, xMin: 600, xMax: 2400, speed: 30 },
+          { row: 0, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 1, x: 900, width: 1000, big: true, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 1, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 2, x: 900, width: 600, big: false, timing: true, xMin: 900, xMax: 900, speed: 0 },
+          { row: 3, x: 1500, width: 600, big: false, timing: false, xMin: 700, xMax: 2300, speed: 30 },
         ],
         crates: [],
       },
       {
-        towers: [{ x: 1500, hp: 150, waveBase: 7 }, { x: 2600, hp: 150, waveBase: 7 }],
-        rows: [1400, 2400, 3400],
+        towers: [{ x: 1400, hp: 59, waveBase: 5 }, { x: 2600, hp: 59, waveBase: 5 }],
+        rows: [1400, 2750, 4100, 5500],
         gates: [
-          { row: 0, x: 2400, width: 600, big: false, xMin: 2400, xMax: 2400, speed: 0 },
-          { row: 1, x: 600, width: 600, big: false, xMin: 600, xMax: 600, speed: 0 },
-          { row: 1, x: 1850, width: 1000, big: true, xMin: 1850, xMax: 1850, speed: 0 },
-          { row: 2, x: 2400, width: 600, big: false, xMin: 2400, xMax: 2400, speed: 0 },
+          { row: 0, x: 2100, width: 600, big: false, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 1, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
+          { row: 1, x: 2100, width: 1000, big: true, timing: false, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 2, x: 2100, width: 600, big: false, timing: true, xMin: 2100, xMax: 2100, speed: 0 },
+          { row: 3, x: 900, width: 600, big: false, timing: false, xMin: 900, xMax: 900, speed: 0 },
         ],
-        crates: [{ x: 1850, width: 1000, y: 2100, hp: 30 }],
+        crates: [{ x: 2100, width: 1000, y: 2450, hp: 30 }],
       },
     ],
   },
@@ -268,27 +298,30 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Stairway',
     stages: [
       {
-        towers: [{ x: 2600, hp: 190, waveBase: 52 }],
-        rows: [1400, 2300, 3200, 4100],
+        towers: [{ x: 2400, hp: 411, waveBase: 19 }],
+        rows: [1400, 2800, 4200, 5600],
         gates: [
-          { row: 0, x: 500, width: 600, big: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1200, width: 600, big: false, xMin: 1200, xMax: 1200, speed: 0 },
-          { row: 2, x: 1900, width: 600, big: false, xMin: 1900, xMax: 1900, speed: 0 },
-          { row: 3, x: 2300, width: 600, big: false, xMin: 1800, xMax: 2650, speed: 25 },
+          { row: 0, x: 800, width: 600, big: false, timing: false, xMin: 800, xMax: 800, speed: 0 },
+          { row: 1, x: 1100, width: 600, big: false, timing: false, xMin: 1100, xMax: 1100, speed: 0 },
+          { row: 1, x: 2200, width: 600, big: false, timing: true, xMin: 2200, xMax: 2200, speed: 0 },
+          { row: 2, x: 1800, width: 600, big: false, timing: false, xMin: 1800, xMax: 1800, speed: 0 },
+          { row: 3, x: 2100, width: 600, big: false, timing: false, xMin: 1700, xMax: 2400, speed: 25 },
         ],
         crates: [],
       },
       {
-        towers: [{ x: 400, hp: 90, waveBase: 26 }, { x: 1800, hp: 90, waveBase: 26 }],
-        rows: [1400, 2300, 3200, 4100],
+        towers: [{ x: 600, hp: 276, waveBase: 6 }, { x: 1900, hp: 276, waveBase: 6 }],
+        rows: [1400, 2800, 4200, 5600],
         gates: [
-          { row: 0, x: 2500, width: 600, big: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 1800, width: 600, big: false, xMin: 1800, xMax: 1800, speed: 0 },
-          { row: 2, x: 1100, width: 1000, big: true, xMin: 1100, xMax: 1100, speed: 0 },
-          { row: 3, x: 600, width: 600, big: false, xMin: 400, xMax: 1400, speed: 25 },
+          { row: 0, x: 2200, width: 600, big: false, timing: false, xMin: 2200, xMax: 2200, speed: 0 },
+          { row: 1, x: 700, width: 600, big: false, timing: true, xMin: 700, xMax: 700, speed: 0 },
+          { row: 1, x: 1700, width: 600, big: false, timing: false, xMin: 1700, xMax: 1700, speed: 0 },
+          { row: 2, x: 1200, width: 1000, big: true, timing: false, xMin: 1200, xMax: 1200, speed: 0 },
+          { row: 3, x: 800, width: 600, big: false, timing: false, xMin: 600, xMax: 1400, speed: 25 },
         ],
-        crates: [{ x: 1100, width: 1000, y: 2900, hp: 30 }],
+        crates: [{ x: 1200, width: 1000, y: 3900, hp: 30 }],
       },
     ],
   },
 ];
+

@@ -1,22 +1,20 @@
 // LiveSource: a match on the Private Ephemeral Rollup, behind the same MatchSource contract as
 // MockSource / OfflineSource. It subscribes to the public Match (and the player's own private
 // Peek) over the TEE websocket, plays the snapshots out at 20 Hz ~3 ticks behind the newest
-// (TECH §5), derives the events, and sends set_aim / plant_rig / peek_cell signed by the
+// (TECH §5), derives the events, and sends set_aim / champion / peek_cell signed by the
 // device's burner (no wallet popups, no SOL needed on the TEE).
 //
 // With `autoDrive` (default) it also runs the match's TEE choreography itself: init_permissions,
 // the private salt + VRF seed request, start, a heartbeat `advance` if the crank stalls, and
 // `finish` (commit + undelegate + settlement) when the match has a result. Every step is
 // idempotent on-chain, so both players' sources can race safely.
-import { can_rig_bytes } from '@lil-dudes/sim-wasm';
 import { Connection, Transaction, TransactionInstruction, type Keypair } from '@solana/web3.js';
 import * as C from '../constants';
 import { matchResultOf, PUBLIC_LEN, toMatchView } from '../codec';
 import { layoutDef } from '../layout';
-import { initSim } from '../offline';
 import type { MatchListener, MatchSource } from '../source';
 import type { MatchEvent, MatchStatus, MatchView, PrivateView, Side } from '../types';
-import { ACCOUNT_EXPLORER, markSprung, payoutOf, revealOf, TEE_EXPLORER, type GotchaLog, type MatchReveal, type SettlementInfo, type TxRecord } from '../verify';
+import { ACCOUNT_EXPLORER, payoutOf, revealOf, TEE_EXPLORER, type MatchReveal, type SettlementInfo, type TxRecord } from '../verify';
 import {
   decodeMatch,
   decodePeek,
@@ -91,7 +89,7 @@ export class LiveSource implements MatchSource {
   private playTick = 0;
   private frames = 0;
   private peekAcc: PeekAccount | null = null;
-  private priv: PrivateView = { myRig: null, myPeek: null };
+  private priv: PrivateView = { myPeek: null };
   private pendingAim: number | null = null;
   private sentAim: number | null = null;
   private blockhash: { value: string; at: number } | null = null;
@@ -100,12 +98,11 @@ export class LiveSource implements MatchSource {
   private tried = new Map<string, number>();
   private disposed = false;
   private stage: LiveStage = 'connecting';
-  /** rig / peek: one request at a time, and none once it took this stage. */
-  private inflight = { rig: false, peek: false };
+  /** champion / peek: one request at a time, and none once it took. */
+  private inflight = { champion: false, peek: false };
   /** TEE txs this source sent (set_aim folded into one line), for reveal().txs. */
   private teeTxs: TxRecord[] = [];
   private aimCount = 0;
-  private gotchas: GotchaLog[] = [];
   private baseTxs: TxRecord[] = [];
   private settlement: SettlementInfo = { state: 'pending' };
   private tracking: Promise<void> | null = null;
@@ -124,7 +121,6 @@ export class LiveSource implements MatchSource {
     this.newest = snap;
     this.played = snap;
     this.playTick = first.state.tick;
-    this.noteGotchas(first);
   }
 
   /** Authenticates the burner on the TEE, loads the match (it must already be delegated) and opens the feed. */
@@ -176,32 +172,31 @@ export class LiveSource implements MatchSource {
     this.pendingAim = Math.round(Math.max(0, Math.min(C.LANE_WIDTH - 1, x)));
   }
 
-  /** Rig from my own lane: gate `slot` of my current stage, trapped in the opponent's copy of it.
-   *  Any phase while alive and not done, once per stage of mine; sent only when `canRig(slot)`
-   *  says yes on the newest state (the program re-checks with the same sim rule). */
-  rig(slot: number): void {
-    if (this.inflight.rig || !this.canRig(slot)) return;
-    this.inflight.rig = true;
-    void this.tx('plant_rig', ixs.plantRig(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
-      this.inflight.rig = false;
+  /** Call my Champion: sent only when `canChampion()` says yes on the newest state (the program
+   *  re-checks with the sim's rule). */
+  champion(): void {
+    if (this.inflight.champion || !this.canChampion()) return;
+    this.inflight.champion = true;
+    void this.tx('champion', ixs.champion(this.accounts, this.opts.burner.publicKey), true).finally(() => {
+      this.inflight.champion = false;
     });
   }
 
-  /** Whether `rig(slot)` would be accepted now: the sim's rule (`can_rig_bytes`) on the newest
-   *  public state (what the program judges by, a few ticks ahead of the rendered view). */
-  canRig(slot: number): boolean {
-    if (!Number.isInteger(slot) || slot < 0 || slot >= C.GATES_MAX) return false;
-    if (this.newest.view.status !== 'playing') return false;
-    initSim();
-    return can_rig_bytes(this.newest.bytes, this.mySide, slot);
+  /** My meter is full in my Fight and none is pending, on the newest public state (what the
+   *  program judges by, a few ticks ahead of the rendered view). */
+  canChampion(): boolean {
+    const v = this.newest.view;
+    const me = v.sides[this.mySide];
+    return v.status === 'playing' && me.phase === 'fight' && !me.champPending && me.champMeter >= C.CHAMP_TICKS;
   }
 
-  /** Peek my unrevealed gate `slot` of my current stage: only during my Fight or Raid, once per stage. */
+  /** Scout my face-down gate `slot` of my current stage: only during my Fight or Rush, once per
+   *  stage, never the timing gate. */
   peek(slot: number): void {
     const v = this.newest.view;
     const me = v.sides[this.mySide];
-    if (!Number.isInteger(slot) || slot < 0 || slot >= me.gates.length || me.gates[slot]!.revealed) return;
-    if (this.inflight.peek || me.peekUsed || (me.phase !== 'fight' && me.phase !== 'raid') || v.status !== 'playing') return;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= me.gates.length || me.gates[slot]!.revealed || me.gates[slot]!.timing) return;
+    if (this.inflight.peek || me.peekUsed || (me.phase !== 'fight' && me.phase !== 'rush') || v.status !== 'playing') return;
     this.inflight.peek = true;
     void this.tx('peek_cell', ixs.peekCell(this.accounts, this.opts.burner.publicKey, this.mySide, slot), true).finally(() => {
       this.inflight.peek = false;
@@ -255,7 +250,7 @@ export class LiveSource implements MatchSource {
 
   /**
    * The result screen's data once the match finished (null before): seed, layout and every
-   * stage's values, rigs and peeks per stage (with `sprung`), GOTCHAs, gold, deaths, the payout
+   * stage's values, both players' Scouts per stage, gold, deaths, the payout
    * and why, every tx with an
    * explorer link, and the settlement state. Base-layer txs and the settlement arrive a few
    * seconds after the end (`onStage('finished', 'settled')`, or `await awaitReveal()`).
@@ -279,14 +274,12 @@ export class LiveSource implements MatchSource {
       : [];
     return {
       ...base,
-      history: markSprung(base.history, this.gotchas),
       matchId: this.matchId.toString(),
       names: h.names,
       result,
       gold,
       dead,
       finalTick: state.tick,
-      gotchas: [...this.gotchas],
       payout: payoutOf(h.stake, result, { aborted, names: h.names, dead }),
       // Chronological: lobby (base) → this device's TEE txs → commit / settlement / close (base).
       txs: [...lobby, ...this.teeTxs.filter((t) => t.what !== 'set_aim'), ...aims, ...after],
@@ -415,7 +408,6 @@ export class LiveSource implements MatchSource {
     if (account.state.tick < prev.state.tick) return;
     const snap = this.snap(account, bytes);
     this.newest = snap;
-    this.noteGotchas(account);
     this.stats.snapshots++;
     if (account.state.tick !== this.lastProgress.tick) this.lastProgress = { tick: account.state.tick, at: Date.now() };
     if (snap.view.status === 'playing') {
@@ -428,23 +420,6 @@ export class LiveSource implements MatchSource {
       this.emit(snap);
     }
     void this.drive();
-  }
-
-  /** GOTCHAs from the header's last-sprung record (at most one per lane per stage), as a backup
-   *  for the ones the feed derives from reveals (diffEvents). The victim's stage is the one its
-   *  lane shows in the snapshot that first carries the record. */
-  private noteGotchas(account: MatchAccount): void {
-    account.header.gotcha.forEach((g, s) => {
-      if (!g) return;
-      const side = s as Side;
-      const stage = account.state.sides[side].stage;
-      this.addGotcha({ stage, tick: g.tick, side, slot: g.slot, riggedBy: side === 0 ? 1 : 0 });
-    });
-  }
-
-  private addGotcha(g: GotchaLog): void {
-    if (this.gotchas.some((x) => x.side === g.side && x.stage === g.stage && x.slot === g.slot)) return;
-    this.gotchas.push(g);
   }
 
   private onPeek(bytes: Uint8Array): void {
@@ -484,9 +459,6 @@ export class LiveSource implements MatchSource {
     if (next === this.played) return;
     if (next.account.state.tick < this.played.account.state.tick) return;
     const events: MatchEvent[] = diffEvents(this.played.account.state, next.account.state);
-    for (const e of events) {
-      if (e.type === 'gotcha') this.addGotcha({ stage: e.stage, tick: next.account.state.tick - 1, side: e.side, slot: e.slot, riggedBy: e.riggedBy });
-    }
     this.played = next;
     this.stats.emitted++;
     this.priv = this.privateView(next.view);

@@ -12,8 +12,8 @@ import { OfflineSource } from '../src/index';
 test('codec constants match the WASM build', () => {
   new OfflineSource().dispose(); // loads the WASM
   assert.equal(codec_version(), CODEC_VERSION);
-  assert.equal(PUBLIC_LEN, 1474);
-  assert.equal(HISTORY_LEN, 16);
+  assert.equal(PUBLIC_LEN, 1484);
+  assert.equal(HISTORY_LEN, 8);
 });
 
 test('decodePublic(publicBytes) == the WASM view at every tick of whole matches', () => {
@@ -51,9 +51,10 @@ test('decodePublic refuses short buffers and other codec versions', () => {
   src.dispose();
 });
 
-test('dealsFor + history: every revealed gate re-derives from the seed and the rigs', () => {
+test('dealsFor + history: every revealed gate and every Scout re-derives from the seed', () => {
   let checked = 0;
-  let rigs = 0;
+  let scouts = 0;
+  const byte = (op: { kind: string; value: number }) => ({ mul: 0, add: 0x40, div: 0x80, sub: 0xc0 })[op.kind]! | op.value;
   for (const seed of [5n, 1234n, 99n, 2026n, 7n, 31n, 64n, 500n]) {
     const src = new OfflineSource({ seed, botSeed: 9n, selfBot: true });
     const deals = dealsFor(seed);
@@ -64,31 +65,40 @@ test('dealsFor + history: every revealed gate re-derives from the seed and the r
       const st = stageDef(deals.layout, stage);
       assert.equal(ops.length, st.gates.length);
       ops.forEach((op, slot) => {
-        assert.equal(op.kind, 'mul');
-        const odds = st.gates[slot]!.big ? C.BIG_ODDS : C.NORMAL_ODDS;
-        assert.ok(odds.some(([k]) => k === op.value), `stage ${stage} slot ${slot}: ×${op.value}`);
+        const def = st.gates[slot]!;
+        const at = `stage ${stage} slot ${slot}: ${JSON.stringify(op)}`;
+        if (def.timing) return assert.deepEqual(op, { kind: 'mul', value: 1 }, at);
+        if (def.big) return assert.ok(op.kind === 'mul' && C.BIG_ODDS.some(([k]) => k === op.value), at);
+        // ±N is sized to the row (none on row index 0); the rest are NORMAL_ODDS bytes.
+        if (op.kind === 'add' || op.kind === 'sub') {
+          assert.ok(def.row > 0 && op.value === C.PM_BY_ROW[def.row], at);
+        } else {
+          assert.ok(C.NORMAL_ODDS.some(([b]) => b === byte(op)), at);
+        }
       });
     });
-    // Every gate revealed during the match shows the dealt value, or ÷2 where the opponent rigged it.
+    // Every gate revealed during the match shows the dealt value.
     src.subscribe((_v, _p, events) => {
       for (const e of events) {
         if (e.type !== 'reveal') continue;
-        const history = decodeHistory(src.history());
-        assert.deepEqual(e.op, trueOp({ values: deals.values, history }, e.side, e.stage, e.slot), `seed ${seed} ${JSON.stringify(e)}`);
+        assert.deepEqual(e.op, trueOp(deals, e.stage, e.slot), `seed ${seed} ${JSON.stringify(e)}`);
         checked++;
       }
     });
     while (!src.view.result) src.step();
     const h = decodeHistory(src.history());
     assert.equal(h.length, C.STAGES);
-    // The bots rig 1-3 s into each fight (refused when the target gate is already revealed).
+    // The bots scout at the start of each fight: a face-down hidden gate, its true value.
     for (const log of h) {
-      rigs += log.rigs.filter(Boolean).length;
-      // v4: a rig names the rigger's own stage, and a slot of it.
-      for (const r of log.rigs) if (r) assert.ok(r.stage === log.stage && r.slot < stageDef(deals.layout, r.stage).gates.length);
+      for (const pk of log.peeks) {
+        if (!pk) continue;
+        scouts++;
+        assert.ok(!stageDef(deals.layout, log.stage).gates[pk.slot]!.timing);
+        assert.deepEqual(pk.op, trueOp(deals, log.stage, pk.slot));
+      }
     }
     src.dispose();
   }
   assert.ok(checked > 80, `${checked} reveals checked`);
-  assert.ok(rigs >= 16, `${rigs} rigs in 8 bot matches`);
+  assert.ok(scouts >= 16, `${scouts} scouts in 8 bot matches`);
 });

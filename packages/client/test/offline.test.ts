@@ -1,15 +1,14 @@
-// OfflineSource: the real rules (v4) through the bundled WASM. Run: pnpm --filter @lil-dudes/client test
+// OfflineSource: the real rules (v5) through the bundled WASM. Run: pnpm --filter @lil-dudes/client test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/constants';
 import { crateOfGate, stageDef } from '../src/layout';
-import { can_rig_bytes } from '@lil-dudes/sim-wasm';
 import { MockSource, OfflineSource, simConstants, simRulesVersion } from '../src/index';
 import type { MatchEvent, MatchView, PrivateView } from '../src/types';
 
 /** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs: bot on side 1, idle side 0
- *  (it dies at tick 209). */
-const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, digest: 18_369_198_370_544_550_614n, tick: 209 };
+ *  (both finish; the idle mid-lane cannon wins narrowly, 1,826 to 1,818). */
+const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, digest: 10_144_432_015_304_223_342n, tick: 2091 };
 
 function playOut(src: { view: MatchView; step(): void }, onTick?: (view: MatchView) => void) {
   let guard = 0;
@@ -38,15 +37,15 @@ test('TS constants and layouts equal the Rust ones in the WASM build', () => {
 });
 
 test('bundled WASM is built from the current sim (parity digest)', () => {
-  assert.equal(simRulesVersion(), 4);
+  assert.equal(simRulesVersion(), 5);
   const src = new OfflineSource(PARITY);
   playOut(src);
   assert.equal(src.view.tick, PARITY.tick);
   assert.equal(src.digest(), PARITY.digest, 'packages/sim-wasm/pkg is stale: run packages/sim-wasm/build.sh');
   const r = src.view.result!;
-  assert.deepEqual([r.winner, r.died, r.moved], [1, 0, PARITY.stake]);
-  assert.equal(r.fee, Math.floor((PARITY.stake * C.FEE_BPS) / 10_000));
-  assert.equal(src.view.sides[0].phase, 'dead');
+  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [0, null, [1826, 1818], 430_000]);
+  assert.equal(r.fee, Math.floor((r.moved * C.FEE_BPS) / 10_000));
+  assert.deepEqual(src.view.sides.map((s) => s.phase), ['done', 'done']);
   src.dispose();
 });
 
@@ -61,18 +60,22 @@ function checkView(view: MatchView) {
     assert.equal(s.gates.length, st.gates.length);
     assert.equal(s.towers.length, st.towers.length);
     assert.equal(s.crates.length, st.crates.length);
-    // v4: the town hall raid is Fight 2 with its towers down, in place.
-    const raided = s.raidTicks > 0;
-    if (raided) {
+    // v5: the Rush is Fight 2 with its towers down, in place, RUSH_TICKS long.
+    const rushed = s.rushTicks > 0;
+    if (rushed) {
       assert.equal(s.stage, C.FINAL_STAGE);
-      assert.ok(s.towers.every((t) => t.hp === 0), 'the raid starts when every tower is down');
+      assert.ok(s.towers.every((t) => t.hp === 0), 'the Rush starts when every tower is down');
     } else {
-      assert.equal(s.raidGold, 0);
+      assert.equal(s.rushGold, 0);
     }
-    if (s.phase === 'raid' || s.phase === 'done') assert.equal(s.stage, C.FINAL_STAGE);
-    if (s.phase === 'done') assert.ok(s.raidTicks >= C.RAID_TICKS && s.cohorts.length === 0 && s.enemies.length === 0);
-    if (s.phase === 'plant' || s.phase === 'fight' || s.phase === 'transit') assert.equal(s.raidTicks, 0);
-    assert.ok(s.raidGold <= s.gold);
+    if (s.phase === 'rush' || s.phase === 'done') assert.equal(s.stage, C.FINAL_STAGE);
+    if (s.phase === 'done') assert.ok(s.rushTicks === C.RUSH_TICKS && s.cohorts.length === 0 && s.enemies.length === 0);
+    if (s.phase === 'plant' || s.phase === 'fight' || s.phase === 'transit') assert.equal(s.rushTicks, 0);
+    assert.ok(s.rushTicks <= C.RUSH_TICKS);
+    assert.ok(s.rushGold <= s.gold);
+    assert.ok(s.champMeter >= 0 && s.champMeter <= C.CHAMP_TICKS);
+    // FIRST: only for a cleared fight, never both lanes.
+    s.first.forEach((f, k) => f && assert.ok(s.breachTick[k]! > 0));
     s.gates.forEach((g, slot) => {
       assert.equal(g.slot, slot);
       assert.equal(g.y, st.rows[st.gates[slot]!.row]);
@@ -80,7 +83,15 @@ function checkView(view: MatchView) {
       assert.equal(g.locked, g.big && crate >= 0 && s.crates[crate]!.hp > 0);
       if (!g.moving) assert.equal(g.x, st.gates[slot]!.x);
       if (g.revealed?.kind === 'mul') assert.ok(g.revealed.value >= 2 && g.revealed.value <= 10);
-      if (g.revealed?.kind === 'div') assert.equal(g.revealed.value, 2);
+      if (g.revealed?.kind === 'div') assert.ok(g.revealed.value === 2 || g.revealed.value === 3);
+      if (g.revealed?.kind === 'add' || g.revealed?.kind === 'sub') assert.ok([5, 15, 30].includes(g.revealed.value));
+      if (g.timing) {
+        assert.equal(g.revealed, null, 'the timing gate never flips');
+        assert.equal(g.value?.kind, 'mul');
+        assert.ok(g.value!.value >= 1 && g.value!.value <= C.TIMING_MAX);
+      } else {
+        assert.deepEqual(g.value, g.revealed);
+      }
     });
     if (s.phase === 'plant' || s.phase === 'transit') {
       assert.equal(s.cohorts.length + s.enemies.length, 0, 'no units in plant / transit');
@@ -90,23 +101,27 @@ function checkView(view: MatchView) {
   }
 }
 
-test('whole bot-vs-bot matches: every event type, invariants, raid gold = loot', () => {
-  const seen = new Map<MatchEvent['type'], number>();
+test('whole bot-vs-bot matches: every event type, invariants, rush gold = loot', () => {
+  const seen = new Map<string, number>();
   for (const seed of [1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]) {
     const src = new OfflineSource({ seed, botSeed: seed * 31n, stake: 50_000_000, selfBot: true });
     const loot: [number, number] = [0, 0];
+    const first: [number, number] = [0, 0];
     let ends = 0;
     let last: MatchView | null = null;
     src.subscribe((view, _priv, events) => {
       for (const e of events) {
         seen.set(e.type, (seen.get(e.type) ?? 0) + 1);
+        if (e.type === 'volley' && e.champion) seen.set('champion volley', (seen.get('champion volley') ?? 0) + 1);
         if (e.type === 'loot') loot[e.side] += e.gold;
+        if (e.type === 'first') first[e.side] += e.gold;
         if (e.type === 'end') ends++;
-        if (e.type === 'gotcha') assert.notEqual(e.side, e.riggedBy);
       }
       if (last) assert.equal(view.tick, last.tick + 1, 'one tick per step');
       checkView(view);
       assert.ok(view.sides.every((s) => s.isBot));
+      // FIRST in the view = FIRST events so far.
+      view.sides.forEach((s, i) => assert.equal(s.first.filter(Boolean).length * C.FIRST_BONUS, first[i]));
       last = view;
     });
     playOut(src);
@@ -116,91 +131,78 @@ test('whole bot-vs-bot matches: every event type, invariants, raid gold = loot',
     assert.equal(v.status, 'ended');
     assert.ok(v.tick <= C.MATCH_TICKS);
     assert.deepEqual(r.gold, [v.sides[0].gold, v.sides[1].gold]);
-    assert.deepEqual([v.sides[0].raidGold, v.sides[1].raidGold], loot);
+    assert.deepEqual([v.sides[0].rushGold, v.sides[1].rushGold], loot);
     const dead = v.sides.map((s) => s.phase === 'dead');
     assert.equal(r.died, dead[0] !== dead[1] ? (dead[0] ? 0 : 1) : null);
     if (r.winner === null) assert.equal(r.moved, 0);
     else assert.equal(r.fee, Math.floor((r.moved * C.FEE_BPS) / 10_000));
     src.dispose();
   }
-  for (const type of ['volley', 'reveal', 'gate', 'gotcha', 'crate', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'stage', 'end'] as const) {
+  for (const type of ['volley', 'champion volley', 'reveal', 'gate', 'crate', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'first', 'rushEnd', 'stage', 'end']) {
     assert.ok((seen.get(type) ?? 0) > 0, `no ${type} events`);
   }
 });
 
-test('a player rigs from their own lane and peeks in their fight (private view by stage and slot)', () => {
+test('a player scouts in their fight (private view by stage and slot; never the timing gate)', () => {
   const src = new OfflineSource({ seed: 9n, botSeed: 10n });
-  let priv: PrivateView = { myRig: null, myPeek: null };
+  let priv: PrivateView = { myPeek: null };
   src.subscribe((_v, p) => (priv = p));
-  // Tick 0 is my plant: my gate slot 1 traps the same slot of the opponent's stage 0.
-  const gates = stageDef(src.view.layout, 0).gates.length;
-  assert.ok(src.canRig(1));
-  assert.equal(src.canRig(gates), false, 'no such gate in my stage');
-  src.rig(1);
-  src.step();
-  assert.deepEqual(priv.myRig, { stage: 0, slot: 1 });
-  assert.equal(src.view.sides[0].rigUsed, true);
-  assert.equal(src.canRig(0), false, 'once per stage');
-  assert.equal(priv.myPeek, null);
-  // A peek in the plant is refused (and not used up).
-  src.peek(0);
+  const st = stageDef(src.view.layout, 0);
+  const timing = st.gates.findIndex((g) => g.timing);
+  const slot = st.gates.findIndex((g) => !g.timing);
+  assert.ok(timing >= 0 && slot >= 0);
+  // A Scout in the plant is refused (and not used up).
+  src.peek(slot);
   src.step();
   assert.equal(src.view.sides[0].peekUsed, false);
   while (src.view.sides[0].phase === 'plant') src.step();
   assert.equal(src.view.sides[0].phase, 'fight');
-  src.peek(0);
+  src.peek(timing);
+  src.step();
+  assert.equal(src.view.sides[0].peekUsed, false, 'the timing gate is public');
+  src.peek(slot);
   src.step();
   assert.equal(src.view.sides[0].peekUsed, true);
   const peek = (priv as PrivateView).myPeek;
   assert.deepEqual(src.priv.myPeek, peek);
   assert.equal(peek?.stage, 0);
-  assert.equal(peek?.slot, 0);
-  // The peeked value is the dealt one.
-  assert.deepEqual(peek?.op, src.reveal().values[0]![0]);
+  assert.equal(peek?.slot, slot);
+  // The scouted value is the dealt one, and the history logs it.
+  assert.deepEqual(peek?.op, src.reveal().values[0]![slot]);
+  assert.deepEqual(src.reveal().history[0]!.peeks[0], { slot, op: peek!.op });
   src.dispose();
 });
 
-test('a rig in my fight lands on their copy of my stage; canRig follows the v4 rule', () => {
+test('the Champion: charged by fight time, called once, rides the next volley', () => {
   const src = new OfflineSource({ seed: 21n, botSeed: 22n });
-  let priv: PrivateView = { myRig: null, myPeek: null };
-  src.subscribe((_v, p) => (priv = p));
-  while (src.view.sides[0].phase !== 'fight') src.step();
-  for (let i = 0; i < 10; i++) src.step();
-  const [me, them] = src.view.sides;
-  assert.equal(me.rigUsed, false);
-  // The rule from public state: same stage, their copy of the gate still face-down.
-  me.gates.forEach((g) => {
-    const want = them.stage > me.stage ? false : them.stage < me.stage || !them.gates[g.slot]!.revealed;
-    assert.equal(src.canRig(g.slot), want && them.phase !== 'done' && them.phase !== 'dead', `slot ${g.slot}`);
+  const volleys: { champion: boolean; count: number }[] = [];
+  src.subscribe((_v, _p, events) => {
+    for (const e of events) if (e.type === 'volley' && e.side === 0) volleys.push({ champion: e.champion, count: e.count });
   });
-  const slot = me.gates.find((g) => src.canRig(g.slot))!.slot;
-  src.rig(slot);
+  assert.equal(src.canChampion(), false, 'empty meter in the plant');
+  src.champion();
   src.step();
-  assert.deepEqual(priv.myRig, { stage: me.stage, slot });
-  // The history logs it under my stage, naming the same stage of theirs.
-  const r = src.reveal();
-  assert.deepEqual(r.history[me.stage]!.rigs[0], { stage: me.stage, slot });
-  src.dispose();
-});
-
-test('canRig (SimMatch.can_rig) == can_rig_bytes on the public bytes (what LiveSource asks)', () => {
-  let yes = 0;
-  let no = 0;
-  for (const seed of [4n, 15n, 2026n]) {
-    const src = new OfflineSource({ seed, botSeed: seed + 9n, selfBot: true, mySide: seed === 15n ? 1 : 0 });
-    while (!src.view.result) {
-      const bytes = src.publicBytes();
-      for (let slot = 0; slot < C.GATES_MAX; slot++) {
-        const ok = src.canRig(slot);
-        assert.equal(ok, can_rig_bytes(bytes, src.mySide, slot), `seed ${seed} tick ${src.view.tick} slot ${slot}`);
-        if (ok) yes++;
-        else no++;
-      }
-      src.step();
-    }
-    src.dispose();
+  assert.equal(src.view.sides[0].champPending, false);
+  // Keep the lane alive while the meter fills.
+  let guard = 0;
+  while (!src.canChampion() && !src.view.result) {
+    src.setAim(src.view.sides[0].enemies[0]?.x ?? C.LANE_WIDTH / 2);
+    src.step();
+    assert.ok(guard++ < C.MATCH_TICKS);
   }
-  assert.ok(yes > 100 && no > 100, `${yes} yes, ${no} no`);
+  if (src.view.result) return src.dispose(); // the bot won before the meter filled (rare)
+  assert.equal(src.view.sides[0].champMeter, C.CHAMP_TICKS);
+  src.champion();
+  src.step();
+  const me = src.view.sides[0];
+  assert.ok(me.champPending || volleys.some((v) => v.champion), 'called');
+  assert.ok(me.champMeter <= 1, 'the meter emptied');
+  assert.equal(src.canChampion(), false, 'not twice');
+  for (let i = 0; i < C.FIRE_TICKS && !volleys.some((v) => v.champion); i++) src.step();
+  const champ = volleys.find((v) => v.champion);
+  assert.deepEqual(champ, { champion: true, count: C.CHAMP_COUNT });
+  assert.ok(src.view.sides[0].cohorts.some((c) => c.champion) || src.view.result);
+  src.dispose();
 });
 
 test('same seeds and inputs give the same match through the TS layer', () => {
@@ -216,24 +218,31 @@ test('same seeds and inputs give the same match through the TS layer', () => {
 
 test('invalid inputs are ignored safely', () => {
   const src = new OfflineSource({ seed: 1n, botSeed: 1n });
-  for (const slot of [256, -1, 8, 2.5, Number.NaN, Infinity]) {
-    src.rig(slot);
-    src.peek(slot);
-  }
+  for (const slot of [256, -1, 8, 2.5, Number.NaN, Infinity]) src.peek(slot);
+  src.champion();
   src.setAim(1e12);
   src.step();
   src.setAim(Number.NaN);
   src.step();
   assert.equal(src.view.sides[0].aimX, C.LANE_WIDTH - 1);
-  assert.equal(src.view.sides[0].rigUsed, false);
+  assert.equal(src.view.sides[0].peekUsed, false);
+  assert.equal(src.view.sides[0].champPending, false);
 });
 
 test('selfBot: the bot plays my side too, my inputs are ignored', () => {
   const src = new OfflineSource({ seed: 3n, botSeed: 4n, selfBot: true, mySide: 1 });
   assert.deepEqual(src.view.sides.map((s) => s.isBot), [true, true]);
   src.setAim(0);
-  for (let i = 0; i < 160; i++) src.step();
-  assert.ok(src.view.sides[1].rigUsed, 'the bot rigs 1-3 s into its fight');
+  let champ = false;
+  let scouted = false;
+  src.subscribe((v, _p, events) => {
+    champ ||= events.some((e) => e.type === 'volley' && e.side === 1 && e.champion);
+    scouted ||= v.sides[1].peekUsed;
+  });
+  // The meter needs CHAMP_TICKS of fight time (it carries over a short Fight 1).
+  while (!champ && !src.view.result) src.step();
+  assert.ok(scouted, 'the bot scouts at the start of its fight');
+  assert.ok(champ || src.view.result, 'the bot calls the Champion when charged');
   src.dispose();
 });
 
@@ -264,8 +273,8 @@ test('MockSource: a hands-off bot-vs-bot match, fast-forwarded', () => {
     checkView(v);
   });
   src.setAim(0);
-  src.rig(0);
-  assert.equal(src.canRig(0), false, 'the mock takes no input');
+  src.champion();
+  assert.equal(src.canChampion(), false, 'the mock takes no input');
   playOut(src);
   assert.ok(end);
   assert.ok(new MockSource().view.sides.every((s) => s.isBot));

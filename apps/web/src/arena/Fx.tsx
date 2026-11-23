@@ -66,7 +66,7 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
       if (e.type === 'reveal') {
         const g = lane.gates.find((x) => x.slot === e.slot);
         if (!g) return;
-        const bad = e.op.kind === 'div';
+        const bad = e.op.kind === 'div' || e.op.kind === 'sub';
         burst.reveal(px, wx(g.x), GATE_Y, wz(g.y), bad ? COLOR.bad : g.big ? COLOR.gold : COLOR.good);
         const s = free.current.pop();
         if (!s) return;
@@ -84,10 +84,6 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
         if (!g || !every(`g${e.slot}`, 0.4)) return;
         if (e.after < e.before) burst.shrink(px, wx(g.x), GATE_Y, wz(g.y));
         else if (e.after > e.before) burst.multiply(px, wx(g.x), GATE_Y, wz(g.y), g.big ? COLOR.gold : COLOR.good, e.after / Math.max(1, e.before), g.width * SX);
-      } else if (e.type === 'gotcha') {
-        const g = lane.gates.find((x) => x.slot === e.slot);
-        if (g) burst.gotcha(px, wx(g.x), GATE_Y, wz(g.y));
-        kick(0.5, true);
       } else if (e.type === 'towerHit') {
         const t = lane.towers.find((x) => x.index === e.tower);
         if (t && every(`t${e.tower}`, 0.12)) burst.hit(px, wx(t.x), 2.6, wz(t.y), COLOR.dust);

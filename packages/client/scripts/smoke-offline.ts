@@ -1,8 +1,8 @@
-// Headless smoke run: one full v4 match through OfflineSource on its own timer. A scripted player
-// on side 0 (defends, follows the best revealed gates, rigs from its own lane and peeks every
-// stage), the Warlord bot on side 1. Exits non-zero if the match doesn't end cleanly.
+// Headless smoke run: one full v5 match through OfflineSource on its own timer. A scripted player
+// on side 0 (defends, follows the best revealed gates, calls the Champion when charged and
+// scouts every stage), the Warlord bot on side 1. Exits non-zero if the match doesn't end cleanly.
 //   pnpm --filter @lil-dudes/client smoke [-- --speed 20 --seed 123 --selfbot]   (speed 1 = real time)
-import { DEFEND_Y, FINAL_STAGE, LANE_WIDTH, MATCH_TICKS, OfflineSource, RAID_TICKS, TICKS_PER_SEC } from '../src/index';
+import { DEFEND_Y, FINAL_STAGE, LANE_WIDTH, MATCH_TICKS, OfflineSource, opLabel, RUSH_TICKS, TICKS_PER_SEC } from '../src/index';
 import type { LaneView, MatchView } from '../src/index';
 
 const args = process.argv.slice(2);
@@ -44,27 +44,24 @@ src.subscribe((view: MatchView, priv, events) => {
   for (const e of events) {
     counts[e.type] = (counts[e.type] ?? 0) + 1;
     if (e.type === 'stage') console.log(`  ${at} side ${e.side}: stage ${e.stage + 1} ${e.phase}`);
-    if (e.type === 'gotcha') console.log(`  ${at} GOTCHA in side ${e.side}'s lane (stage ${e.stage + 1}, slot ${e.slot})`);
+    if (e.type === 'first') console.log(`  ${at} side ${e.side}: FIRST in fight ${e.stage + 1}`);
+    if (e.type === 'rushEnd') console.log(`  ${at} side ${e.side}: Rush over, ${e.lost} dudes left on the lane`);
+    if (e.type === 'volley' && e.champion) console.log(`  ${at} side ${e.side}: CHAMPION`);
     if (e.type === 'death') console.log(`  ${at} side ${e.side} DIED`);
   }
   const [me, them] = view.sides;
   if (!selfBot) {
     src.setAim(aimFor(me));
-    // v4: rig from my own lane, any phase; the big gate first if their copy of it is still open.
-    if (!me.rigUsed) {
-      const open = me.gates.filter((g) => src.canRig(g.slot)).sort((a, b) => Number(b.big) - Number(a.big));
-      if (open[0]) src.rig(open[0].slot);
-    }
-    if ((me.phase === 'fight' || me.phase === 'raid') && !me.peekUsed) {
-      const slot = me.gates.find((g) => !g.revealed && !g.locked)?.slot;
+    if (src.canChampion()) src.champion();
+    if ((me.phase === 'fight' || me.phase === 'rush') && !me.peekUsed) {
+      const slot = me.gates.find((g) => !g.revealed && !g.locked && !g.timing)?.slot;
       if (slot !== undefined) src.peek(slot);
     }
   }
   if (view.tick % (10 * TICKS_PER_SEC) === 0 && view.tick > 0) {
-    const lane = (s: LaneView) => `${s.phase} ${s.stage + 1}${s.raidTicks ? ` (raid ${s.raidTicks})` : ''}, gold ${s.gold}, dudes ${s.cohorts.reduce((n, c) => n + c.count, 0)}, foes ${s.enemies.reduce((n, c) => n + c.count, 0)}`;
-    const rig = priv.myRig ? `stage ${priv.myRig.stage + 1} slot ${priv.myRig.slot}` : '-';
-    const peek = priv.myPeek ? `slot ${priv.myPeek.slot} = ${priv.myPeek.op.kind === 'mul' ? '×' : '÷'}${priv.myPeek.op.value}` : '-';
-    console.log(`  ${at} [${lane(me)}] vs [${lane(them)}], my rig ${rig}, peek ${peek}`);
+    const lane = (s: LaneView) => `${s.phase} ${s.stage + 1}${s.rushTicks ? ` (rush ${s.rushTicks})` : ''}, score ${s.gold}, champ ${s.champMeter}, dudes ${s.cohorts.reduce((n, c) => n + c.count, 0)}, foes ${s.enemies.reduce((n, c) => n + c.count, 0)}`;
+    const peek = priv.myPeek ? `slot ${priv.myPeek.slot} = ${opLabel(priv.myPeek.op)}` : '-';
+    console.log(`  ${at} [${lane(me)}] vs [${lane(them)}], scout ${peek}`);
   }
   if (!view.result) return;
 
@@ -72,7 +69,7 @@ src.subscribe((view: MatchView, priv, events) => {
   const secs = (Date.now() - started) / 1000;
   const reveal = src.reveal();
   console.log(`  ${at} END on ${view.layoutName}: ${reveal.payout!.why}`);
-  console.log(`  gold ${r.gold[0]} vs ${r.gold[1]} (raid ${me.raidGold} vs ${them.raidGold}), moved ${r.moved} lamports, fee ${r.fee}`);
+  console.log(`  score ${r.gold[0]} vs ${r.gold[1]} (rush ${me.rushGold} vs ${them.rushGold}, first ${me.first} vs ${them.first}), moved ${r.moved} lamports, fee ${r.fee}`);
   console.log(`  events: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   console.log(`  ${view.tick} ticks in ${secs.toFixed(1)} s (${(view.tick / secs).toFixed(0)} ticks/s, target ${TICKS_PER_SEC * speed})`);
   if (counts.end !== 1) fail(`expected one end event, got ${counts.end}`);
@@ -83,9 +80,9 @@ src.subscribe((view: MatchView, priv, events) => {
   if (reveal.payout!.moved !== r.moved || reveal.payout!.fee !== r.fee) fail('payoutOf disagrees with the sim');
   if (!view.tick || !(counts.volley && counts.wave && counts.stage && counts.reveal)) fail('missing core events');
   for (const s of view.sides) {
-    if (s.phase === 'done' && (s.stage !== FINAL_STAGE || s.raidTicks < RAID_TICKS)) fail(`done before the raid ran out (stage ${s.stage}, raid ticks ${s.raidTicks})`);
+    if (s.phase === 'done' && (s.stage !== FINAL_STAGE || s.rushTicks < RUSH_TICKS)) fail(`done before the Rush ran out (stage ${s.stage}, rush ticks ${s.rushTicks})`);
   }
-  if (!selfBot && !reveal.history.some((h) => h.rigs[0])) fail('the scripted player never rigged');
+  if (!selfBot && !reveal.history.some((h) => h.peeks[0])) fail('the scripted player never scouted');
   setTimeout(() => {
     if (src.view.tick !== view.tick) fail('kept ticking after the end');
     console.log(problems ? `smoke: FAILED (${problems})` : 'smoke: OK');

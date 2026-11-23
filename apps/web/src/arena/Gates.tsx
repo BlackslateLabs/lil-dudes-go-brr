@@ -23,8 +23,10 @@ const RIM = Object.fromEntries(Object.entries(GLASS).map(([k, v]) => [k, new Col
 const SHRINK_RED = new Color('#ff2a3c');
 
 function gateLook(g: GateView): Look {
+  // The timing gate is always face-up: gold while it shows ×5, else good.
+  if (g.timing) return g.value?.value === 5 ? 'gold' : 'good';
   if (!g.revealed) return g.big ? 'gold' : 'unknown';
-  if (g.revealed.kind === 'div') return 'bad';
+  if (g.revealed.kind === 'div' || g.revealed.kind === 'sub') return 'bad';
   return g.big ? 'gold' : 'good';
 }
 
@@ -91,7 +93,7 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
     root.current.position.set(wx(x), 0, wz(g.y));
 
     const peek = feed.priv.myPeek && feed.priv.myPeek.stage === lane.stage && feed.priv.myPeek.slot === g.slot ? feed.priv.myPeek.op : null;
-    const text = g.revealed ? opLabel(g.revealed) : peek ? opLabel(peek) : g.locked ? '🔒' : '?';
+    const text = g.value ? opLabel(g.value) : peek ? opLabel(peek) : g.locked ? '🔒' : '?';
     const width = g.width * SX;
     const look = gateLook(g);
     const key = `${lane.stage}|${g.slot}|${text}|${look}|${g.revealed ? 1 : 0}|${width}|${g.locked ? 1 : 0}`;

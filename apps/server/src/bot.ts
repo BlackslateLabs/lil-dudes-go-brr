@@ -117,20 +117,19 @@ export function onlineBot(opts: BotOptions): BotService {
 }
 
 /** The inputs a match source takes from the bot. */
-export type BotInputs = Pick<MatchSource, 'setAim' | 'rig' | 'peek'>;
+export type BotInputs = Pick<MatchSource, 'setAim' | 'peek' | 'champion'>;
 
 /**
  * One decision of the Warlord on the newest public state (codec bytes), applied to `src`.
- * Rules v4: decide → [aim, rig slot, peek slot] (-1 = none). The Bot picks its own rig timing
- * (1-3 s into each of its fights, a face-down gate of its own stage, trapping the opponent's
- * copy); LiveSource sends a rig only when canRig says the sim would take it, and a peek only in
- * our own fight / raid.
+ * Rules v5: decide → [aim, peek slot, champion] (-1 / 0 = none). The Bot scouts at the start of
+ * each of its fights and calls the Champion as soon as it is charged; LiveSource sends each only
+ * when the sim would take it.
  */
 export function botTurn(brain: Pick<Bot, 'decide'>, publicBytes: Uint8Array, src: BotInputs): void {
-  const [aim = -1, rig = -1, peek = -1] = brain.decide(publicBytes);
+  const [aim = -1, peek = -1, champion = 0] = brain.decide(publicBytes);
   if (aim >= 0) src.setAim(aim);
-  if (rig >= 0) src.rig(rig);
   if (peek >= 0) src.peek(peek);
+  if (champion === 1) src.champion();
 }
 
 /** Resolves with the full reveal once the match finished and settled (or null on timeout). */

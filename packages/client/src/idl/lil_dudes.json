@@ -184,6 +184,37 @@
       ]
     },
     {
+      "name": "champion",
+      "discriminator": [
+        246,
+        32,
+        225,
+        119,
+        219,
+        46,
+        252,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "docs": [
+            "Needed to step the sim during the catch-up (nothing secret is written to the Match)."
+          ],
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_match",
       "discriminator": [
         79,
@@ -1273,46 +1304,6 @@
       ]
     },
     {
-      "name": "plant_rig",
-      "discriminator": [
-        226,
-        31,
-        56,
-        210,
-        127,
-        176,
-        103,
-        159
-      ],
-      "accounts": [
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "game",
-          "writable": true
-        },
-        {
-          "name": "secrets",
-          "writable": true
-        },
-        {
-          "name": "peek",
-          "docs": [
-            "The signer's own Peek (private to them)."
-          ],
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "cell",
-          "type": "u8"
-        }
-      ]
-    },
-    {
       "name": "process_undelegation",
       "discriminator": [
         196,
@@ -1820,13 +1811,13 @@
     },
     {
       "code": 6006,
-      "name": "RigRefused",
-      "msg": "the rig was refused (used this stage, opponent dead, done or past your stage, revealed or a bad slot)"
+      "name": "ChampionRefused",
+      "msg": "the champion was refused (not your fight, meter not full, one already pending, or dead)"
     },
     {
       "code": 6007,
       "name": "PeekRefused",
-      "msg": "the peek was refused (not your fight or raid, used this stage, revealed or a bad slot)"
+      "msg": "the scout was refused (not your fight or rush, used this stage, revealed, the timing gate or a bad slot)"
     },
     {
       "code": 6008,
@@ -1995,45 +1986,39 @@
             }
           },
           {
-            "name": "gotcha",
+            "name": "_reserved",
             "docs": [
-              "Last rig sprung in each side's copy: [tick lo, tick hi, gate slot, rigged by]; tick",
-              "NO_TICK = none. The slot is in the stage that side was in at that tick."
+              "Rules v5: was the rig GOTCHA record (rigs are gone). Zero; kept so the offsets the TS",
+              "decoder reads stay put."
             ],
             "type": {
               "array": [
-                {
-                  "array": [
-                    "u8",
-                    4
-                  ]
-                },
-                2
+                "u8",
+                8
               ]
             }
           },
           {
             "name": "history",
             "docs": [
-              "Published at `finish`: every stage's rigs and peeks (codec history layout)."
+              "Published at `finish`: every stage's Scouts (codec history layout)."
             ],
             "type": {
               "array": [
                 "u8",
-                16
+                8
               ]
             }
           },
           {
             "name": "_pad",
             "docs": [
-              "Rules v4: the history shrank 24 → 16 bytes and the public state grew 1,470 → 1,474, so",
-              "6 bytes here keep the struct at 1,784 with no padding (Pod) and `history` where it was."
+              "Rules v5: the history shrank 16 → 8 bytes; 14 bytes here keep `state` at offset 310."
             ],
             "type": {
               "array": [
                 "u8",
-                6
+                14
               ]
             }
           },
@@ -2045,7 +2030,20 @@
             "type": {
               "array": [
                 "u8",
-                1474
+                1484
+              ]
+            }
+          },
+          {
+            "name": "_tail",
+            "docs": [
+              "Rules v5: the public state grew 1,474 → 1,484; 6 bytes keep the struct a multiple of 8",
+              "(Pod, no implicit padding)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
               ]
             }
           }
@@ -2055,10 +2053,10 @@
     {
       "name": "Peek",
       "docs": [
-        "One player's private view (the sim's `PrivateView`): what they rigged and peeked during their",
-        "current stage. Rewritten from the sim after each of the owner's `plant_rig` / `peek_cell` and",
-        "at `finish`; `stage` says which stage it describes, so one whose `stage` is behind the side's",
-        "public stage is stale (nothing rigged or peeked in the new stage yet)."
+        "One player's private view (the sim's `PrivateView`): their Scout during their current stage.",
+        "Rewritten from the sim after each of the owner's `peek_cell` and at `finish`; `stage` says",
+        "which stage it describes, so one whose `stage` is behind the side's public stage is stale",
+        "(nothing scouted in the new stage yet)."
       ],
       "serialization": "bytemuck",
       "repr": {
@@ -2090,21 +2088,22 @@
             "type": "u8"
           },
           {
-            "name": "rig_stage",
+            "name": "_reserved",
             "docs": [
-              "The rig the owner placed during that stage: the victim's stage and gate slot (NONE = none)."
+              "Rules v5: was the rig (stage, slot). Always NONE; kept so the offsets stay put."
             ],
-            "type": "u8"
-          },
-          {
-            "name": "rig_slot",
-            "type": "u8"
+            "type": {
+              "array": [
+                "u8",
+                2
+              ]
+            }
           },
           {
             "name": "peek_stage",
             "docs": [
-              "The owner's peek during that stage: its stage (NONE = none), gate slot and the true op",
-              "(`GateOp::to_byte`: k for ×k, 0x80 | k for ÷k)."
+              "The owner's Scout during that stage: its stage (NONE = none), gate slot and the true op",
+              "(`GateOp::to_byte`: k = ×k, 0x40 | n = +n, 0x80 | k = ÷k, 0xC0 | n = −n)."
             ],
             "type": "u8"
           },
@@ -2170,7 +2169,7 @@
             "type": {
               "array": [
                 "u8",
-                40
+                32
               ]
             }
           }

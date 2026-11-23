@@ -72,7 +72,7 @@ export const GLASS = {
 } as const;
 
 export function opLabel(op: GateOp): string {
-  return op.kind === 'mul' ? `×${op.value}` : `÷${op.value}`;
+  return ({ mul: '×', div: '÷', add: '+', sub: '−' } as const)[op.kind] + String(op.value);
 }
 
 /** `1.2K` style, one decimal above 1,000 (genre-standard HP label). */
