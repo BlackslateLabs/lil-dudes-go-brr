@@ -564,7 +564,7 @@
 }
 
 .rush-row.over {
-  animation: stamp-out 0.35s 2s ease-in forwards;
+  animation: stamp-out 0.35s 1.6s ease-in forwards;
 }
 
 .count-num {
@@ -574,7 +574,9 @@
 
 .count-num.time {
   font-size: 84px;
-  animation: stamp-punch 0.4s var(--bounce) both;
+  animation:
+    stamp-punch 0.4s var(--bounce) both,
+    stamp-out 0.35s 1.8s ease-in forwards;
 }
 
 .hall-count {
