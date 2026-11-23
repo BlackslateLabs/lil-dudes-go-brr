@@ -101,6 +101,11 @@ export function useMatchHud(feed: MatchFeed) {
             names: [v.sides[me].name, v.sides[them].name],
             stake: v.stake,
             layoutName: v.layoutName,
+            // Tallied from events by the match HUD work; zeros until then.
+            breakdown: [
+              { damage: 0, towers: 0, first: 0, rush: 0 },
+              { damage: 0, towers: 0, first: 0, rush: 0 },
+            ],
           });
           endTimer = setTimeout(() => useApp.getState().go('result'), RESULT_DELAY_MS);
           break;

@@ -4,6 +4,7 @@ import { Arena } from '../arena/Arena';
 import { setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
 import { MiniLane } from '../match/MiniLane';
+import { Tutorial } from '../match/Tutorial';
 import type { MatchFeed } from '../match/feed';
 import { canRig } from '../match/rig';
 import { useFeed } from '../match/useFeed';
@@ -59,6 +60,7 @@ export function Match() {
       <div className="mini-wrap">
         <MiniLane feed={feed} />
       </div>
+      <Tutorial feed={feed} />
       <Prompts />
       <Overlays />
       <ThumbControls feed={feed} />
