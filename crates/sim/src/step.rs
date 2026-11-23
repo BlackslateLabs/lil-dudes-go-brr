@@ -22,12 +22,12 @@ use crate::constants::{
     TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
-use crate::layouts::{self, covers, StageDef};
+use crate::layouts::{self, covers, timing_value, Slot, StageDef};
 use crate::payout::payout;
 use crate::state::{
     Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, SecretState, SideInput,
 };
-use crate::types::{Cohort, Enemy, Phase};
+use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Advance the match by one tick. A no-op once the match has ended.
 pub fn step(m: &mut MatchState, inputs: &Inputs, ev: &mut impl EventSink) {
@@ -90,7 +90,11 @@ fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
         return;
     };
     let open = me.gate(slot).is_some_and(|g| g.revealed.is_none());
-    let exists = usize::from(slot) < layouts::stage(layout, me.stage).gates.len();
+    // A hidden gate of my stage (the timing gate is public: nothing to scout).
+    let exists = layouts::stage(layout, me.stage)
+        .gates
+        .get(usize::from(slot))
+        .is_some_and(|d| d.slot != Slot::Timing);
     if !me.phase.active() || me.peek_used || me.dead || !open || !exists {
         return;
     }
@@ -138,7 +142,7 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
         g.x = def.x_at(gate_t);
     }
     if active {
-        move_cohorts(side, st, secret, s, ev);
+        move_cohorts(side, st, secret, gate_t, s, ev);
         move_enemies(side);
         clash(side, s, ev);
         hits(side, st, s, ev);
@@ -192,6 +196,7 @@ fn move_cohorts(
     side: &mut PublicSide,
     st: &StageDef,
     secret: &SecretState,
+    gate_t: u32,
     s: u8,
     ev: &mut impl EventSink,
 ) {
@@ -260,7 +265,17 @@ fn move_cohorts(
             c.last_row = c.last_row.saturating_add(1);
             if let Some(slot) = gate_at(st, gates, row, c.x) {
                 if let Some(gate) = gates.get_mut(usize::from(slot)) {
-                    pass_gate(s, stage, slot, c, gate, secret, ev);
+                    let timing = st
+                        .gates
+                        .get(usize::from(slot))
+                        .is_some_and(|d| d.slot == Slot::Timing);
+                    let op = if timing {
+                        // SPEC_V5 §3: the timing gate's value on the crossing tick (public).
+                        GateOp::Mul(timing_value(gate_t))
+                    } else {
+                        secret.true_op(stage, slot)
+                    };
+                    pass_gate(s, slot, c, gate, op, !timing, ev);
                 }
             }
         }
@@ -283,18 +298,18 @@ pub fn gate_at(st: &StageDef, gates: &[PublicGate], row: u8, x: i16) -> Option<u
     })
 }
 
-/// SPEC §6: the first cohort through reveals the gate; every cohort through gets the gate's op.
+/// SPEC §6: the first cohort through reveals a hidden gate; every cohort through gets `op`. The
+/// timing gate is always face-up (it never reveals; its op is its value on the crossing tick).
 fn pass_gate(
     s: u8,
-    stage: u8,
     slot: u8,
     c: &mut Cohort,
     gate: &mut PublicGate,
-    secret: &SecretState,
+    op: GateOp,
+    hidden: bool,
     ev: &mut impl EventSink,
 ) {
-    let op = secret.true_op(stage, slot);
-    let reveal = gate.revealed.is_none();
+    let reveal = hidden && gate.revealed.is_none();
     if reveal {
         gate.revealed = Some(op);
     }

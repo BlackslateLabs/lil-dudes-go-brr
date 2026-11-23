@@ -41,6 +41,10 @@ pub const TOWER_HALF_W: i32 = 300;
 /// SPEC §6: a cohort is a point in the sim but is drawn as a small crowd, and a gate has posts,
 /// so a cohort this far outside a gate's (or a crate's) edge still goes through it.
 pub const GATE_GRACE: i32 = 100;
+/// SPEC_V5 §3: the timing gate's value steps ×1 → ×TIMING_MAX → ×1, one step every
+/// TIMING_STEP_TICKS of the player's gate clock: `1 + (t / TIMING_STEP_TICKS) % TIMING_MAX`.
+pub const TIMING_STEP_TICKS: u32 = TICKS_PER_SEC;
+pub const TIMING_MAX: u32 = 5;
 /// SPEC §4: opposing cohorts meet within this x distance once crossed in y.
 pub const CLASH_REACH: i32 = 400;
 /// (impl) ...and only while they are at most this far past each other in y. Larger than the
