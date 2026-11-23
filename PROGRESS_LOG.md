@@ -1141,3 +1141,17 @@ the Rust sim (v6) and the real arena.
   blocks with a dude icon; star sparks, clash puffs, tower hit flash and sink; sounds + music from
   main's set (`M` mutes); 1:1 drag.
 
+
+## 2026-11-23 19:10 IST · Kai · handoff: baseline v2 pushed for Suparno · [HANDOFF]
+
+- **Branch:** `feel/baseline` (pushed; **not** merged to main, on purpose). It also carries the parked
+  v6 WIP commit (sim/client v6 half-done; `packages/client` doesn't typecheck yet, which doesn't affect the baseline).
+- **Run:** `pnpm --filter web dev`, open `/baseline.html`. Keys: 1–4 layouts, R restart, C champion,
+  P/⚙ tuning panel, M mute. `?auto=1` self-play, `?full=1` fill window, `?panel=1`.
+- **Code:** `apps/web/src/baseline/`: `sim.ts` (crowd agents), `layouts.ts`, `scene.ts` (world,
+  gates, blocks, towers, base, effects), `dude.ts` (crowd character + outline + run cycle), `audio.ts`.
+  Own `tsconfig.json`; excluded from the app's typecheck.
+- **Biggest remaining gap vs the genre's best:** authored art (sculpted characters, cannon, gates,
+  towers with baked AO and matcaps), a fully dressed themed map, the full effects list
+  (VIDEO_NOTES §10 in pvt-docs), and obstacle variety (sweepers, push blocks, moving gate rows, cages).
+- **Rule kept:** our own assets only (no files extracted from other games in the build).
