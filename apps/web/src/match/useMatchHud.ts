@@ -1,28 +1,105 @@
 import { useEffect } from 'react';
-import { sfx } from '../feel/sound';
+import * as client from '@lil-dudes/client';
+import { FINAL_STAGE, LANE_LENGTH, RAID_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView } from '@lil-dudes/client';
+import { haptic, setBattleDuck, sfx } from '../feel/sound';
 import { HUD_RESET, useHud } from '../hud';
 import { useApp } from '../store';
 import type { MatchFeed } from './feed';
 
-const RESULT_DELAY_MS = 2200;
+/** After the last end stamp (TIME!, OVERRUN!, THEY FELL!), hold this long before the result. */
+const END_HOLD_MS = 2400;
+/** An enemy this close to my cannon line (fraction of the lane) is a danger. */
+const DANGER_Y = LANE_LENGTH * 0.25;
+/** The danger cue repeats at most this often. */
+const DANGER_COOLDOWN_MS = 2000;
+
+/**
+ * Length of the post-breach clock. v5 calls it the Rush (`RUSH_TICKS` = 70, 3.5 s); until the v5
+ * client exports that, it is the v4 town hall raid (`RAID_TICKS`, 8 s).
+ */
+export const RUSH_LEN: number = (client as unknown as { RUSH_TICKS?: number }).RUSH_TICKS ?? RAID_TICKS;
+
+/** Ticks since this lane's breach: v5 `rushTicks` when present, else the v4 `raidTicks`. */
+export function rushClock(lane: LaneView): number {
+  return 'rushTicks' in lane ? Number((lane as { rushTicks: unknown }).rushTicks) || 0 : lane.raidTicks;
+}
+
+/** The lane is in its post-breach phase (v4 'raid', v5 'rush'). */
+export function isBreach(phase: LanePhase | string): boolean {
+  return phase === 'raid' || phase === 'rush';
+}
 
 /** Drives the HUD store, sound and the end-of-match hand-off from a feed. For the real match only. */
 export function useMatchHud(feed: MatchFeed) {
   useEffect(() => {
     const hud = useHud.getState();
     hud.set({ ...HUD_RESET });
+    setBattleDuck(false);
     const me = feed.mySide;
     const them = feed.theirSide;
     let lastHud = 0;
     let endTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastDanger = -Infinity;
+    let hall = 0;
     const banner = (text: string, tone: 'good' | 'bad' | 'gold') => hud.set({ banner: { text, tone, at: performance.now() } });
+
+    /** TIME!: the Rush clock ran out (or the 3:00 cap). Once per match. */
+    const stampTime = () => {
+      if (useHud.getState().timeAt !== null) return;
+      hud.set({ timeAt: performance.now(), countdown: 0 });
+      sfx.countdown(0);
+    };
 
     const offView = feed.onView((v) => {
       const now = performance.now();
-      if (now - lastHud < 100 && v.status !== 'ended') return;
-      lastHud = now;
       const a = v.sides[me];
       const b = v.sides[them];
+      const s = useHud.getState();
+
+      // End sequence (checked every tick so the countdown stays on the clock).
+      if (a.phase === 'dead' && s.overrunAt === null) {
+        hud.set({ overrunAt: now, danger: false });
+        haptic('big');
+        setBattleDuck(true);
+      }
+      if (isBreach(a.phase) && s.breachAt === null) {
+        hud.set({ breachAt: now, peeking: false, banner: null });
+        sfx.breach();
+        haptic('big');
+        setBattleDuck(true);
+      }
+      if (s.breachAt !== null || isBreach(a.phase)) {
+        const left = RUSH_LEN - rushClock(a);
+        if (left <= 0 || a.phase === 'done') stampTime();
+        else if (s.timeAt === null && a.phase !== 'dead') {
+          const secs = Math.ceil(left / TICKS_PER_SEC);
+          const n = secs <= 3 ? secs : 0;
+          if (n !== s.countdown) {
+            hud.set({ countdown: n });
+            if (n > 0) sfx.countdown(n);
+          }
+        }
+      }
+
+      // Danger: an enemy in the last quarter of my lane.
+      const alive = a.phase !== 'dead' && a.phase !== 'done' && v.status !== 'ended';
+      const danger = alive && a.enemies.some((c) => c.y <= DANGER_Y);
+      if (danger !== s.danger) {
+        hud.set({ danger });
+        if (danger && now - lastDanger >= DANGER_COOLDOWN_MS) {
+          lastDanger = now;
+          sfx.danger();
+        }
+      }
+
+      if (now - lastHud < 100 && v.status !== 'ended') return;
+      lastHud = now;
+      let hp = 0;
+      let maxHp = 0;
+      for (const t of b.towers) {
+        hp += t.hp;
+        maxHp += t.maxHp;
+      }
       hud.set({
         tick: v.tick,
         status: v.status,
@@ -32,9 +109,10 @@ export function useMatchHud(feed: MatchFeed) {
         stage: [a.stage, b.stage],
         phase: [a.phase, b.phase],
         myPhaseTick: a.phaseTick,
-        raidTicks: a.raidTicks,
-        rigUsed: a.rigUsed,
+        raidTicks: rushClock(a),
+        theirTowers: maxHp > 0 ? hp / maxHp : 0,
         peekUsed: a.peekUsed,
+        hallCount: hall,
       });
     });
 
@@ -62,37 +140,40 @@ export function useMatchHud(feed: MatchFeed) {
         case 'towerDown':
           if (mine) {
             sfx.towerDown();
-            banner('TOWER DOWN', 'gold');
+            // The last Fight 2 tower is the BREACH! stamp instead.
+            if (!v.sides[me].towers.every((t) => t.hp <= 0) || v.sides[me].stage < FINAL_STAGE) banner('TOWER DOWN', 'gold');
           }
           break;
         case 'loot':
-          if (mine) sfx.loot();
-          break;
-        case 'gotcha':
-          sfx.gotcha();
-          hud.set({ gotcha: { onMe: mine, at: performance.now() } });
+          if (mine) {
+            sfx.loot();
+            hall += e.count;
+          }
           break;
         case 'stage':
-          if (mine && (e.phase === 'plant' || e.phase === 'raid')) {
-            hud.set({ peeking: false, rigging: false });
-            if (e.phase === 'plant') {
-              banner(`FIGHT ${e.stage + 1}`, 'good');
-              sfx.fight();
-            }
-            if (e.phase === 'raid') {
-              banner('TOWN HALL!', 'gold');
-              sfx.raid();
-            }
+          if (mine && e.phase === 'plant') {
+            hud.set({ peeking: false });
+            banner(`FIGHT ${e.stage + 1}`, 'good');
+            sfx.fight();
           }
-          if (!mine && e.phase === 'done') banner(`${v.sides[them].name} finished`, 'bad');
+          if (!mine && e.phase === 'done' && useHud.getState().breachAt === null) banner(`${v.sides[them].name} finished`, 'bad');
           break;
         case 'death':
           sfx.ko();
           break;
         case 'end': {
+          const now = performance.now();
           const won = e.result.winner === null ? null : e.result.winner === me;
           const died = e.result.died === null ? null : e.result.died === me ? 'me' : 'them';
-          hud.set({ ended: { won, died } });
+          const s = useHud.getState();
+          if (died === 'me' && s.overrunAt === null) {
+            hud.set({ overrunAt: now });
+            haptic('big');
+          }
+          // The 3:00 cap (nobody died, my Rush not over): stamp TIME! too.
+          if (died === null) stampTime();
+          setBattleDuck(true);
+          hud.set({ ended: { won, died, at: now }, danger: false, hallCount: hall });
           if (won === true) sfx.win();
           else if (won === false) sfx.lose();
           useApp.getState().setLastMatch({
@@ -101,13 +182,16 @@ export function useMatchHud(feed: MatchFeed) {
             names: [v.sides[me].name, v.sides[them].name],
             stake: v.stake,
             layoutName: v.layoutName,
-            // Tallied from events by the match HUD work; zeros until then.
+            // Tallied from events by the score-parts work; zeros until then.
             breakdown: [
               { damage: 0, towers: 0, first: 0, rush: 0 },
               { damage: 0, towers: 0, first: 0, rush: 0 },
             ],
           });
-          endTimer = setTimeout(() => useApp.getState().go('result'), RESULT_DELAY_MS);
+          // Let the end sequence finish: hold after the latest stamp (TIME!, OVERRUN!, THEY FELL!).
+          const fresh = useHud.getState();
+          const last = Math.max(now, fresh.timeAt ?? 0, fresh.overrunAt ?? 0);
+          endTimer = setTimeout(() => useApp.getState().go('result'), last + END_HOLD_MS - now);
           break;
         }
       }

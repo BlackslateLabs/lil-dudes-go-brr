@@ -97,10 +97,7 @@ button {
 
 /* Text with a thick ink outline (paint-order keeps the stroke outside the fill). */
 .logo,
-.who,
-.timer,
 .prompt span,
-.gotcha,
 .banner-pop,
 .banner,
 .big.primary {
@@ -383,89 +380,6 @@ button {
   color: #fff;
 }
 
-.who {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--display);
-  font-size: 16px;
-  -webkit-text-stroke: 4px var(--outline);
-  text-shadow: 0 2px 0 var(--outline);
-  min-width: 0;
-}
-
-.who b {
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.who.them {
-  justify-content: flex-end;
-}
-
-.who .pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 14px;
-  line-height: 1;
-  padding: 3px 8px 4px 3px;
-  border-radius: 999px;
-  border: 2.5px solid var(--outline);
-  -webkit-text-stroke: 0;
-  text-shadow: none;
-  box-shadow: inset 0 2px 0 #ffffff90, 0 2px 0 var(--outline);
-  color: #fff;
-}
-
-.who .pill.gold {
-  background: linear-gradient(var(--gold-light), var(--gold));
-  color: var(--outline);
-}
-
-/* A little coin inside the gold pill. */
-.who .pill.gold::before {
-  content: '';
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid var(--gold-dark);
-  background: radial-gradient(circle at 35% 35%, #fff6c8 0 25%, var(--gold) 30%);
-  box-shadow: 0 0 0 1.5px var(--outline);
-}
-
-.centre {
-  text-align: center;
-  padding: 0 4px;
-}
-
-.centre .timer {
-  font-family: var(--display);
-  font-size: 24px;
-  line-height: 1;
-  padding: 3px 12px 5px;
-  border-radius: 14px;
-  border: var(--edge);
-  background: linear-gradient(#3b2f6e, #1b1530);
-  box-shadow: inset 0 2px 0 #ffffff30, 0 3px 0 #0006;
-  letter-spacing: 1px;
-}
-
-.centre .meta {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  text-shadow: 0 1px 0 var(--outline), 0 0 4px var(--outline);
-}
-
 .pips {
   display: inline-flex;
   gap: 3px;
@@ -494,17 +408,6 @@ button {
   50% {
     transform: scale(1.25);
   }
-}
-
-.tag.dead {
-  font-family: var(--display);
-  font-size: 11px;
-  padding: 1px 7px 2px;
-  border-radius: 7px;
-  border: 2px solid var(--outline);
-  background: var(--bad);
-  -webkit-text-stroke: 0;
-  text-shadow: none;
 }
 
 /* Prompts sit just above your cannon (~70% of the screen height). */
@@ -563,19 +466,8 @@ button {
   transition: transform 0.12s var(--bounce);
 }
 
-.round.rig {
-  background: linear-gradient(#b49cff, var(--grape) 60%, var(--grape-dark));
-}
-
 .round:not(.rig):not(.small) {
   background: linear-gradient(#9fd6ff, var(--good) 60%, var(--me-dark));
-}
-
-.round.small {
-  width: 40px;
-  height: 40px;
-  font-size: 17px;
-  background: linear-gradient(#ffffff, #e9e4ff);
 }
 
 .round:active:not(:disabled) {
@@ -588,25 +480,13 @@ button {
   transform: scale(1.1);
 }
 
-.round.rig.on {
-  background: linear-gradient(#ff98a3, var(--bad));
-  animation: rig-pulse 0.8s ease-in-out infinite alternate;
-}
-
 .round:disabled {
   filter: grayscale(1);
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-@keyframes rig-pulse {
-  to {
-    box-shadow: var(--gloss), 0 0 0 7px var(--gold), 0 5px 0 var(--outline);
-  }
-}
-
 /* ---------- Big centre moments ---------- */
-.gotcha,
 .banner-pop {
   position: absolute;
   left: 0;
@@ -620,76 +500,6 @@ button {
     0 6px 0 var(--outline),
     0 14px 22px #1b153066;
   pointer-events: none;
-}
-
-.gotcha {
-  display: flex;
-  flex-direction: column;
-  animation: gotcha 1.3s ease-out forwards;
-}
-
-.gotcha span {
-  font-size: 66px;
-  line-height: 1;
-}
-
-.gotcha small {
-  font-family: var(--ui);
-  font-weight: 800;
-  font-size: 18px;
-  -webkit-text-stroke: 5px var(--outline);
-  text-shadow: 0 3px 0 var(--outline);
-}
-
-.gotcha.bad span {
-  color: var(--bad);
-}
-
-.gotcha.good span {
-  color: var(--gold);
-}
-
-.gotcha::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(transparent 40%, #ff3b4e99);
-  animation: flash 0.6s ease-out forwards;
-}
-
-.gotcha.good::before {
-  background: radial-gradient(transparent 45%, #ffc21a77);
-}
-
-@keyframes gotcha {
-  0% {
-    transform: scale(0.3) rotate(-8deg);
-    opacity: 0;
-  }
-  15% {
-    transform: scale(1.18) rotate(3deg);
-    opacity: 1;
-  }
-  25% {
-    transform: scale(1) rotate(0);
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1.05);
-    opacity: 0;
-  }
-}
-
-@keyframes flash {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 .banner-pop {
@@ -723,14 +533,6 @@ button {
   color: var(--bad);
 }
 
-.banner-pop.end.good {
-  color: var(--gold);
-}
-
-.banner-pop.end.bad {
-  color: var(--bad);
-}
-
 @keyframes pop-in {
   from {
     transform: scale(3) rotate(-6deg);
@@ -747,30 +549,6 @@ button {
     opacity: 0;
     transform: translateY(-14px) scale(0.9);
   }
-}
-
-/* ---------- Opponent mini-view ---------- */
-.mini-wrap {
-  position: absolute;
-  top: calc(max(8%, 54px) + 8px);
-  right: 8px;
-  width: 22%;
-  aspect-ratio: 1 / 2.2;
-  border: var(--edge);
-  border-radius: 14px;
-  overflow: hidden;
-  background: var(--cream);
-  box-shadow: 0 0 0 2.5px #fff, 0 4px 0 2.5px var(--outline), var(--soft);
-  transition:
-    width 0.25s ease,
-    box-shadow 0.25s ease;
-  z-index: 2;
-}
-
-.mini-lane {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 /* ---------- Result ---------- */
@@ -1073,22 +851,8 @@ i.k-peek {
   opacity: 0.6;
 }
 
-/* Small phones: tighten the top bar so both names, pills and pips fit at 360 px. */
+/* Small phones: tighten the top bar so it fits at 360 px. */
 @media (max-width: 380px) {
-  .who {
-    font-size: 14px;
-    gap: 4px;
-  }
-
-  .who .pill {
-    font-size: 12px;
-  }
-
-  .centre .timer {
-    font-size: 21px;
-    padding: 2px 9px 4px;
-  }
-
   .pips i {
     width: 8px;
     height: 8px;
