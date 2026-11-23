@@ -68,10 +68,12 @@ impl Warlord {
             let n = view.stage_def(self.side).gates.len();
             input.peek = self.random_hidden(me, view.stage_def(self.side), n);
         }
-        // SPEC_V5 §4: the Champion as soon as it is charged.
-        input.champion = me.phase == Phase::Fight
+        // SPEC_V5 §2, §4: hold the trigger; let go for one tick to release the Champion as
+        // soon as it is charged.
+        let charged = me.phase == Phase::Fight
             && !me.champ_pending
             && u32::from(me.champ_meter) >= CHAMP_TICKS;
+        input.fire = Some(!(charged && me.firing));
         if view.tick.checked_rem(THINK_TICKS) != Some(0) {
             return input;
         }

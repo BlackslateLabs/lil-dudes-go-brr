@@ -41,9 +41,13 @@ pub struct PublicSide {
     pub phase_ticks: u16,
     /// Ticks of the Rush played (0 before it): it ends at RUSH_TICKS (SPEC_V5 §2).
     pub rush_ticks: u16,
-    /// SPEC_V5 §4: Fight ticks toward the next Champion (full at CHAMP_TICKS). Carries over
-    /// from Fight 1 into Fight 2.
+    /// SPEC_V5 §4: charge toward the next Champion (full at CHAMP_TICKS): each volley fired in
+    /// a Fight adds FIRE_TICKS, so it fills only while the player shoots. Carries over from
+    /// Fight 1 into Fight 2.
     pub champ_meter: u8,
+    /// SPEC_V5 §2: the trigger is held. The cannon fires only while it is; letting go with a
+    /// full meter in a Fight calls the Champion.
+    pub firing: bool,
     /// A Champion was called: the next volley is a Champion cohort.
     pub champ_pending: bool,
     /// SPEC_V5 §6: the match tick each fight was cleared at (0 = not yet), for FIRST.
@@ -79,6 +83,7 @@ impl PublicSide {
         phase_ticks: 0,
         rush_ticks: 0,
         champ_meter: 0,
+        firing: false,
         champ_pending: false,
         breach_tick: [0; STAGES],
         dead: false,
@@ -353,6 +358,7 @@ impl MatchState {
             h.u32(u32::from(s.phase_ticks));
             h.u32(u32::from(s.rush_ticks));
             h.u8(s.champ_meter);
+            h.bool(s.firing);
             h.bool(s.champ_pending);
             s.breach_tick.iter().for_each(|&t| h.u32(u32::from(t)));
             h.bool(s.dead);
@@ -413,6 +419,9 @@ pub struct SideInput {
     pub peek: Option<u8>,
     /// SPEC_V5 §4: call the Champion (during my Fight, with a full meter).
     pub champion: bool,
+    /// SPEC_V5 §2: press (`Some(true)`) or release (`Some(false)`) the trigger. A release with a
+    /// full meter in my Fight also calls the Champion.
+    pub fire: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

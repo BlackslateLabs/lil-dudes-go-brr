@@ -19,7 +19,8 @@ pub const TRANSIT_TICKS: u32 = 2 * TICKS_PER_SEC;
 /// dudes still on the lane do not count (Suparno, 23 Nov) and the player is done.
 pub const RUSH_TICKS: u32 = 70;
 
-/// SPEC_V5 §4: the Champion meter fills 1 per Fight tick; full at CHAMP_TICKS (8 s). A
+/// SPEC_V5 §4: each volley fired in a Fight adds FIRE_TICKS to the Champion meter, so it is
+/// full at CHAMP_TICKS after 8 s of holding the trigger (20 volleys). A
 /// Champion cohort starts at CHAMP_COUNT dudes and goes through gates like any cohort.
 pub const CHAMP_TICKS: u32 = 8 * TICKS_PER_SEC;
 pub const CHAMP_COUNT: u32 = 8;

@@ -186,15 +186,24 @@ fn timing_gates_count_their_value_on_arrival_and_are_never_scouted() {
 }
 
 #[test]
-fn calls_the_champion_when_charged() {
+fn holds_the_trigger_and_lets_go_to_release_the_champion() {
     let mut m = fighting(0);
     let mut bot = Warlord::new(1, 3);
+    m.public.sides[1].firing = true;
     m.public.sides[1].champ_meter = (CHAMP_TICKS - 1) as u8;
-    assert!(!bot.decide(&m.public).champion);
+    assert_eq!(bot.decide(&m.public).fire, Some(true), "keeps holding");
     m.public.sides[1].champ_meter = CHAMP_TICKS as u8;
-    assert!(bot.decide(&m.public).champion);
+    assert_eq!(
+        bot.decide(&m.public).fire,
+        Some(false),
+        "lets go when charged"
+    );
     m.public.sides[1].champ_pending = true;
-    assert!(!bot.decide(&m.public).champion);
+    assert_eq!(bot.decide(&m.public).fire, Some(true));
+    // Not held yet (e.g. the first tick): press first.
+    m.public.sides[1].champ_pending = false;
+    m.public.sides[1].firing = false;
+    assert_eq!(bot.decide(&m.public).fire, Some(true));
 }
 
 #[test]

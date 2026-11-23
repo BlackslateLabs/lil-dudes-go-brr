@@ -17,8 +17,9 @@ export class Bot {
     }
     /**
      * The bot's input for the tick the given public state is about to process:
-     * `[aim, peek slot, champion]`: aim and slot -1 for none, champion 0/1. Garbage or short
-     * input gives `[-1, -1, 0]`.
+     * `[aim, peek slot, champion, trigger]`: aim and slot -1 for none, champion 0/1, trigger
+     * -1 unchanged / 0 let go / 1 hold (rules v6). Garbage or short input gives
+     * `[-1, -1, 0, -1]`.
      * @param {Uint8Array | number[]} public_bytes
      * @returns {Int32Array}
      */
@@ -127,6 +128,17 @@ export class SimMatch {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
+    }
+    /**
+     * Press (`true`) or let go of (`false`) `side`'s trigger (rules v6: the cannon fires only
+     * while it is held; letting go with a full meter in a Fight releases the Champion). Applied
+     * at once, between ticks, exactly like the program's player instruction, so a quick
+     * release-and-press inside one tick still releases the Champion. Ignored for bot sides.
+     * @param {number} side
+     * @param {boolean} on
+     */
+    set_fire(side, on) {
+        wasm.simmatch_set_fire(this.__wbg_ptr, side, on);
     }
     /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.

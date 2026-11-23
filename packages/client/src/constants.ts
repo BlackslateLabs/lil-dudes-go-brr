@@ -4,7 +4,7 @@
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
