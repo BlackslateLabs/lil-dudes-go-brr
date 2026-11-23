@@ -1,8 +1,9 @@
 import { Suspense, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Euler, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { Euler, InstancedMesh, Matrix4, Quaternion, Sprite, Vector3 } from 'three';
 import type { CohortView } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
+import { labelTexture } from './labelTexture';
 import { HALF_W, PALETTE, wx, wz } from './layout';
 import { preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
 
@@ -39,6 +40,12 @@ const q = new Quaternion();
 const e = new Euler();
 const pos = new Vector3();
 const scl = new Vector3(UNIT_SCALE, UNIT_SCALE, UNIT_SCALE);
+const bigScl = new Vector3();
+/** A Champion is drawn ~3× a dude, an enemy giant ~2×. */
+const CHAMP_SCALE = 3.0;
+const GIANT_SCALE = 2.1;
+/** Most Champions on screen at once that get a count badge. */
+const MAX_BADGES = 6;
 
 preloadPacks('dudes');
 
@@ -48,6 +55,7 @@ export function Crowds({ feed }: { feed: MatchFeed }) {
     <Suspense fallback={null}>
       <Crowd feed={feed} enemy={false} />
       <Crowd feed={feed} enemy />
+      <ChampionBadges feed={feed} />
     </Suspense>
   );
 }
@@ -76,6 +84,19 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
       const y = p ? p.y + (c.y - p.y) * a : c.y;
       const cx = wx(x);
       const cz = wz(y);
+      // A Champion (mine) or a giant (theirs) is ONE big dude, not a cluster (SPEC_V5 §4–5).
+      const big = c.champion ? CHAMP_SCALE : c.giant ? GIANT_SCALE : 0;
+      if (big > 0) {
+        if (n >= MAX_UNITS) continue;
+        const ph = time * 8 + c.id;
+        e.set(0, yaw + Math.sin(ph * 0.5) * 0.08, Math.cos(ph) * 0.1);
+        q.setFromEuler(e);
+        pos.set(Math.max(-HALF_W + 0.6, Math.min(HALF_W - 0.6, cx)), Math.abs(Math.sin(ph)) * 0.25, cz);
+        bigScl.set(big, big, big);
+        m4.compose(pos, q, bigScl);
+        mesh.setMatrixAt(n++, m4);
+        continue;
+      }
       const units = unitsFor(c.count);
       // The sim treats a cohort as a point (plus a small gate grace), so keep the drawn crowd
       // narrow across the lane and let big crowds stretch along it instead. Then a crowd that
@@ -105,4 +126,44 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
   });
 
   return <instancedMesh ref={ref} args={[geo, material, MAX_UNITS]} frustumCulled={false} />;
+}
+
+/** A gold count badge over each of my Champions ("8", then "24" after a ×3 gate). */
+function ChampionBadges({ feed }: { feed: MatchFeed }) {
+  const sprites = useRef<Sprite[]>([]);
+  useFrame(() => {
+    const lane = feed.me;
+    let n = 0;
+    if (lane) {
+      const a = feed.alpha();
+      for (const c of lane.cohorts) {
+        if (!c.champion || c.count <= 0 || n >= MAX_BADGES) continue;
+        const s = sprites.current[n++];
+        if (!s) continue;
+        const p = feed.prevCohorts.get(c.id);
+        const x = p ? p.x + (c.x - p.x) * a : c.x;
+        const y = p ? p.y + (c.y - p.y) * a : c.y;
+        s.visible = true;
+        s.position.set(wx(x), CHAMP_SCALE * 1.05 + 0.6, wz(y));
+        const tex = labelTexture(`×${c.count}`, { color: '#ffffff', outline: PALETTE.goldDark, width: 256, height: 128 });
+        if (s.material.map !== tex) {
+          s.material.map = tex;
+          s.material.needsUpdate = true;
+        }
+      }
+    }
+    for (let i = n; i < sprites.current.length; i++) {
+      const s = sprites.current[i];
+      if (s) s.visible = false;
+    }
+  });
+  return (
+    <>
+      {Array.from({ length: MAX_BADGES }, (_, i) => (
+        <sprite key={i} ref={(el) => void (sprites.current[i] = el!)} visible={false} scale={[3.2, 1.6, 1]} renderOrder={18}>
+          <spriteMaterial transparent depthTest={false} />
+        </sprite>
+      ))}
+    </>
+  );
 }
