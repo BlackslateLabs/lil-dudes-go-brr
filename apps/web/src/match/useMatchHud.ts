@@ -185,8 +185,6 @@ export function useMatchHud(feed: MatchFeed) {
           if (died === null) stampTime();
           setBattleDuck(true);
           hud.set({ ended: { won, died, at: now }, danger: false, hallCount: hall });
-          if (won === true) sfx.win();
-          else if (won === false) sfx.lose();
           if (import.meta.env.DEV) {
             for (const side of [0, 1] as Side[]) {
               const p = parts[side];
@@ -200,6 +198,7 @@ export function useMatchHud(feed: MatchFeed) {
             names: [v.sides[me].name, v.sides[them].name],
             stake: v.stake,
             layoutName: v.layoutName,
+            opponentIsBot: v.sides[them].isBot,
             breakdown: [{ ...parts[0] }, { ...parts[1] }],
           });
           // Let the end sequence finish: hold after the latest stamp (TIME!, OVERRUN!, THEY FELL!).

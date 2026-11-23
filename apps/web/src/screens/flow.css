@@ -921,8 +921,9 @@
 
 .record-tag {
   position: absolute;
-  left: -10px;
-  top: -16px;
+  left: 50%;
+  margin-left: -62px;
+  top: -18px;
   padding: 3px 12px 5px;
   border-radius: 12px;
   border: var(--edge);
