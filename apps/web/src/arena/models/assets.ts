@@ -6,8 +6,7 @@
 // nature kit). So a piece is just a BufferGeometry, and a structure (tower, town hall, scenery) is
 // those geometries merged into one mesh: one draw call each.
 
-import { useMemo } from 'react';
-import { useGLTF } from '@react-three/drei';
+import { use, useMemo } from 'react';
 import {
   BufferGeometry,
   CanvasTexture,
@@ -19,6 +18,7 @@ import {
   SRGBColorSpace,
   Texture,
 } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const BASE = `${import.meta.env.BASE_URL}assets/models/`;
@@ -45,37 +45,53 @@ export interface Pack {
   material: MeshStandardMaterial;
 }
 
-const packs = new Map<string, Pack>();
+const packs = new Map<PackName, Promise<Pack>>();
+let loader: GLTFLoader | null = null;
 
-/** Load a pack (suspends). Mount the caller under a Suspense boundary. */
-export function usePack(name: PackName): Pack {
-  const url = MODELS[name];
-  const gltf = useGLTF(url, false, false);
-  let p = packs.get(url);
+/** Load and unpack a pack once (cached promise; later calls get the same one). */
+export function loadPack(name: PackName): Promise<Pack> {
+  let p = packs.get(name);
   if (!p) {
-    const geo: Record<string, BufferGeometry> = {};
-    let material: MeshStandardMaterial | null = null;
-    // Each piece is a top-level node holding one single-primitive mesh, which GLTFLoader turns
-    // into a Mesh object with the node's name.
-    for (const node of gltf.scene.children) {
-      const m = node as Mesh;
-      if (!m.isMesh) continue;
-      geo[node.name] = m.geometry;
-      material ??= m.material as MeshStandardMaterial;
-    }
-    const mat = material ?? new MeshStandardMaterial();
-    if (mat.map) {
-      mat.map.colorSpace = SRGBColorSpace;
-      mat.map.magFilter = NearestFilter;
-    }
-    p = { geo, material: mat };
-    packs.set(url, p);
+    loader ??= new GLTFLoader();
+    p = loader.loadAsync(MODELS[name]).then((gltf) => {
+      const geo: Record<string, BufferGeometry> = {};
+      let material: MeshStandardMaterial | null = null;
+      // Each piece is a top-level node holding one single-primitive mesh, which GLTFLoader turns
+      // into a Mesh object with the node's name.
+      for (const node of gltf.scene.children) {
+        const m = node as Mesh;
+        if (!m.isMesh) continue;
+        geo[node.name] = m.geometry;
+        material ??= m.material as MeshStandardMaterial;
+      }
+      const mat = material ?? new MeshStandardMaterial();
+      if (mat.map) {
+        mat.map.colorSpace = SRGBColorSpace;
+        mat.map.magFilter = NearestFilter;
+      }
+      return { geo, material: mat };
+    });
+    packs.set(name, p);
   }
   return p;
 }
 
+/** Load a pack (suspends until it is ready). Mount the caller under a Suspense boundary. */
+export function usePack(name: PackName): Pack {
+  return use(loadPack(name));
+}
+
+/** Start loading packs now (module load), so they are ready by the time the arena mounts. */
 export function preloadPacks(...names: PackName[]) {
-  for (const n of names) useGLTF.preload(MODELS[n], false, false);
+  for (const n of names) void loadPack(n).catch(() => undefined);
+}
+
+/**
+ * Resolves once every model pack is loaded and unpacked: the match waits for it before it starts
+ * ticking, so the first frames never stall on a GLB parse. Rejects if a pack fails to load.
+ */
+export function modelsReady(): Promise<void> {
+  return Promise.all((Object.keys(MODELS) as PackName[]).map(loadPack)).then(() => undefined);
 }
 
 // ---- Team recolouring -------------------------------------------------------------------------
