@@ -3,7 +3,7 @@
 
 use lil_dudes_sim::payout;
 
-/// settle_fuzz.settle: S = min(deposit), then SPEC §8 on top of a full refund.
+/// settle_fuzz.settle: S = min(deposit), then SPEC_V5 §7 on top of a full refund.
 fn settle(dep: [u64; 2], dead: [bool; 2], gold: [u32; 2]) -> [u64; 3] {
     let s = dep[0].min(dep[1]);
     let r = payout(s, dead, gold);

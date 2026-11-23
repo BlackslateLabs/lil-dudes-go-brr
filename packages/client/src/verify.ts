@@ -1,6 +1,6 @@
 // The full reveal of a finished match (result screen, Verify): the layout and every stage's gate
-// values rebuilt from the published seed with the same Rust code (WASM), plus every stage's rigs
-// and peeks from the published history (rules v4: two stages, docs/SPEC.md §6, §11).
+// values rebuilt from the published seed with the same Rust code (WASM), plus every stage's
+// Scouts from the published history (rules v5: two stages, docs/SPEC_V5.md).
 import { deals_for } from '@lil-dudes/sim-wasm';
 import * as C from './constants';
 import { layoutDef, opFromByte, stageDef } from './layout';
@@ -8,11 +8,11 @@ import { initSim } from './offline';
 import type { GateOp, MatchResult, Side } from './types';
 
 const NONE = 255;
-/** Codec history: 2 stages × 2 sides × [rig stage, rig slot, peek slot, peek op] = 16 bytes. */
-export const HISTORY_LEN = C.STAGES * 2 * 4;
+/** Codec history: 2 stages × 2 sides × [peek slot (255 none), peek op byte] = 8 bytes. */
+export const HISTORY_LEN = C.STAGES * 2 * 2;
 
-/** The level and every stage's true gate values of a match (identical in both copies; a rig
- *  turns one gate of one copy into ÷2 on top). */
+/** The level and every stage's true gate values of a match (identical in both copies; the
+ *  timing gate holds ×1, its value comes from the clock). */
 export interface Deals {
   layout: number;
   layoutName: string;
@@ -20,39 +20,17 @@ export interface Deals {
   values: GateOp[][];
 }
 
-/** A rig: the victim's stage and gate slot (v4: the victim's stage is the rigger's own stage at
- *  the time, and the slot is the gate the rigger tapped in their own lane). */
-export interface RigLog {
-  stage: number;
-  slot: number;
-}
-
-/** A peek: my gate slot and the true value I saw (`div` = it was rigged). */
+/** A Scout: my gate slot and the true value I saw. */
 export interface PeekLog {
   slot: number;
   op: GateOp;
 }
 
-/** What both players did during one of their OWN stages (`stage` = the actor's stage; in v4 a
- *  rig always names that same stage of the opponent's copy). */
+/** What both players scouted during one stage. */
 export interface StageLog {
   stage: number;
-  /** `rigs[s]` = the gate of the opponent's copy side s rigged during this stage of its own (any
-   *  phase). */
-  rigs: [RigLog | null, RigLog | null];
-  /** `peeks[s]` = side s's peek during this stage. */
+  /** `peeks[s]` = side s's Scout during this stage. */
   peeks: [PeekLog | null, PeekLog | null];
-  /** `sprung[s]`: side s's rig was hit (a GOTCHA); false if it never was or there was no rig. */
-  sprung: [boolean, boolean];
-}
-
-/** A rig that was hit: `side`'s first cohort through gate `slot` of its stage `stage`, rigged by `riggedBy`. */
-export interface GotchaLog {
-  stage: number;
-  tick: number;
-  side: Side;
-  slot: number;
-  riggedBy: Side;
 }
 
 /** The layout and every stage's values of a match with this seed (crates/sim `deals_for`, through WASM). */
@@ -69,41 +47,24 @@ export function dealsFor(seed: bigint): Deals {
   return { layout, layoutName: layoutDef(layout).name, values };
 }
 
-/** Decodes the 16-byte history (codec layout: 2 stages × 2 sides × [rig stage (255 none), rig
- *  slot, peek slot (255 none), peek op byte]). */
+/** Decodes the 8-byte history (codec layout: 2 stages × 2 sides × [peek slot (255 none), peek
+ *  op byte]). */
 export function decodeHistory(bytes: Uint8Array): StageLog[] {
   const out: StageLog[] = [];
   for (let stage = 0; stage < C.STAGES; stage++) {
-    const side = (s: Side) => {
-      const at = (stage * 2 + s) * 4;
-      const [rs = NONE, rslot = 0, pslot = NONE, pop = 0] = bytes.subarray(at, at + 4);
-      return {
-        rig: rs === NONE ? null : { stage: rs, slot: rslot },
-        peek: pslot === NONE ? null : { slot: pslot, op: opFromByte(pop) ?? { kind: 'mul', value: 1 } },
-      };
+    const side = (s: Side): PeekLog | null => {
+      const at = (stage * 2 + s) * 2;
+      const [pslot = NONE, pop = 0] = bytes.subarray(at, at + 2);
+      return pslot === NONE ? null : { slot: pslot, op: opFromByte(pop) ?? { kind: 'mul', value: 1 } };
     };
-    const [a, b] = [side(0), side(1)];
-    out.push({ stage, rigs: [a.rig, b.rig], peeks: [a.peek, b.peek], sprung: [false, false] });
+    out.push({ stage, peeks: [side(0), side(1)] });
   }
   return out;
 }
 
-/** Marks `sprung` from the GOTCHAs (in place: the rig by `riggedBy` naming that stage and slot)
- *  and returns the history. */
-export function markSprung(history: StageLog[], gotchas: GotchaLog[]): StageLog[] {
-  for (const g of gotchas) {
-    const h = history.find((x) => {
-      const r = x.rigs[g.riggedBy];
-      return !!r && r.stage === g.stage && r.slot === g.slot;
-    });
-    if (h) h.sprung[g.riggedBy] = true;
-  }
-  return history;
-}
-
 /** A transaction of the match, with an explorer link. */
 export interface TxRecord {
-  /** e.g. create_match, join_match, delegate_match, plant_rig, finish, settle (Magic Action). */
+  /** e.g. create_match, join_match, delegate_match, champion, finish, settle (Magic Action). */
   what: string;
   signature: string;
   layer: 'base' | 'tee';
@@ -126,12 +87,16 @@ export const TEE_EXPLORER = (sig: string, rpc = 'https://devnet-tee.magicblock.a
   `https://explorer.solana.com/tx/${sig}?cluster=custom&customUrl=${encodeURIComponent(rpc)}`;
 export const ACCOUNT_EXPLORER = (address: string) => `https://explorer.solana.com/address/${address}?cluster=devnet`;
 
-// --- payout (SPEC §8) -------------------------------------------------------------------------
+// --- payout (SPEC_V5 §7) ----------------------------------------------------------------------
 
-/** crates/sim `payout`: who wins and the lamports moved loser → winner, from deaths and gold.
- *  A death moves the whole stake S; both alive splits the pot 2S in the ratio of gold, so the
- *  winner (more gold) gains `floor(S·(gw − gl)/(gw + gl))` (= share_w − S, floored for the
- *  loser); equal gold, both 0 or both dead = draw. Fee = floor(moved · FEE_BPS / 10 000). */
+/** SPEC_V5 §7: the winner's slice of the loser's stake in basis points, 2 × margin, capped at
+ *  all of it (once w ≥ 3·l). */
+export const sliceBps = (w: number, l: number): number => (w <= l ? 0 : Math.min(10_000, mulDiv(20_000, w - l, w + l)));
+
+/** crates/sim `payout`: who wins and the lamports moved loser → winner, from deaths and scores.
+ *  A death moves the whole stake S; both alive: the winner keeps their stake and takes
+ *  `floor(S · sliceBps / 10 000)` of the loser's; equal scores, both 0 or both dead = draw.
+ *  Fee = floor(moved · FEE_BPS / 10 000). */
 export function resultFor(stake: number, dead: [boolean, boolean], gold: [number, number]): { winner: Side | null; ko: boolean; moved: number; fee: number } {
   const ko = dead[0] || dead[1];
   const draw = { winner: null, ko, moved: 0, fee: 0 };
@@ -146,7 +111,7 @@ export function resultFor(stake: number, dead: [boolean, boolean], gold: [number
     if (a === b) return draw;
     winner = a > b ? 0 : 1;
     const [gw, gl] = a > b ? [a, b] : [b, a];
-    moved = mulDiv(stake, gw - gl, gw + gl);
+    moved = mulDiv(stake, sliceBps(gw, gl), 10_000);
   }
   return { winner, ko, moved, fee: mulDiv(moved, C.FEE_BPS, 10_000) };
 }
@@ -177,7 +142,7 @@ export interface PayoutInfo {
   /** What each side got back from the vault, and its net change vs. its stake. */
   paid: [number, number];
   net: [number, number];
-  /** One neutral line, e.g. "Blue won on gold, 900 to 600 (60.0% of the pot) → takes 20.0% of Red's stake, minus a 5% fee." */
+  /** One neutral line, e.g. "Blue won on score, 900 to 600 → takes 40.0% of Red's stake, minus a 5% fee." */
   why: string;
 }
 
@@ -193,7 +158,7 @@ export interface PayoutOptions {
   dead?: [boolean, boolean];
 }
 
-/** SPEC §8 in numbers and one line of words. Money is recomputed with `resultFor` from the
+/** SPEC_V5 §7 in numbers and one line of words. Money is recomputed with `resultFor` from the
  *  result's deaths and gold (equal to the sim's `moved` / `fee`; the tests check it). */
 export function payoutOf(stake: number, result: MatchResultLike | null, opts: PayoutOptions = {}): PayoutInfo {
   const free = stake === 0;
@@ -211,8 +176,8 @@ export function payoutOf(stake: number, result: MatchResultLike | null, opts: Pa
     const why = bothDied
       ? `Both players died on the same tick: draw${refund}`
       : total === 0
-        ? `Draw: no gold on either side${refund}`
-        : `Draw: equal gold (${gold[0]} each)${refund}`;
+        ? `Draw: no score on either side${refund}`
+        : `Draw: equal scores (${gold[0]} each)${refund}`;
     return { ...base, kind: 'draw', winner: null, why };
   }
   const w = result.winner;
@@ -220,14 +185,14 @@ export function payoutOf(stake: number, result: MatchResultLike | null, opts: Pa
   const dead: [boolean, boolean] = result.died === null ? [false, false] : result.died === 0 ? [true, false] : [false, true];
   const { moved, fee } = resultFor(stake, dead, gold);
   const death = result.died !== null;
-  const sharePm = death ? 1000 : stake > 0 ? Math.floor((moved * 1000) / stake) : total > 0 ? Math.floor(((gold[w] - gold[l]) * 1000) / total) : 0;
+  const sharePm = death ? 1000 : stake > 0 ? Math.floor((moved * 1000) / stake) : Math.floor(sliceBps(gold[w], gold[l]) / 10);
   const paid: [number, number] = [0, 0];
   paid[w] = stake + moved - fee;
   paid[l] = stake - moved;
   const net: [number, number] = [0, 0];
   net[w] = moved - fee;
   net[l] = -moved;
-  const how = death ? `${n[l]} died: ${n[w]} wins` : `${n[w]} won on gold, ${gold[w]} to ${gold[l]} (${pct(goldPm[w])} of the pot)`;
+  const how = death ? `${n[l]} died: ${n[w]} wins` : `${n[w]} won on score, ${gold[w]} to ${gold[l]}`;
   const money = free
     ? ' (free match: no money moved)'
     : death
@@ -245,7 +210,7 @@ export type MatchResultLike = Pick<MatchResult, 'winner' | 'died' | 'gold'> & Pa
  *  The fields after `history` are filled by `OfflineSource.reveal()` and `LiveSource.reveal()`. */
 export interface MatchReveal extends Deals {
   seed: bigint;
-  /** One entry per stage (the actor's own stage), with `sprung` marked from the GOTCHAs. */
+  /** One entry per stage: both players' Scouts. */
   history: StageLog[];
   matchId?: string;
   names?: [string, string];
@@ -254,7 +219,6 @@ export interface MatchReveal extends Deals {
   /** Who died (both can, on the same tick). */
   dead?: [boolean, boolean];
   finalTick?: number;
-  gotchas?: GotchaLog[];
   payout?: PayoutInfo;
   txs?: TxRecord[];
   settlement?: SettlementInfo;
@@ -262,15 +226,13 @@ export interface MatchReveal extends Deals {
   matchUrl?: string;
 }
 
-/** The seed's layout and values plus the decoded history (`sprung` all false until markSprung). */
+/** The seed's layout and values plus the decoded history. */
 export function revealOf(seed: bigint, history: Uint8Array): MatchReveal {
   return { seed, ...dealsFor(seed), history: decodeHistory(history) };
 }
 
-/** The value `side`'s gate `slot` of `stage` really had: the dealt value, or ÷2 if the opponent
- *  rigged it (Verify checks every revealed gate against this). */
-export function trueOp(r: Pick<MatchReveal, 'values' | 'history'>, side: Side, stage: number, slot: number): GateOp {
-  const opp: Side = side === 0 ? 1 : 0;
-  const rigged = r.history.some((h) => h.rigs[opp]?.stage === stage && h.rigs[opp]?.slot === slot);
-  return rigged ? { kind: 'div', value: 2 } : (r.values[stage]?.[slot] ?? { kind: 'mul', value: 1 });
+/** The value gate `slot` of `stage` really had (the same in both copies; Verify checks every
+ *  revealed gate against this). */
+export function trueOp(r: Pick<MatchReveal, 'values'>, stage: number, slot: number): GateOp {
+  return r.values[stage]?.[slot] ?? { kind: 'mul', value: 1 };
 }

@@ -1,12 +1,12 @@
-//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4), rules v4 (docs/SPEC.md: both
-//! players race identical copies of one two-stage level, the town hall raid in place at the end
-//! of stage 1; rig and peek name a gate slot).
+//! Lil Dudes Go Brr: the on-chain 1v1 match (docs/TECH.md §4), rules v5 (docs/SPEC_V5.md on
+//! docs/SPEC.md: both players race identical copies of one two-stage level, the Rush in place
+//! after the breach of stage 1; Champion and Scout for both, no rig).
 //!
 //! Base layer: `create_match` → `join_match` → `delegate_match` (Match, Secrets, Peek×2 → the
 //! TEE); `cancel_match` refunds a match that never got there.
 //! TEE: `init_permissions` → `request_seed` ×2 (private salts; the second requests the ER VRF)
 //! → `callback_seed` → `start` (schedules the 50 ms crank) → `advance` (crank) with `set_aim`,
-//! `plant_rig`, `peek_cell` from the players' burners → `finish` (publish seed + history, commit +
+//! `champion`, `peek_cell` from the players' burners → `finish` (publish seed + history, commit +
 //! undelegate, Magic Action `settle_action`). Fallback: anyone calls `settle` on the base layer.
 // Anchor 1.0.2's `#[program]` codegen trips this lint (Cargo.lock pins the macro crates to 1.0.2;
 // see docs/TECH.md §6).
@@ -105,9 +105,8 @@ pub mod lil_dudes {
         tee::handle_set_aim(ctx, x)
     }
 
-    // `cell` is a gate slot since rules v3 (name kept so the IDL does not change).
-    pub fn plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
-        tee::handle_plant_rig(ctx, cell)
+    pub fn champion(ctx: Context<PlayerInput>) -> Result<()> {
+        tee::handle_champion(ctx)
     }
 
     // `cell` is a gate slot since rules v3 (name kept so the IDL does not change).

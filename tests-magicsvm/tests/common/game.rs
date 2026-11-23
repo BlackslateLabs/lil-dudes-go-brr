@@ -26,7 +26,7 @@ pub const PERMISSION_PROGRAM: Address =
 pub const TREASURY: Address = Address::new_from_array([7; 32]);
 pub const SOL: u64 = 1_000_000_000;
 
-pub const MATCH_LEN: usize = 8 + 1_784;
+pub const MATCH_LEN: usize = 8 + 1_800;
 /// Byte offsets in the Match account (8-byte discriminator + repr(C) fields, state.rs).
 pub mod off {
     pub const STAKE: usize = 8 + 8;
@@ -36,24 +36,25 @@ pub mod off {
     pub const STATUS: usize = 8 + 272;
     pub const FLAGS: usize = 8 + 273;
     pub const RULES_VERSION: usize = 8 + 274;
-    pub const GOTCHA: usize = 8 + 280;
+    /// Rules v5: was the GOTCHA record; zero.
+    pub const RESERVED: usize = 8 + 280;
     pub const HISTORY: usize = 8 + 288;
     pub const STATE: usize = 8 + 310;
 }
 pub const SECRETS_STATE: usize = 8 + 104;
-/// Size of the Secrets account (8-byte discriminator + 144, rules v4).
-pub const SECRETS_LEN: usize = 8 + 144;
+/// Size of the Secrets account (8-byte discriminator + 136, rules v5).
+pub const SECRETS_LEN: usize = 8 + 136;
 /// Byte offsets in a Peek account (state.rs): side, then the 7 view bytes.
 pub mod peek_off {
     pub const SIDE: usize = 8 + 40;
     pub const STAGE: usize = 8 + 41;
-    pub const RIG_STAGE: usize = 8 + 42;
-    pub const RIG_SLOT: usize = 8 + 43;
+    /// Rules v5: was the rig (stage, slot); always NONE.
+    pub const RESERVED: usize = 8 + 42;
     pub const PEEK_STAGE: usize = 8 + 44;
     pub const PEEK_SLOT: usize = 8 + 45;
     pub const PEEK_OP: usize = 8 + 46;
 }
-/// "None" in the Peek, the history and the gotcha record.
+/// "None" in the Peek and the history.
 pub const NONE: u8 = u8::MAX;
 pub mod status {
     pub const OPEN: u8 = 0;
@@ -352,7 +353,20 @@ impl Game {
         )
     }
 
-    /// `plant_rig` / `peek_cell`: the arg (named `cell` in the IDL) is a gate slot (rules v3).
+    /// `champion` (rules v5): public, no Peek.
+    pub fn champion_ix(&self, player: Address) -> Instruction {
+        self.idl.ix(
+            "champion",
+            &[],
+            &[
+                ("player", player),
+                ("game", self.game),
+                ("secrets", self.secrets),
+            ],
+        )
+    }
+
+    /// `peek_cell`: the arg (named `cell` in the IDL) is a gate slot (rules v3).
     pub fn secret_input_ix(
         &self,
         name: &str,
@@ -586,13 +600,16 @@ pub fn sure_gate(layout: u8, stage: u8) -> Option<(u8, i16)> {
     found.map(|(slot, _, x)| (slot, x))
 }
 
-/// A gate of `stage` other than `not` whose whole sliding range stays clear of `x` (a stream
-/// fired at `x` never reveals it), if the layout has one.
+/// A hidden gate of `stage` other than `not` whose whole sliding range stays clear of `x` (a
+/// stream fired at `x` never reveals it), if the layout has one.
 pub fn off_path_gate(layout: u8, stage: u8, x: i16, not: u8) -> Option<u8> {
     let st = layouts::stage(layout, stage);
     (0u8..)
         .zip(st.gates.iter())
-        .find_map(|(slot, g)| (slot != not && !reach(g).contains(&i32::from(x))).then_some(slot))
+        .find_map(|(slot, g)| {
+            let hidden = g.slot != Slot::Timing;
+            (slot != not && hidden && !reach(g).contains(&i32::from(x))).then_some(slot)
+        })
 }
 
 pub const COMPUTE_BUDGET: Address =

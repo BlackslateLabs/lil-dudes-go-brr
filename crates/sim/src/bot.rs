@@ -1,18 +1,19 @@
-//! The Warlord bot (SPEC §10).
+//! The Warlord bot (SPEC §10, SPEC_V5 §1: no rig; Scouts at the start of a fight; calls the
+//! Champion when charged).
 //!
-//! It is handed `&PublicState` only. Hidden gate values, rigs, peeks and the match seed live in
+//! It is handed `&PublicState` only. Hidden gate values, peeks and the match seed live in
 //! `SecretState`, which it never receives, so it cannot read secrets by construction. Its own
 //! randomness comes from its own seed, which the caller must supply independently of the match
 //! seed. It also ignores its own peek results (they are private state it is not given).
 
 use crate::constants::{
-    CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, VOLLEY_SIZE,
+    CHAMP_TICKS, CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS,
+    VOLLEY_SIZE,
 };
-use crate::layouts::{covers, Slot, StageDef};
+use crate::layouts::{covers, timing_value, Slot, StageDef};
 use crate::rng::SplitMix64;
 use crate::state::{PublicSide, PublicState, SideInput};
-use crate::step::can_rig;
-use crate::types::GateOp;
+use crate::types::{GateOp, Phase};
 
 /// SPEC §10: pick a target every 2 ticks.
 pub const THINK_TICKS: u32 = 2;
@@ -22,10 +23,8 @@ pub const SWITCH_MAX: u32 = 60;
 /// Candidate aim points: every AIM_STEP across the lane.
 pub const AIM_STEP: i32 = 100;
 const CANDIDATES: usize = (LANE_WIDTH / AIM_STEP) as usize - 1;
-/// SPEC §10: it rigs once per stage, at a random moment this many ticks (1–3 s) into its fight.
-pub const RIG_AFTER_MIN: u32 = 20;
-pub const RIG_AFTER_MAX: u32 = 60;
-/// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10), big ×8.
+/// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10; the v5
+/// table's mean factor, counting ±N as ×1, is ~×1.94), big ×8.
 pub const GUESS_NORMAL_PM: u64 = 2_000;
 pub const GUESS_BIG_PM: u64 = 8_000;
 
@@ -37,20 +36,17 @@ pub struct Warlord {
     target: i32,
     /// When it may switch to another equally good spot.
     switch_at: u32,
-    /// The stage it planned its rig for, and the fight tick to rig at.
-    rig_plan: Option<(u8, u32)>,
 }
 
 impl Warlord {
     /// `seed` must not be derived from the match seed by anything the opponent can't see either;
-    /// it only drives tie-breaks and the random rig/peek slots.
+    /// it only drives tie-breaks and the random Scout (peek) slot.
     pub fn new(side: u8, seed: u64) -> Self {
         Self {
             side,
             rng: SplitMix64::new(seed),
             target: LANE_WIDTH / 2,
             switch_at: 0,
-            rig_plan: None,
         }
     }
 
@@ -67,26 +63,15 @@ impl Warlord {
         if view.ended() || me.finished() {
             return input;
         }
-        // SPEC §10: once per stage, at a random moment 1–3 s into its fight, a random still
-        // face-down gate of its own current stage that the rig rule accepts (`can_rig`).
-        if me.phase.active() && !me.rig_used {
-            let at = match self.rig_plan {
-                Some((stage, at)) if stage == me.stage => at,
-                _ => {
-                    let at = self.rng.range_inclusive(RIG_AFTER_MIN, RIG_AFTER_MAX);
-                    self.rig_plan = Some((me.stage, at));
-                    at
-                }
-            };
-            if u32::from(me.phase_ticks) >= at {
-                input.rig = self.random_rig(view, me);
-            }
-        }
         // SPEC §10: a random own `?` at the start of each fight.
         if me.phase.active() && !me.peek_used {
             let n = view.stage_def(self.side).gates.len();
-            input.peek = self.random_hidden(me, n);
+            input.peek = self.random_hidden(me, view.stage_def(self.side), n);
         }
+        // SPEC_V5 §4: the Champion as soon as it is charged.
+        input.champion = me.phase == Phase::Fight
+            && !me.champ_pending
+            && u32::from(me.champ_meter) >= CHAMP_TICKS;
         if view.tick.checked_rem(THINK_TICKS) != Some(0) {
             return input;
         }
@@ -99,32 +84,14 @@ impl Warlord {
         input
     }
 
-    /// A random slot of its own stage that is still face-down in its copy and that `can_rig`
-    /// accepts; `None` (and no randomness spent) if there is none.
-    fn random_rig(&mut self, view: &PublicState, me: &PublicSide) -> Option<u8> {
-        let n = view.stage_def(self.side).gates.len();
+    fn random_hidden(&mut self, side: &PublicSide, st: &StageDef, n: usize) -> Option<u8> {
         let mut slots = [0u8; GATES_MAX];
         let mut k = 0usize;
-        for (slot, g) in (0u8..).zip(me.gates.iter().take(n)) {
-            if g.revealed.is_some() || !can_rig(view, self.side, slot) {
+        for ((slot, g), def) in (0u8..).zip(side.gates.iter().take(n)).zip(st.gates) {
+            // The timing gate is public: nothing to scout.
+            if def.slot == Slot::Timing {
                 continue;
             }
-            if let Some(dst) = slots.get_mut(k) {
-                *dst = slot;
-                k = k.saturating_add(1);
-            }
-        }
-        if k == 0 {
-            return None;
-        }
-        let pick = self.rng.below(k as u64) as usize;
-        slots.get(pick).copied()
-    }
-
-    fn random_hidden(&mut self, side: &PublicSide, n: usize) -> Option<u8> {
-        let mut slots = [0u8; GATES_MAX];
-        let mut k = 0usize;
-        for (slot, g) in (0u8..).zip(side.gates.iter().take(n)) {
             if let (None, Some(dst)) = (g.revealed, slots.get_mut(k)) {
                 *dst = slot;
                 k = k.saturating_add(1);
@@ -239,10 +206,14 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
         score = match me.gates.get(slot).and_then(|g| g.revealed) {
             Some(GateOp::Mul(k)) => score.saturating_mul(u64::from(k)),
             Some(GateOp::Div(k)) => score.checked_div(u64::from(k)).unwrap_or(0),
+            Some(GateOp::Add(n)) => score.saturating_add(u64::from(n).saturating_mul(1_000)),
+            Some(GateOp::Sub(n)) => score.saturating_sub(u64::from(n).saturating_mul(1_000)),
             None => {
                 let guess = match def.slot {
                     Slot::Normal => GUESS_NORMAL_PM,
                     Slot::Big => GUESS_BIG_PM,
+                    // SPEC_V5 §3: public, so the bot knows its value on arrival.
+                    Slot::Timing => u64::from(timing_value(at)).saturating_mul(1_000),
                 };
                 score.saturating_mul(guess) / 1_000
             }

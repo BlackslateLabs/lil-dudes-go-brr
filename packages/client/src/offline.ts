@@ -1,19 +1,19 @@
 // OfflineSource: the real rules (crates/sim, compiled to WASM in @lil-dudes/sim-wasm) plus the
 // Warlord bot on the other side, with no chain. Same behaviour contract as LiveSource: 20 Hz
-// ticks, subscribe / start / stop / setAim / rig / peek. It is also the fallback demo.
+// ticks, subscribe / start / stop / setAim / champion / peek. It is also the fallback demo.
 import { constants_json, initSync, layout_version, rules_version, SimMatch } from '@lil-dudes/sim-wasm';
 import { wasmBase64 } from '@lil-dudes/sim-wasm/inline';
 import * as C from './constants';
-import { opFromSigned } from './layout';
+import { opFromByte } from './layout';
 import type { MatchListener, MatchSource } from './source';
-import { markSprung, payoutOf, revealOf, type GotchaLog, type MatchReveal } from './verify';
+import { payoutOf, revealOf, type MatchReveal } from './verify';
 import { matchView, sideOf, type LaneState, type RawResult } from './view';
 import type { MatchEvent, MatchView, PrivateView, Side } from './types';
 
 /** Must equal LAYOUT_VERSION in crates/sim-wasm/src/lib.rs (the flat layouts are documented there). */
-const LAYOUT_VERSION = 3;
+const LAYOUT_VERSION = 4;
 const EVENT_STRIDE = 8;
-const PHASE_NAMES = ['plant', 'fight', 'transit', 'raid', 'done'] as const;
+const PHASE_NAMES = ['plant', 'fight', 'transit', 'rush', 'done'] as const;
 
 let ready = false;
 
@@ -54,7 +54,7 @@ export interface OfflineOptions {
   speed?: number;
   /** Match seed (decides the layout and every gate value). Default: random. Same seed + same inputs = same match. */
   seed?: bigint;
-  /** Bot seed (tie-breaks, its rig/peek slots). Default: random, independent of `seed`. */
+  /** Bot seed (tie-breaks, its Scout slots). Default: random, independent of `seed`. */
   botSeed?: bigint;
   /** Guided first match: side 0's Fight 1 waves at TUTORIAL_WAVE_PCT (SPEC §10). Default false. */
   tutorial?: boolean;
@@ -84,7 +84,6 @@ export class OfflineSource implements MatchSource {
   private timer: ReturnType<typeof setInterval> | null = null;
   private current: { view: MatchView; priv: PrivateView };
   private lanes: [LaneState, LaneState] | null = null;
-  private gotchas: GotchaLog[] = [];
 
   constructor(opts: OfflineOptions = {}) {
     initSim();
@@ -120,23 +119,24 @@ export class OfflineSource implements MatchSource {
   setAim(x: number): void {
     if (!Number.isFinite(x)) return;
     const aim = Math.round(Math.max(0, Math.min(C.LANE_WIDTH - 1, x)));
-    this.sim.set_input(this.mySide, aim, undefined, undefined);
+    this.sim.set_input(this.mySide, aim, undefined, false);
   }
 
-  /** Rig from my own lane: gate `slot` of my current stage, trapped in the opponent's copy (see
-   *  MatchSource.rig). Passed straight to the sim, which refuses what `canRig` says no to. */
-  rig(slot: number): void {
-    // Out-of-range numbers must not reach the u8 binding.
-    if (isSlot(slot)) this.sim.set_input(this.mySide, undefined, slot, undefined);
+  /** Call the Champion (SPEC_V5 §4): it rides my next volley. The sim refuses it unless
+   *  `canChampion()`. */
+  champion(): void {
+    if (this.canChampion()) this.sim.set_input(this.mySide, undefined, undefined, true);
   }
 
-  /** The sim's own rig rule for `mySide` right now (`SimMatch.can_rig`). */
-  canRig(slot: number): boolean {
-    return isSlot(slot) && !this.current.view.result && this.sim.can_rig(this.mySide, slot);
+  /** My meter is full, I am in a Fight and none is waiting. */
+  canChampion(): boolean {
+    const me = this.current.view.sides[this.mySide];
+    return !this.current.view.result && me.phase === 'fight' && !me.champPending && me.champMeter >= C.CHAMP_TICKS;
   }
 
   peek(slot: number): void {
-    if (isSlot(slot)) this.sim.set_input(this.mySide, undefined, undefined, slot);
+    // Out-of-range numbers must not reach the u8 binding.
+    if (isSlot(slot)) this.sim.set_input(this.mySide, undefined, slot, false);
   }
 
   /** Advance one tick now (tests, headless runs). Inputs queued since the last tick apply to it. */
@@ -149,9 +149,6 @@ export class OfflineSource implements MatchSource {
     const view = this.decodeView();
     const events = this.decodeEvents(before, view);
     this.current = { view, priv: this.decodePrivate() };
-    for (const e of events) {
-      if (e.type === 'gotcha') this.gotchas.push({ stage: e.stage, tick: view.tick - 1, side: e.side, slot: e.slot, riggedBy: e.riggedBy });
-    }
     for (const l of this.listeners) l(view, this.current.priv, events);
     if (view.result) this.stop();
   }
@@ -172,7 +169,7 @@ export class OfflineSource implements MatchSource {
   }
 
   /** The result screen's data (same shape as LiveSource.reveal()): layout and every stage's
-   *  values, every stage's rigs and peeks (with `sprung`), GOTCHAs, gold, deaths, payout and why.
+   *  values, every stage's Scouts, gold, deaths, payout and why.
    *  Offline the seed is no secret, so this works mid-match too (result/payout then describe the
    *  current state). No txs. */
   reveal(): MatchReveal {
@@ -182,14 +179,12 @@ export class OfflineSource implements MatchSource {
     const dead: [boolean, boolean] = [v.sides[0].phase === 'dead', v.sides[1].phase === 'dead'];
     return {
       ...base,
-      history: markSprung(base.history, this.gotchas),
       matchId: this.matchId,
       names,
       result: v.result,
       gold: [v.sides[0].gold, v.sides[1].gold],
       dead,
       finalTick: v.tick,
-      gotchas: [...this.gotchas],
       payout: payoutOf(v.stake, v.result, { names, dead }),
       txs: [],
       settlement: { state: 'offline' },
@@ -201,7 +196,7 @@ export class OfflineSource implements MatchSource {
     return this.sim.public_bytes();
   }
 
-  /** Every stage's rigs and peeks so far, in the codec history layout (`decodeHistory`). */
+  /** Every stage's Scouts so far, in the codec history layout (`decodeHistory`). */
   history(): Uint8Array {
     return this.sim.history();
   }
@@ -238,16 +233,25 @@ export class OfflineSource implements MatchSource {
       const cannonX = next();
       const aimX = next();
       const gold = next();
-      const rigUsed = next() === 1;
+      const champMeter = next();
       const peekUsed = next() === 1;
       bot[s] = next() === 1;
-      const raidTicks = next();
+      const rushTicks = next();
+      const champPending = next() === 1;
+      const breachTick: [number, number] = [next(), next()];
       const towers = Array.from({ length: C.TOWERS_MAX }, next);
       const crates = Array.from({ length: C.CRATES_MAX }, next);
-      const gates = Array.from({ length: C.GATES_MAX }, () => ({ x: next(), revealed: opFromSigned(next()) }));
-      const cohorts = Array.from({ length: next() }, () => ({ id: next(), count: next(), x: next(), y: next(), age: next() }));
-      const enemies = Array.from({ length: next() }, () => ({ id: next(), count: next(), x: next(), y: next(), tower: next() }));
-      return { stage, phase, phaseTicks, raidTicks, dead, cannonX, aimX, gold, rigUsed, peekUsed, towers, crates, gates, cohorts, enemies };
+      const gates = Array.from({ length: C.GATES_MAX }, () => ({ x: next(), revealed: opFromByte(next()) }));
+      const cohorts = Array.from({ length: next() }, () => ({
+        id: next(),
+        count: next(),
+        x: next(),
+        y: next(),
+        age: next(),
+        champion: next() === 1,
+      }));
+      const enemies = Array.from({ length: next() }, () => ({ id: next(), count: next(), x: next(), y: next(), tower: next(), giant: next() === 1 }));
+      return { stage, phase, phaseTicks, rushTicks, dead, cannonX, aimX, gold, peekUsed, champMeter, champPending, breachTick, towers, crates, gates, cohorts, enemies };
     };
     const lanes: [LaneState, LaneState] = [lane(0), lane(1)];
     this.lanes = lanes;
@@ -256,16 +260,13 @@ export class OfflineSource implements MatchSource {
   }
 
   private decodePrivate(): PrivateView {
-    const [stage = 0, rigStage = -1, rigSlot = -1, peekSlot = -1, peekOp = 0] = this.sim.private_view(this.mySide);
-    const op = opFromSigned(peekOp);
-    return {
-      myRig: rigStage < 0 || rigSlot < 0 ? null : { stage: rigStage, slot: rigSlot },
-      myPeek: peekSlot < 0 || !op ? null : { stage, slot: peekSlot, op },
-    };
+    const [stage = 0, peekSlot = -1, peekOp = 0] = this.sim.private_view(this.mySide);
+    const op = opFromByte(peekOp);
+    return { myPeek: peekSlot < 0 || !op ? null : { stage, slot: peekSlot, op } };
   }
 
-  /** `before`: the lanes before this step (reveals and GOTCHAs name the stage they happened in;
-   *  a `stage` event later in the same tick moves it on). `view`: after the step (the result). */
+  /** `before`: the lanes before this step (reveals name the stage they happened in; a `stage`
+   *  event later in the same tick moves it on). `view`: after the step (the result). */
   private decodeEvents(before: [LaneState, LaneState], view: MatchView): MatchEvent[] {
     const v = this.sim.events();
     const out: MatchEvent[] = [];
@@ -276,17 +277,14 @@ export class OfflineSource implements MatchSource {
       const side = sideOf(a);
       switch (t) {
         case 0:
-          out.push({ type: 'volley', side, cohortId: b, x: c, count: d });
+          out.push({ type: 'volley', side, cohortId: b, x: c, count: d, champion: e === 1 });
           break;
         case 1: {
-          const op = opFromSigned(d);
-          if (g === 1 && op) out.push({ type: 'reveal', side, stage: stage[side]!, slot: b, op });
-          out.push({ type: 'gate', side, slot: b, cohortId: c, before: e, after: f });
+          const op = opFromByte(d) ?? { kind: 'mul', value: 1 };
+          if (g === 1) out.push({ type: 'reveal', side, stage: stage[side]!, slot: b, op });
+          out.push({ type: 'gate', side, slot: b, cohortId: c, op, before: e, after: f });
           break;
         }
-        case 2:
-          out.push({ type: 'gotcha', side, stage: stage[side]!, slot: b, riggedBy: sideOf(c) });
-          break;
         case 3:
           // A hit that breaks the crate is reported broken here; the sim's separate "broken"
           // event that follows is then dropped (one event per crate hit).
@@ -321,6 +319,13 @@ export class OfflineSource implements MatchSource {
         case 12:
           if (view.result) out.push({ type: 'end', result: view.result });
           break;
+        case 13:
+          out.push({ type: 'first', side, stage: b, gold: c });
+          break;
+        case 14:
+          out.push({ type: 'rushEnd', side, lost: b });
+          break;
+
       }
     }
     return out;

@@ -1075,3 +1075,37 @@ WASM v5 surface + pkg rebuild, balance run.
 limits), then program v5 and client v5. The web is ready for: `RUSH_TICKS`, `CHAMP_TICKS`, `LaneView.rushTicks`,
 `champMeter`, `champPending`, `MatchSource.champion()`, FIRST events, the op byte with ± and ÷3, the timing gate.
 Logo/mascot concepts are paused (drafts in Suparno's scratchpad).
+
+## 2026-11-23 16:30 IST · Kai · rules v5 built end to end (sim, program, client, web, server) · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `sim-v5`: Suparno's 4 sim commits + 3 of mine, not merged yet)
+- **Sim v5 complete:** Suparno's timing gate finished (bot scores it at its value on arrival, never
+  scouts it); Rush (70 ticks, Suparno's end rule, `RushEnd`); FIRST +50 settled on the breach tick;
+  Champion (meter 160 fight ticks, carries over, count 8, through gates; bot calls it when charged);
+  Fight 2 giants (5, speed ×0.6); v5 payout (`slice_bps`, no cap) + settle_fuzz parity; codec 5;
+  WASM layout 4. `TUNE` auto-tuned: **10.0% deaths, 68 s average**, no cap hits (6,000 bot matches).
+- **Program v5:** `champion()` ix; `plant_rig` and the GOTCHA record gone (header offsets kept);
+  Match 1,800 B, Secrets 136 B. **Fixed a real bug:** `MatchState::new` needed a 4,928 B SBF frame
+  (max 4,096), so the VRF callback overflowed; now built in place (`MatchState::reset`).
+  MagicSVM 18/18; bench 4,202 CU per full tick (8-tick crank catch-up ~46k of 400k). Not deployed.
+- **Client / web / server on v5:** all tests green (Rust, MagicSVM, client 22, server 17), web builds.
+
+**CONTRACT (packages/client v5):** phase `'rush'` (not `'raid'`); `GateOp` adds `add` / `sub`;
+`GateView.timing` + `GateView.value` (revealed op, or the timing gate's value this tick);
+`LaneView.rushTicks`, `rushGold`, `first[2]`, `breachTick[2]`, `champMeter`, `champPending`;
+`CohortView.champion` / `.giant`; events `first`, `rushEnd`, `volley.champion`, `gate.op`;
+`MatchSource.champion()` / `canChampion()` replace `rig()` / `canRig()`; `PrivateView` is just
+`myPeek`; exports `RUSH_TICKS`, `CHAMP_TICKS`, `CHAMP_COUNT`, `FIRST_BONUS`, `timingValue`,
+`opLabel`, `opBad`, `sliceBps`. The web already uses them (Champion button works, FIRST banner).
+
+**Decided (Kai):** Suparno's Rush end rule stands (dudes still on the lane at the end don't count).
+
+**Found (needs Kai):**
+- **The middle of the match has no battle** (screenshots + 30 bot matches): enemies on screen only
+  28% of fight time, avg 8 enemy units vs our 215; 84% of clashes in the far half (62% at the
+  tower). Waves die where they spawn; our crowd is a single-file line of small dudes.
+- **Payout spread is small:** damage gold is capped by tower HP, so everyone who clears shares the
+  same base; bot vs bot moves ~9% of S on average.
+- An idle mid-lane cannon narrowly beat the bot in the parity match (bot needs work).
+
+**Next / handoff:** Kai to decide: fix the battle in the sim before the one deploy, then deploy;
+merge `sim-v5` to main. Suparno: pull after the merge; leftover GOTCHA sound/particle helpers can go.

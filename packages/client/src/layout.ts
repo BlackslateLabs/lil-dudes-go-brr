@@ -11,7 +11,7 @@ export function stageDef(layout: number, stage: number): C.StageDef {
   return l.stages[stage] ?? l.stages[C.STAGES - 1]!;
 }
 
-/** crates/sim `GateDef::x_at`: centre x `t` ticks into the player's Fight (ping-pong). The raid
+/** crates/sim `GateDef::x_at`: centre x `t` ticks into the player's Fight (ping-pong). The Rush
  *  keeps counting the Fight's ticks, so pass the lane's `phaseTick` there too. */
 export function gateXAt(g: C.GateDef, t: number): number {
   const range = g.xMax - g.xMin;
@@ -57,9 +57,8 @@ export function crateOfGate(st: C.StageDef, slot: number): number {
   return st.crates.findIndex((c) => Math.abs(c.x - g.x) * 2 <= g.width && c.y < rowY && rowY - c.y <= 500);
 }
 
-/** Gold a player has when the town hall raid starts: every tower's HP of every stage (1 gold per
- *  point of damage actually dealt) plus TOWER_BONUS per tower. The raid only starts once the
- *  final stage's last tower is down, so this is exact. */
+/** Score from the fights alone once the final stage is cleared: every tower's HP of every stage
+ *  (1 per point of damage actually dealt) plus TOWER_BONUS per tower (FIRST comes on top). */
 export function fightGold(layout: number): number {
   const l = layoutDef(layout);
   let gold = 0;
@@ -67,15 +66,44 @@ export function fightGold(layout: number): number {
   return gold;
 }
 
-/** SPEC §6: ×k → c·k, ÷k → floor(c/k). */
+/** SPEC_V5 §3: the timing gate's value `t` ticks into a Fight (the lane's `phaseTick`; the
+ *  Rush keeps counting it): ×1 → ×TIMING_MAX, one step every TIMING_STEP_TICKS. */
+export const timingValue = (t: number): number => 1 + (Math.floor(Math.max(0, t) / C.TIMING_STEP_TICKS) % C.TIMING_MAX);
+
+/** SPEC_V5 §3: ×k → c·k, ÷k → floor(c/k), +n → c+n, −n → max(0, c−n). */
 export function applyOp(op: GateOp, c: number): number {
-  return op.kind === 'mul' ? c * op.value : op.value === 0 ? 0 : Math.floor(c / op.value);
+  switch (op.kind) {
+    case 'mul':
+      return c * op.value;
+    case 'div':
+      return op.value === 0 ? 0 : Math.floor(c / op.value);
+    case 'add':
+      return c + op.value;
+    case 'sub':
+      return Math.max(0, c - op.value);
+  }
 }
 
-/** Op byte of the codec / deals (k = ×k, 0x80 | k = ÷k); 0 = none (face-down). */
-export const opFromByte = (b: number): GateOp | null =>
-  b === 0 ? null : b & 0x80 ? { kind: 'div', value: b & 0x7f } : { kind: 'mul', value: b };
+/** ÷ and − hurt the cohort (the "bad" reveal). */
+export const opBad = (op: GateOp): boolean => op.kind === 'div' || op.kind === 'sub';
 
-/** Signed op of the WASM flat layouts (+k = ×k, −k = ÷k); 0 = none. */
-export const opFromSigned = (n: number): GateOp | null =>
-  n === 0 ? null : n < 0 ? { kind: 'div', value: -n } : { kind: 'mul', value: n };
+/** Short label: ×3, ÷2, +15, −5. */
+export const opLabel = (op: GateOp): string =>
+  ({ mul: '×', div: '÷', add: '+', sub: '−' })[op.kind] + String(op.value);
+
+/** Op byte of the codec, the WASM views and the deals: the kind in the top two bits, the value
+ *  below (k = ×k, 0x40 | n = +n, 0x80 | k = ÷k, 0xC0 | n = −n); 0 = none (face-down). */
+export function opFromByte(b: number): GateOp | null {
+  if (!b) return null;
+  const value = b & 0x3f;
+  switch (b & 0xc0) {
+    case 0x40:
+      return { kind: 'add', value };
+    case 0x80:
+      return { kind: 'div', value };
+    case 0xc0:
+      return { kind: 'sub', value };
+    default:
+      return { kind: 'mul', value };
+  }
+}

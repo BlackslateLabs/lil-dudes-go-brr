@@ -100,16 +100,16 @@ function TownHall({ feed }: { feed: MatchFeed }) {
       shown.current = 0;
       return;
     }
-    const raid = lane.phase === 'raid' || lane.phase === 'done';
+    const raid = lane.phase === 'rush' || lane.phase === 'done';
     hit.current = Math.max(0, hit.current - dt * 4);
     const h = hit.current;
     const wob = Math.sin(clock.elapsedTime * 40) * h;
     body.current.position.x = wob * 0.25;
     body.current.scale.set(1 + h * 0.04, 1 - h * 0.05, 1 + h * 0.04);
     doorMat.emissiveIntensity = raid ? 1.6 + 0.8 * Math.sin(clock.elapsedTime * 6) + 2 * h : 0.2;
-    label.current.visible = raid && lane.raidGold > 0;
+    label.current.visible = raid && lane.rushGold > 0;
     if (label.current.visible) {
-      shown.current += (lane.raidGold - shown.current) * Math.min(1, dt * 10);
+      shown.current += (lane.rushGold - shown.current) * Math.min(1, dt * 10);
       const tex = labelTexture(`+${Math.round(shown.current)}`, { color: '#ffffff', outline: PALETTE.goldDark, width: 320, height: 128 });
       if (label.current.material.map !== tex) {
         label.current.material.map = tex;

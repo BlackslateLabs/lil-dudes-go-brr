@@ -1,13 +1,13 @@
 // Decoder for the PUBLIC part of the match state, as stored in the on-chain Match account
-// (crates/sim/src/codec.rs documents the layout, codec v3 / rules v4; a parity test checks this
+// (crates/sim/src/codec.rs documents the layout, codec v5 / rules v5; a parity test checks this
 // file against the WASM build). The secret part never reaches a client during a match.
 import * as C from './constants';
 import { opFromByte } from './layout';
-import { matchView, resultOf, sideOf, type LaneState, type RawResult } from './view';
-import type { CohortView, MatchResult, MatchStatus, MatchView } from './types';
+import { matchView, resultOf, sideOf, type CohortRecord, type LaneState, type RawResult } from './view';
+import type { MatchResult, MatchStatus, MatchView } from './types';
 
 /** Must equal crates/sim CODEC_VERSION (byte 0 of the public part). */
-export const CODEC_VERSION = 3;
+export const CODEC_VERSION = 5;
 export const HEADER_LEN = 34;
 export const GATE_LEN = 3;
 export const UNIT_LEN = 12;
@@ -16,11 +16,13 @@ const SIDE_CRATES = SIDE_TOWERS + C.TOWERS_MAX * 2;
 const SIDE_GATES = SIDE_CRATES + C.CRATES_MAX * 2;
 const SIDE_COHORTS = SIDE_GATES + C.GATES_MAX * GATE_LEN;
 const SIDE_ENEMIES = SIDE_COHORTS + C.COHORT_CAP * UNIT_LEN;
-/** u16 raid ticks (codec v3), after the enemies. */
-const SIDE_RAID = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
-/** 720 bytes per side. */
-export const SIDE_LEN = SIDE_RAID + 2;
-/** 1,474 bytes. */
+/** Side tail (codec v5): u16 rush ticks, u8 champion meter, 2 × u16 breach tick. */
+const SIDE_RUSH = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
+const SIDE_CHAMP = SIDE_RUSH + 2;
+const SIDE_BREACH = SIDE_CHAMP + 1;
+/** 725 bytes per side. */
+export const SIDE_LEN = SIDE_BREACH + C.STAGES * 2;
+/** 1,484 bytes. */
 export const PUBLIC_LEN = HEADER_LEN + 2 * SIDE_LEN;
 /** Offset of a side's aim inside its record (the program writes it directly). */
 export const SIDE_AIM = 4;
@@ -32,11 +34,13 @@ const F_RESULT = 8;
 const F_KO = 16;
 const F_PHASE = 7;
 const F_DEAD = 8;
-const F_RIG = 16;
+const F_CHAMP = 16;
 const F_PEEK = 32;
+/** Cohort `last_row` byte: the Champion flag above the row count. */
+const C_CHAMP = 128;
 
-/** A cohort as stored (MatchView's CohortView plus the gate rows it has passed). */
-export interface CohortState extends CohortView {
+/** A cohort as stored, plus the gate rows it has passed. */
+export interface CohortState extends CohortRecord {
   lastRow: number;
 }
 
@@ -86,13 +90,15 @@ export function decodePublic(data: Uint8Array, offset = 0): PublicState {
       stage: u8(base),
       phase: sflags & F_PHASE,
       phaseTicks: u16(6),
-      raidTicks: u16(SIDE_RAID),
+      rushTicks: u16(SIDE_RUSH),
       dead: (sflags & F_DEAD) !== 0,
       cannonX: i16(2),
       aimX: i16(SIDE_AIM),
       gold: dv.getUint32(base + 8, true),
-      rigUsed: (sflags & F_RIG) !== 0,
       peekUsed: (sflags & F_PEEK) !== 0,
+      champPending: (sflags & F_CHAMP) !== 0,
+      champMeter: u8(base + SIDE_CHAMP),
+      breachTick: [u16(SIDE_BREACH), u16(SIDE_BREACH + 2)],
       towers: Array.from({ length: C.TOWERS_MAX }, (_, i) => u16(SIDE_TOWERS + 2 * i)),
       crates: Array.from({ length: C.CRATES_MAX }, (_, i) => u16(SIDE_CRATES + 2 * i)),
       gates: Array.from({ length: C.GATES_MAX }, (_, i) => {
@@ -107,7 +113,8 @@ export function decodePublic(data: Uint8Array, offset = 0): PublicState {
           x: dv.getInt16(at + 6, true),
           y: dv.getInt16(at + 8, true),
           age: u8(at + 10),
-          lastRow: u8(at + 11),
+          lastRow: u8(at + 11) & ~C_CHAMP,
+          champion: (u8(at + 11) & C_CHAMP) !== 0,
         };
       }),
       enemies: Array.from({ length: enemyLen }, (_, i) => {
@@ -118,6 +125,7 @@ export function decodePublic(data: Uint8Array, offset = 0): PublicState {
           x: dv.getInt16(at + 6, true),
           y: dv.getInt16(at + 8, true),
           tower: u8(at + 10),
+          giant: u8(at + 11) !== 0,
         };
       }),
     };

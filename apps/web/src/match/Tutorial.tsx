@@ -114,7 +114,7 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
       const lane = v.sides[me];
       if (startAim === null) startAim = lane.aimX;
       else if (Math.abs(lane.aimX - startAim) > LANE_WIDTH * 0.04) complete('aim');
-      if (lane.phase === 'raid' && lane.stage === FINAL_STAGE) cutIn('breach');
+      if (lane.phase === 'rush' && lane.stage === FINAL_STAGE) cutIn('breach');
     });
 
     // A finger drag anywhere counts as "aimed" right away (the source's aim lags a little).

@@ -35,10 +35,10 @@ async function main() {
   src.subscribe((view) => {
     if (view.status !== 'playing') return;
     if (!playing) playing = Date.now() - t0;
-    const [aim, rig, peek] = brain.decide(src.latestBytes);
+    const [aim, peek, champion] = brain.decide(src.latestBytes);
     if (aim! >= 0) src.setAim(aim!);
-    if (rig! >= 0) src.rig(rig!);
     if (peek! >= 0) src.peek(peek!);
+    if (champion === 1) src.champion();
   });
   src.start();
   while (src.currentStage !== 'finished') {

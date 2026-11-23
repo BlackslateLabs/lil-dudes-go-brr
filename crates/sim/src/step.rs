@@ -1,34 +1,36 @@
-//! One tick of the match (SPEC v4). For tick `t = public.tick`:
+//! One tick of the match (SPEC v4 + SPEC_V5). For tick `t = public.tick`:
 //!
-//! 1. inputs: aim (always), rig (alive, not done), peek (my Fight/Raid)   SPEC §2, §6
+//! 1. inputs: aim (always), Scout (my Fight/Rush), Champion (my Fight)    SPEC §2, §6, V5 §4
 //! 2. per lane (side 0, then side 1), each at its own stage and phase:    SPEC §3
 //!    - the cannon steps toward its aim                                   SPEC §2
-//!    - moving gates slide (timed from the Fight start; the Raid keeps
-//!      the Fight's clock)                                                SPEC §6
-//!    - Fight/Raid only: cohorts move (launch boost), hit crates, cross
-//!      gate rows and home in past the last row; enemy cohorts home in
-//!      and walk down; clash; tower hits, gold, raid loot, losses at the
-//!      base edge; death; all towers down → Transit (Fight 1) or the
-//!      town hall raid in place (Fight 2); waves; a volley                SPEC §4–§7
-//!    - the phase timer: Plant → Fight, Transit → Plant, raid fire over
-//!      and no dudes left → Done (leftover enemies leave)                 SPEC §3
-//! 3. `tick + 1`; a death, both players done or the time cap ends it      SPEC §3, §8
+//!    - moving gates slide (timed from the Fight start; the Rush keeps
+//!      the Fight's clock, as does the timing gate)                       SPEC §6, V5 §3
+//!    - Fight/Rush only: cohorts move (launch boost), hit crates, cross
+//!      gate rows and home in past the last row; enemy cohorts (giants
+//!      slower) home in and walk down; clash; tower hits, gold, Rush
+//!      loot, losses at the base edge; death; all towers down (the
+//!      breach, its tick recorded) → Transit (Fight 1) or the Rush in
+//!      place (Fight 2); waves; the Champion meter; a volley              SPEC §4–§7, V5 §2–§5
+//!    - the phase timer: Plant → Fight, Transit → Plant, Rush over →
+//!      Done (whatever is left on the lane is cleared, uncounted)         SPEC §3, V5 §2
+//! 3. FIRST for a fight first cleared this tick                           V5 §6
+//! 4. `tick + 1`; a death, both players done or the time cap ends it      SPEC §3, §8
 
 use crate::constants::{
-    CANNON_STEP, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED, DETECT_Y, ENEMY_CAP,
-    FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE, FIRE_TICKS, FIRST_WAVE_TICKS, HALL_X,
-    LANE_LENGTH, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS,
-    RAID_TICKS, STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_Y, TRANSIT_TICKS,
-    TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
+    CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED,
+    DETECT_Y, ENEMY_CAP, FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE, FIRE_TICKS,
+    FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT, GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH,
+    LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES,
+    STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_Y, TRANSIT_TICKS, TUTORIAL_WAVE_PCT,
+    VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
-use crate::layouts::{self, covers, StageDef};
+use crate::layouts::{self, covers, timing_value, Slot, StageDef};
 use crate::payout::payout;
 use crate::state::{
-    other, Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, Rig, SecretState,
-    SideInput,
+    Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, SecretState, SideInput,
 };
-use crate::types::{Cohort, Enemy, Phase};
+use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Advance the match by one tick. A no-op once the match has ended.
 pub fn step(m: &mut MatchState, inputs: &Inputs, ev: &mut impl EventSink) {
@@ -50,8 +52,9 @@ pub fn step(m: &mut MatchState, inputs: &Inputs, ev: &mut impl EventSink) {
         apply_side(m, s, input);
     }
     for s in 0..2u8 {
-        lane_tick(m, s, ev);
+        lane_tick(m, s, t, ev);
     }
+    award_first(&mut m.public, t, ev);
     let next = t.saturating_add(1);
     m.public.tick = next;
     let [a, b] = &m.public.sides;
@@ -76,67 +79,33 @@ fn apply_side(m: &mut MatchState, s: u8, input: &SideInput) {
         // SPEC §2: the aim is any lane x; the cannon chases it.
         side.aim = aim.clamp(0, LANE_WIDTH.saturating_sub(1)) as i16;
     }
-    if let Some(slot) = input.rig {
-        try_rig(m, s, slot);
-    }
     if let Some(slot) = input.peek {
         try_peek(m, s, slot);
     }
+    if input.champion {
+        try_champion(m, s);
+    }
 }
 
-/// SPEC §6 Rig: whether side `s` may rig gate `slot` right now. Any time I am alive and not
-/// done (Plant, Fight, Raid or Transit), once per stage of mine, I name a slot of MY current
-/// stage and it rigs the opponent's copy of that same stage and slot (both lanes are the same
-/// level). Refused when the opponent is dead or done, has already moved past that stage, is on
-/// it and has already revealed that gate in their copy, or the slot doesn't exist. A rig on a
-/// stage the opponent hasn't reached yet is fine: it springs when they get there.
-///
-/// Public state is enough: a rig on the opponent's stage `k` can only come from me during my
-/// own stage `k`, so "that stage already holds a rig" is exactly my `rig_used` (the UI and the
-/// bot can ask this without secrets).
-pub fn can_rig(p: &PublicState, s: u8, slot: u8) -> bool {
-    let (Some(me), Some(opp)) = (p.side(s), p.side(other(s))) else {
-        return false;
+/// SPEC_V5 §4: during my Fight with a full meter, the next volley is a Champion. The meter
+/// empties at once and refills. Refused (nothing spent) otherwise.
+fn try_champion(m: &mut MatchState, s: u8) {
+    let Some(me) = m.public.sides.get_mut(usize::from(s)) else {
+        return;
     };
-    if p.ended() || me.finished() || me.rig_used || opp.finished() {
-        return false;
+    if me.phase != Phase::Fight || me.dead || me.champ_pending {
+        return;
     }
-    let stage = me.stage;
-    let exists = usize::from(slot) < layouts::stage(p.layout, stage).gates.len();
-    let behind = opp.stage < stage;
-    let open = opp.gate(slot).is_some_and(|g| g.revealed.is_none());
-    exists && (behind || (opp.stage == stage && open))
+    if u32::from(me.champ_meter) < CHAMP_TICKS {
+        return;
+    }
+    me.champ_meter = 0;
+    me.champ_pending = true;
 }
 
-/// SPEC §6 Rig (see `can_rig`). Recorded under my own stage, naming the victim's stage (the
-/// same stage) and slot. Refused, and not used up, when `can_rig` says no or that opponent
-/// stage already holds a rig.
-fn try_rig(m: &mut MatchState, s: u8, slot: u8) {
-    if !can_rig(&m.public, s, slot) {
-        return;
-    }
-    let MatchState { public, secret } = m;
-    let Some(me) = public.sides.get_mut(usize::from(s)) else {
-        return;
-    };
-    let stage = me.stage;
-    if secret.stage_rigged(other(s), stage) {
-        return;
-    }
-    let Some(rig) = secret
-        .history
-        .get_mut(usize::from(stage))
-        .and_then(|log| log.rigs.get_mut(usize::from(s)))
-    else {
-        return;
-    };
-    *rig = Some(Rig { stage, slot });
-    me.rig_used = true;
-}
-
-/// SPEC §6 Peek: during my Fight or Raid, once per stage, one unrevealed gate of my current
-/// stage. The result is its true value now (a rigged gate peeks as ÷2). Refused, and not used
-/// up, on a revealed or missing gate.
+/// SPEC §6 Peek (SPEC_V5 §4 Scout): during my Fight or Raid, once per stage, one unrevealed gate
+/// of my current stage. The result is its true value. Refused, and not used up, on a revealed or
+/// missing gate.
 fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
     let MatchState { public, secret } = m;
     let layout = public.layout;
@@ -144,11 +113,15 @@ fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
         return;
     };
     let open = me.gate(slot).is_some_and(|g| g.revealed.is_none());
-    let exists = usize::from(slot) < layouts::stage(layout, me.stage).gates.len();
+    // A hidden gate of my stage (the timing gate is public: nothing to scout).
+    let exists = layouts::stage(layout, me.stage)
+        .gates
+        .get(usize::from(slot))
+        .is_some_and(|d| d.slot != Slot::Timing);
     if !me.phase.active() || me.peek_used || me.dead || !open || !exists {
         return;
     }
-    let op = secret.true_op(s, me.stage, slot);
+    let op = secret.true_op(me.stage, slot);
     let Some(peek) = secret
         .history
         .get_mut(usize::from(me.stage))
@@ -162,7 +135,7 @@ fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
 
 // --- 2. one lane -------------------------------------------------------------------------------
 
-fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
+fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
     let MatchState { public, secret } = m;
     let PublicState {
         sides,
@@ -185,14 +158,14 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
     let st = layouts::stage(layout, side.stage);
     let t = u32::from(side.phase_ticks);
     let active = side.phase.active();
-    // SPEC §6: moving gates are timed from the Fight start (the Raid keeps counting the Fight's
+    // SPEC §6: moving gates are timed from the Fight start (the Rush keeps counting the Fight's
     // ticks, so they slide on smoothly); before it they wait at x.
     let gate_t = if active { t } else { 0 };
     for (g, def) in side.gates.iter_mut().zip(st.gates) {
         g.x = def.x_at(gate_t);
     }
     if active {
-        move_cohorts(side, st, secret, s, ev);
+        move_cohorts(side, st, secret, gate_t, s, ev);
         move_enemies(side);
         clash(side, s, ev);
         hits(side, st, s, ev);
@@ -204,13 +177,22 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
             return;
         }
         if side.phase == Phase::Fight && side.towers.iter().all(|&hp| hp == 0) {
+            // SPEC_V5 §6: the breach tick of this fight, for FIRST (ticks of a Fight are ≥
+            // PLANT_TICKS, so 0 stays "not yet").
+            if let Some(b) = side.breach_tick.get_mut(usize::from(side.stage)) {
+                *b = u16::try_from(tick).unwrap_or(u16::MAX);
+            }
             if side.stage < FINAL_STAGE {
                 start_transit(side, layout, s, ev);
                 return;
             }
-            start_raid(side, s, ev);
+            start_rush(side, s, ev);
         }
         if side.phase == Phase::Fight {
+            // SPEC_V5 §4: the Champion meter fills while I am alive in a Fight.
+            if u32::from(side.champ_meter) < CHAMP_TICKS {
+                side.champ_meter = side.champ_meter.saturating_add(1);
+            }
             let pct = if options.tutorial && s == 0 && side.stage == 0 {
                 TUTORIAL_WAVE_PCT
             } else {
@@ -218,7 +200,7 @@ fn lane_tick(m: &mut MatchState, s: u8, ev: &mut impl EventSink) {
             };
             release_waves(side, st, t, pct, next_cohort_id, s, ev);
         }
-        let firing = side.phase == Phase::Fight || u32::from(side.raid_ticks) < RAID_TICKS;
+        let firing = side.phase == Phase::Fight || u32::from(side.rush_ticks) < RUSH_TICKS;
         if firing && t.checked_rem(FIRE_TICKS) == Some(0) {
             fire(side, next_cohort_id, s, ev);
         }
@@ -246,6 +228,7 @@ fn move_cohorts(
     side: &mut PublicSide,
     st: &StageDef,
     secret: &SecretState,
+    gate_t: u32,
     s: u8,
     ev: &mut impl EventSink,
 ) {
@@ -262,7 +245,7 @@ fn move_cohorts(
         ..
     } = side;
     let stage = *stage;
-    let raid = *phase == Phase::Raid;
+    let rush = *phase == Phase::Rush;
     let enemies = enemies.get(..usize::from(*enemy_len)).unwrap_or(&[]);
     for c in cohorts.iter_mut().take(usize::from(*cohort_len)) {
         if c.count == 0 {
@@ -314,15 +297,25 @@ fn move_cohorts(
             c.last_row = c.last_row.saturating_add(1);
             if let Some(slot) = gate_at(st, gates, row, c.x) {
                 if let Some(gate) = gates.get_mut(usize::from(slot)) {
-                    pass_gate(s, stage, slot, c, gate, secret, ev);
+                    let timing = st
+                        .gates
+                        .get(usize::from(slot))
+                        .is_some_and(|d| d.slot == Slot::Timing);
+                    let op = if timing {
+                        // SPEC_V5 §3: the timing gate's value on the crossing tick (public).
+                        GateOp::Mul(timing_value(gate_t))
+                    } else {
+                        secret.true_op(stage, slot)
+                    };
+                    pass_gate(s, slot, c, gate, op, !timing, ev);
                 }
             }
         }
 
         // SPEC §4: past the last row, home in on the nearest enemy ahead, else the nearest tower
-        // (in the raid: the town hall's centre).
+        // (in the Rush: the town hall's centre).
         if usize::from(c.last_row) >= st.rows.len() && c.count > 0 {
-            if let Some(tx) = cohort_target(c, enemies, towers, st, raid) {
+            if let Some(tx) = cohort_target(c, enemies, towers, st, rush) {
                 c.x = toward(c.x, tx, STEER_STEP);
             }
         }
@@ -337,27 +330,19 @@ pub fn gate_at(st: &StageDef, gates: &[PublicGate], row: u8, x: i16) -> Option<u
     })
 }
 
-/// SPEC §6: the first cohort through reveals the gate (and springs a rig: GOTCHA); every cohort
-/// through gets the gate's op.
+/// SPEC §6: the first cohort through reveals a hidden gate; every cohort through gets `op`. The
+/// timing gate is always face-up (it never reveals; its op is its value on the crossing tick).
 fn pass_gate(
     s: u8,
-    stage: u8,
     slot: u8,
     c: &mut Cohort,
     gate: &mut PublicGate,
-    secret: &SecretState,
+    op: GateOp,
+    hidden: bool,
     ev: &mut impl EventSink,
 ) {
-    let op = secret.true_op(s, stage, slot);
-    let reveal = gate.revealed.is_none();
+    let reveal = hidden && gate.revealed.is_none();
     if reveal {
-        if let Some(rigged_by) = secret.rigged_by(s, stage, slot) {
-            ev.push(Event::Gotcha {
-                side: s,
-                slot,
-                rigged_by,
-            });
-        }
         gate.revealed = Some(op);
     }
     let before = c.count;
@@ -380,13 +365,13 @@ fn dist2(ax: i16, ay: i16, bx: i16, by: i16) -> i64 {
 }
 
 /// SPEC §4 homing for my cohort: the nearest enemy ahead within DETECT_Y, else the nearest live
-/// tower, or in the raid the town hall's centre (HALL_X). Ties go to the lower index.
+/// tower, or in the Rush the town hall's centre (HALL_X). Ties go to the lower index.
 fn cohort_target(
     c: &Cohort,
     enemies: &[Enemy],
     towers: &[u16; TOWERS_MAX],
     st: &StageDef,
-    raid: bool,
+    rush: bool,
 ) -> Option<i16> {
     let mut best: Option<(i64, i16)> = None;
     for e in enemies {
@@ -402,7 +387,7 @@ fn cohort_target(
     if let Some((_, x)) = best {
         return Some(x);
     }
-    if raid {
+    if rush {
         return Some(HALL_X as i16);
     }
     let mut tower: Option<(u32, i16)> = None;
@@ -418,7 +403,8 @@ fn cohort_target(
 // --- enemies -----------------------------------------------------------------------------------
 
 /// SPEC §4: an enemy cohort steers toward the nearest of my cohorts ahead of it (below it)
-/// within DETECT_Y, else walks straight; then walks down at cruise speed.
+/// within DETECT_Y, else walks straight; then walks down at cruise speed (a giant at
+/// GIANT_SPEED, SPEC_V5 §5).
 fn move_enemies(side: &mut PublicSide) {
     let PublicSide {
         cohorts,
@@ -446,7 +432,8 @@ fn move_enemies(side: &mut PublicSide) {
         if let Some((_, x)) = best {
             e.x = toward(e.x, x, STEER_STEP);
         }
-        e.y = i32::from(e.y).saturating_sub(CRUISE_SPEED) as i16;
+        let speed = if e.giant { GIANT_SPEED } else { CRUISE_SPEED };
+        e.y = i32::from(e.y).saturating_sub(speed) as i16;
     }
 }
 
@@ -507,7 +494,7 @@ fn mid(a: i16, b: i16) -> i16 {
 
 /// SPEC §4/§5: a cohort reaching TOWER_Y within TOWER_HALF_W + CLASH_REACH of a live tower
 /// deals its count as damage (gold = damage actually dealt, + TOWER_BONUS for the kill) and is
-/// removed. In the Raid, a cohort reaching VAULT_Y anywhere across the lane (the town hall spans
+/// removed. In the Rush, a cohort reaching VAULT_Y anywhere across the lane (the town hall spans
 /// the base) loots LOOT_PER_UNIT per dude. A cohort
 /// reaching the base edge without hitting anything is lost.
 fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
@@ -519,13 +506,13 @@ fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
         phase,
         ..
     } = side;
-    let raid = *phase == Phase::Raid;
+    let rush = *phase == Phase::Rush;
     for c in cohorts.iter_mut().take(usize::from(*cohort_len)) {
         let y = i32::from(c.y);
         if c.count == 0 {
             continue;
         }
-        if raid && y >= VAULT_Y {
+        if rush && y >= VAULT_Y {
             let loot = c.count.saturating_mul(LOOT_PER_UNIT);
             *gold = gold.saturating_add(loot);
             ev.push(Event::Loot {
@@ -537,7 +524,7 @@ fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
             c.count = 0;
             continue;
         }
-        if !raid && y >= TOWER_Y {
+        if !rush && y >= TOWER_Y {
             if let Some(i) = tower_hit(c.x, towers, st) {
                 if let (Some(hp), Ok(tower)) = (towers.get_mut(i), u8::try_from(i)) {
                     let damage = c.count.min(u32::from(*hp));
@@ -669,64 +656,87 @@ fn release_waves(
         return;
     };
     let towers = side.towers;
+    // SPEC_V5 §5: in the final stage each small wave brings a giant.
+    let giants = side.stage == FINAL_STAGE && k.checked_rem(3) == Some(1);
     for (tower, (&hp, def)) in (0u8..).zip(towers.iter().zip(st.towers)) {
         if hp == 0 {
             continue;
         }
         let count = wave_size(def.wave_base, k, t, pct);
-        let len = usize::from(side.enemy_len);
-        if len < ENEMY_CAP {
-            if let Some(slot) = side.enemies.get_mut(len) {
-                let id = *ids;
-                *ids = id.saturating_add(1);
-                *slot = Enemy {
-                    id,
-                    count,
-                    x: def.x,
-                    y: TOWER_Y as i16,
-                    tower,
-                };
-                side.enemy_len = side.enemy_len.saturating_add(1);
-                ev.push(Event::Wave {
-                    side: s,
-                    tower,
-                    enemy_id: id,
-                    x: def.x,
-                    count,
-                    merged: false,
-                });
-            }
-            continue;
+        spawn_enemy(side, tower, def.x, count, false, ids, s, ev);
+        if giants {
+            spawn_enemy(side, tower, def.x, GIANT_COUNT, true, ids, s, ev);
         }
-        // SPEC §7: at ENEMY_CAP the wave joins the newest enemy cohort of that tower (else the
-        // newest of any tower).
-        let live = side.enemies.get_mut(..len).unwrap_or(&mut []);
-        let pick = live
-            .iter()
-            .rposition(|e| e.tower == tower)
-            .or(len.checked_sub(1));
-        if let Some(e) = pick.and_then(|i| live.get_mut(i)) {
-            e.count = e.count.saturating_add(count);
+    }
+}
+
+/// One enemy cohort from `tower` at `x`. At ENEMY_CAP it joins the newest enemy cohort of that
+/// tower (else the newest of any tower) instead (SPEC §7).
+#[allow(clippy::too_many_arguments)]
+fn spawn_enemy(
+    side: &mut PublicSide,
+    tower: u8,
+    x: i16,
+    count: u32,
+    giant: bool,
+    ids: &mut u32,
+    s: u8,
+    ev: &mut impl EventSink,
+) {
+    let len = usize::from(side.enemy_len);
+    if len < ENEMY_CAP {
+        if let Some(slot) = side.enemies.get_mut(len) {
+            let id = *ids;
+            *ids = id.saturating_add(1);
+            *slot = Enemy {
+                id,
+                count,
+                x,
+                y: TOWER_Y as i16,
+                tower,
+                giant,
+            };
+            side.enemy_len = side.enemy_len.saturating_add(1);
             ev.push(Event::Wave {
                 side: s,
                 tower,
-                enemy_id: e.id,
-                x: e.x,
+                enemy_id: id,
+                x,
                 count,
-                merged: true,
+                merged: false,
             });
         }
+        return;
+    }
+    let live = side.enemies.get_mut(..len).unwrap_or(&mut []);
+    let pick = live
+        .iter()
+        .rposition(|e| e.tower == tower)
+        .or(len.checked_sub(1));
+    if let Some(e) = pick.and_then(|i| live.get_mut(i)) {
+        e.count = e.count.saturating_add(count);
+        ev.push(Event::Wave {
+            side: s,
+            tower,
+            enemy_id: e.id,
+            x: e.x,
+            count,
+            merged: true,
+        });
     }
 }
 
 // --- fire --------------------------------------------------------------------------------------
 
-/// SPEC §7: a volley of VOLLEY_SIZE at the cannon's x. At COHORT_CAP live cohorts it is skipped.
+/// SPEC §7: a volley of VOLLEY_SIZE at the cannon's x, or a called Champion of CHAMP_COUNT
+/// (SPEC_V5 §4). At COHORT_CAP live cohorts it is skipped (a Champion waits for the next one).
 fn fire(side: &mut PublicSide, ids: &mut u32, s: u8, ev: &mut impl EventSink) {
     let len = usize::from(side.cohort_len);
     if len >= COHORT_CAP {
         return;
     }
+    let champion = side.champ_pending;
+    let count = if champion { CHAMP_COUNT } else { VOLLEY_SIZE };
     let Some(slot) = side.cohorts.get_mut(len) else {
         return;
     };
@@ -734,25 +744,28 @@ fn fire(side: &mut PublicSide, ids: &mut u32, s: u8, ev: &mut impl EventSink) {
     *ids = id.saturating_add(1);
     *slot = Cohort {
         id,
-        count: VOLLEY_SIZE,
+        count,
         x: side.cannon_x,
         y: 0,
         age: 0,
         last_row: 0,
+        champion,
     };
+    side.champ_pending = false;
     side.cohort_len = side.cohort_len.saturating_add(1);
     ev.push(Event::Volley {
         side: s,
         cohort_id: id,
         x: side.cannon_x,
-        count: VOLLEY_SIZE,
+        count,
+        champion,
     });
 }
 
 // --- timeline ----------------------------------------------------------------------------------
 
 /// SPEC §3: every tower down → Transit. The field is wiped and the next stage is loaded (its
-/// gates face-down), so a rig placed now lands on the stage the player is driving to.
+/// gates face-down).
 fn start_transit(side: &mut PublicSide, layout: u8, s: u8, ev: &mut impl EventSink) {
     let next = side.stage.saturating_add(1).min(FINAL_STAGE);
     side.load_stage(layout, next);
@@ -764,34 +777,42 @@ fn start_transit(side: &mut PublicSide, layout: u8, s: u8, ev: &mut impl EventSi
     });
 }
 
-/// SPEC §3: the final stage's last tower fell → the town hall raid starts where the fight left
-/// off: no wipe (cohorts in flight keep going, leftover enemies keep walking and can still kill),
-/// no new waves, the cannon fires RAID_TICKS more. `phase_ticks` keeps counting, so the gates
-/// slide on without a jump and the volley rhythm is unbroken.
-fn start_raid(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
-    side.phase = Phase::Raid;
-    side.raid_ticks = 0;
+/// SPEC_V5 §2: the final stage's last tower fell (the breach) → the Rush starts where the
+/// fight left off: no wipe (cohorts in flight keep going, leftover enemies keep walking and can
+/// still kill), no new waves, the cannon fires RUSH_TICKS more. `phase_ticks` keeps counting,
+/// so the gates slide on without a jump and the volley rhythm is unbroken.
+fn start_rush(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
+    side.phase = Phase::Rush;
+    side.rush_ticks = 0;
     ev.push(Event::Phase {
         side: s,
         stage: side.stage,
-        phase: Phase::Raid,
+        phase: Phase::Rush,
     });
 }
 
-/// SPEC §3: the phase timer. Plant → Fight; Transit → Plant; the raid ends (Done) once its fire
-/// is over and no dudes of mine are left, and any leftover enemies leave with it.
+/// SPEC §3: the phase timer. Plant → Fight; Transit → Plant; the Rush ends (Done) after
+/// RUSH_TICKS: dudes still on the lane are not counted (SPEC_V5 §2), and the lane is cleared.
 fn advance(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
     side.phase_ticks = side.phase_ticks.saturating_add(1);
-    if side.phase == Phase::Raid {
-        side.raid_ticks = side.raid_ticks.saturating_add(1);
+    if side.phase == Phase::Rush {
+        side.rush_ticks = side.rush_ticks.saturating_add(1);
     }
     let pt = u32::from(side.phase_ticks);
     let next = match side.phase {
         Phase::Plant if pt >= PLANT_TICKS => Phase::Fight,
         Phase::Transit if pt >= TRANSIT_TICKS => Phase::Plant,
-        Phase::Raid if u32::from(side.raid_ticks) >= RAID_TICKS && side.cohort_len == 0 => {
+        Phase::Rush if u32::from(side.rush_ticks) >= RUSH_TICKS => {
+            let lost = side
+                .cohorts()
+                .iter()
+                .fold(0u32, |n, c| n.saturating_add(c.count));
+            side.cohorts = [Cohort::default(); COHORT_CAP];
+            side.cohort_len = 0;
             side.enemies = [Enemy::default(); ENEMY_CAP];
             side.enemy_len = 0;
+            side.champ_pending = false;
+            ev.push(Event::RushEnd { side: s, lost });
             Phase::Done
         }
         _ => return,
@@ -803,6 +824,33 @@ fn advance(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
         stage: side.stage,
         phase: next,
     });
+}
+
+/// SPEC_V5 §6: FIRST goes to whoever cleared a fight on the lower match tick. A breach can't be
+/// beaten later, so it is settled on the tick a fight is first cleared: one side then scores
+/// FIRST_BONUS; both on the same tick is a tie (nobody).
+fn award_first(p: &mut PublicState, tick: u32, ev: &mut impl EventSink) {
+    let now = u16::try_from(tick).unwrap_or(u16::MAX);
+    for stage in 0..STAGES {
+        let [a, b] = p
+            .sides
+            .each_ref()
+            .map(|s| s.breach_tick.get(stage).copied().unwrap_or(0));
+        // The first clear of this fight happened on this tick, by exactly one side.
+        let first = match (a == now, b == now) {
+            (true, false) if b == 0 => 0u8,
+            (false, true) if a == 0 => 1u8,
+            _ => continue,
+        };
+        if let Some(side) = p.sides.get_mut(usize::from(first)) {
+            side.gold = side.gold.saturating_add(FIRST_BONUS);
+            ev.push(Event::First {
+                side: first,
+                stage: stage as u8,
+                gold: FIRST_BONUS,
+            });
+        }
+    }
 }
 
 /// SPEC §8: the result from deaths and gold.

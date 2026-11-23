@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import * as client from '@lil-dudes/client';
-import { FINAL_STAGE, LANE_LENGTH, RAID_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView, type Side } from '@lil-dudes/client';
+import { FINAL_STAGE, LANE_LENGTH, opBad, RUSH_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView, type Side } from '@lil-dudes/client';
 import { haptic, setBattleDuck, sfx } from '../feel/sound';
 import { HUD_RESET, useHud } from '../hud';
 import { useApp, type ScoreParts } from '../store';
@@ -13,20 +12,17 @@ const DANGER_Y = LANE_LENGTH * 0.25;
 /** The danger cue repeats at most this often. */
 const DANGER_COOLDOWN_MS = 2000;
 
-/**
- * Length of the post-breach clock. v5 calls it the Rush (`RUSH_TICKS` = 70, 3.5 s); until the v5
- * client exports that, it is the v4 town hall raid (`RAID_TICKS`, 8 s).
- */
-export const RUSH_LEN: number = (client as unknown as { RUSH_TICKS?: number }).RUSH_TICKS ?? RAID_TICKS;
+/** Length of the post-breach clock: the Rush (`RUSH_TICKS` = 70, 3.5 s). */
+export const RUSH_LEN: number = RUSH_TICKS;
 
-/** Ticks since this lane's breach: v5 `rushTicks` when present, else the v4 `raidTicks`. */
+/** Ticks since this lane's breach. */
 export function rushClock(lane: LaneView): number {
-  return 'rushTicks' in lane ? Number((lane as { rushTicks: unknown }).rushTicks) || 0 : lane.raidTicks;
+  return lane.rushTicks;
 }
 
-/** The lane is in its post-breach phase (v4 'raid', v5 'rush'). */
+/** The lane is in its post-breach phase (the Rush). */
 export function isBreach(phase: LanePhase | string): boolean {
-  return phase === 'raid' || phase === 'rush';
+  return phase === 'rush';
 }
 
 const emptyParts = (): ScoreParts => ({ damage: 0, towers: 0, first: 0, rush: 0 });
@@ -127,7 +123,7 @@ export function useMatchHud(feed: MatchFeed) {
           if (mine) sfx.shot();
           break;
         case 'reveal':
-          if (mine) sfx.gate(e.op.kind === 'mul');
+          if (mine) sfx.gate(!opBad(e.op));
           break;
         case 'clash':
           if (mine) sfx.clash();
@@ -151,16 +147,17 @@ export function useMatchHud(feed: MatchFeed) {
           }
           break;
         case 'loot':
-          // v4 raid loot; v5's Rush count (2 per dude) arrives the same way.
+          // The Rush count (2 per dude into the hall).
           parts[e.side].rush += e.gold;
           if (mine) {
             sfx.loot();
             hall += e.count;
           }
           break;
-        // TODO(v5 FIRST): when the client emits the FIRST bonus (an event like
-        // `{ type: 'first', side, gold }`, or a `first` field on the lane), add it here:
-        //   parts[e.side].first += e.gold;
+        case 'first':
+          parts[e.side].first += e.gold;
+          if (mine) banner('FIRST! +' + e.gold, 'gold');
+          break;
         case 'stage':
           if (mine && e.phase === 'plant') {
             hud.set({ peeking: false });

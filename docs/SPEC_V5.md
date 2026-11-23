@@ -31,7 +31,7 @@ Rules:
 |---|---|---|---|
 | Rig | Once per stage, ÷2 on the opponent's copy | **Removed** | Kai: skill-based, no sabotage |
 | Opponent view | Mini-lane | **Progress line only** (their stage, tower HP bar, score) | Kai; also removes the copying leak for honest players |
-| End of Fight 2 | 8 s raid (+~6 s travel tail ≈ 14 s) | **Rush: 70 ticks (3.5 s) after the breach**, then everything still on the lane is counted | Kai ("no waiting, count the army with a ~3 s timer"); the genre uses exactly this shape (1 s VICTORY stamp, then a 3.6 s countdown while the crowd keeps counting) |
+| End of Fight 2 | 8 s raid (+~6 s travel tail ≈ 14 s) | **Rush: 70 ticks (3.5 s) after the breach**; only dudes that reach the hall in that time count | Kai ("no waiting, count the army with a ~3 s timer"); Suparno's end rule (approved by Kai, 23 Nov); the genre uses this shape (1 s VICTORY stamp, then a 3.6 s countdown while the crowd keeps counting) |
 | Gates | × only (×2–×6), big ×6–×10 | Hidden **×2–×5, ÷2, +N, −N** (± from row 2, sized to the row); big ×6–×10 behind crates; **1 timing gate per stage** | Kai: good and bad hidden gates; timing gate = fair skill gate (replaces the parked market gate) |
 | Powers | Rig + Peek | **Champion** (meter) + **Scout** (= Peek) | Same tools for both; the reference's baseline champion is exactly this |
 | Score | Gold (damage 1/pt, tower 50, raid loot 2/dude) | Same gold **+ FIRST bonus 50 per fight** (earlier breach tick) **+ Rush count** (2 per dude) | Kai: breaching first scores more; speed is rewarded by the tick |
@@ -59,9 +59,12 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
   - your cannon keeps firing for `RUSH_TICKS` = 70;
   - leftover enemies keep walking and can still kill you;
   - your dudes steer to the hall; a dude that reaches it scores `LOOT_PER_UNIT` (2) at once.
-- **When the Rush ends:** every dude of yours still on the lane is counted too (2 each) and walks
-  in as the count plays. Then you are **done**.
-  - So "the army you have at that moment counts" (Kai); nothing waits for a long travel tail.
+- **When the Rush ends:** dudes still on the lane do **not** count; the lane freezes and is
+  cleared, and you are **done** at once (Suparno's rule, approved by Kai 23 Nov; the sim emits
+  `RushEnd { side, lost }` so the UI can show what was left behind).
+  - A fresh volley needs ~126 ticks to reach the hall, more than the Rush, so in practice the
+    Rush counts the crowd already past the last gate row at the breach: the army you built.
+    Firing during the Rush is for show.
 - **Fight 1's breach has no Rush:** Transit starts at once, as in v4. It still scores FIRST.
   - Open question Q1: a 2 s mini-rush in Fight 1 too?
 - **The match ends when:**
@@ -247,3 +250,89 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
 4. Champion charge = 8 s of fight time.
 5. Payout: the winner keeps their own stake (≥ 50%), and the loser's stake is split by `2 × margin`
    with **no cap** (the loser gets 0 only when the winner scores ≥ 3× as much).
+
+---
+
+## Status (23 Nov, Kai): v5 built end to end
+
+Branch `sim-v5` (from main + Suparno's sim commits). Everything below is done and tested:
+
+- **Sim:** no rig; ×/÷/± hidden gates (± from row 2); the timing gate; Rush (70 ticks, Suparno's
+  end rule, `RushEnd`); FIRST +50 settled on the breach tick (ties: nobody); Champion (meter 160
+  fight ticks, carries over, count 8, through gates; the bot calls it when charged); Fight 2 giants
+  (5, speed ×0.6, one per tower per small wave); v5 payout (`slice_bps`, no cap). Codec 5
+  (PUBLIC_LEN 1,484, SECRET_LEN 32), WASM layout 4.
+- **Balance** (auto-tuned `TUNE`, 1,000 bot matches per layout): **10.0% deaths, 68 s average**,
+  Fight 1 ~22 s, Fight 2 ~37 s, no cap hits. See "Open" below for the payout spread.
+- **Program:** `champion()` instruction; `plant_rig` and the GOTCHA record removed (offsets kept);
+  Match 1,800 B, Secrets 136 B; VRF callback fixed (`MatchState::new` overflowed the 4 KB SBF
+  frame, now built in place by `MatchState::reset`). MagicSVM 18/18. Bench: 4,202 CU per full
+  tick, 8-tick crank catch-up ~46k CU (budget 400k). Not deployed yet.
+- **Client / web / server:** v5 contract (see the CONTRACT entry in PROGRESS_LOG), Champion
+  button live, FIRST in the score parts, timing gate shows its value, ±/÷3 labels.
+
+**Open**
+- Turret tower (§5) not built.
+- **Payout spread:** damage gold is capped by tower HP, so two players who both clear share the
+  same ~1,500 base; only FIRST and the Rush separate them, and bot vs bot moves ~9% of S on
+  average (43% draws between identical bots). A decision for Kai.
+- An idle mid-lane cannon narrowly beat the bot in the parity match: the bot needs to be smarter
+  about the timing gate and the middle path.
+
+## Earlier hand-off (sim v5, Suparno, 23 Nov)
+
+Branch `wip/sim-v5` (not pushed). Sim tests, clippy `-D warnings` and fmt are green at every commit.
+
+**Done**
+- `8ab52ab` Sim v5: remove rig. No rig input, `can_rig`, GOTCHA or `rig_used`. Secret history is
+  now `[peek slot, peek op]` per stage and side (SECRET_LEN 32, HISTORY_LEN 8). Codec v4,
+  RULES_VERSION 5. `tools/balance/regen_golden.py` re-records the goldens and the WASM parity
+  digest.
+- `88a30e9` Sim v5: gate ops ÷ ± and the v5 deal. GateOp Add/Sub. Op byte: `k` = ×k,
+  `0x40|n` = +n, `0x80|k` = ÷k, `0xC0|n` = −n. The §3 table, with N = 5/15/30 by row; a ±N drawn
+  on row 1 is re-drawn as × or ÷. WASM views, events and peeks carry the op byte, and
+  `constants_json` gains `PM_BY_ROW`.
+
+**Not done**
+- Timing gate and the v5 layouts (§3, §3b): about 80% written, in `git stash` ("WIP sim v5
+  commit 3"). It has `Slot::Timing`, `timing_value`, `TIMING_STEP_TICKS`/`TIMING_MAX`, the six
+  layouts re-tuned (4 rows 1,400…5,500/5,700, `GATE_BAND` 300–2,700, one timing gate per stage,
+  at most one crate) and the new layout test.
+- Rush end, FIRST, Champion, enemy giants, payout v5, bot + balance, and the full WASM surface
+  plus the pkg rebuild.
+- **(Suparno) Rush-end rule change, to apply:** when `RUSH_TICKS` (70) runs out, only dudes that
+  already reached the hall count. Dudes still on the lane are not counted: clear them and go
+  Done at once. Emit `RushEnd { side }` (no gold) so the UI can freeze. This replaces §2's "every
+  dude still on the lane is counted too".
+
+**Next steps**
+1. `git stash pop`, then:
+   - add a `Slot::Timing` arm in `bot::path_score`: × `timing_value(now + travel_ticks(row_y))`;
+   - skip timing slots in `bot::random_hidden`;
+   - add the `gate_t` argument to the `move_cohorts` calls in `step/tests.rs`;
+   - update the layout-0 positions in the step and bot tests (gates now at 900 / 2,100; timing
+     at slot 2; slider at slot 3; F2 crate at y 3,800);
+   - in the fuzz test, check that timing gates never reveal;
+   - re-record with `python tools/balance/regen_golden.py`, then commit.
+2. Rush: rename Raid to Rush (`rush_ticks`, `RUSH_TICKS` = 70), apply the rule above, and add
+   `breach_tick[2]` per side plus FIRST (+50 to the lower tick, settled in `step` when the later
+   side breaches, or in `finish` for a single breach).
+3. Champion: `champ_meter` (u8, fills in Fight, `CHAMP_TICKS` 160, carries over),
+   `champ_pending`, `SideInput.champion`, a count-8 cohort flagged `champion` (codec: bit 7 of the
+   cohort `last_row` byte, flag 16 of the side flags), and an `Event::Champion`. The bot fires it
+   when charged.
+4. Giants: in Fight 2 each small wave adds one giant enemy (5, speed ×0.6, flag in the enemy
+   record byte 11).
+5. Payout: `slice_bps` per §7 in `payout.rs`, then update `settle_fuzz.py` and regenerate the
+   vectors.
+6. Codec side tail: u8 `champ_meter` and 2 × u16 `breach_tick` (SIDE_LEN 725).
+7. Balance: tune `TUNE` in `layouts.rs` for 10–20% deaths and a 60–90 s average.
+8. WASM layout v4: rebuild with `bash packages/sim-wasm/build.sh`.
+
+**Breaks outside the sim** (by design, for Kai and Suparno):
+- `programs/lil_dudes` uses `SideInput.rig`, `can_rig`, `Rig`, `StageLog.rigs`, `rig_used`, the
+  4-byte history layout and `plant_rig`/`RigRefused`.
+- `packages/client`: the codec is v4 (no rig flag; history is 2 B per entry), op bytes now
+  include 0x40/0xC0, the WASM `set_input(side, aim, peek)` drops `rig`, and `can_rig`,
+  `can_rig_bytes` and the gotcha event are gone. The committed `packages/sim-wasm/pkg` is still
+  v4 (not rebuilt).

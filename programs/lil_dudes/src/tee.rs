@@ -252,7 +252,9 @@ pub fn handle_callback_seed(ctx: Context<CallbackSeed>, randomness: [u8; 32]) ->
     seed_bytes.copy_from_slice(h.get(..8).unwrap_or(&[0; 8]));
     let seed = u64::from_le_bytes(seed_bytes);
     s.vrf = randomness;
-    let m = MatchState::new(
+    // Built in place (`reset`): `MatchState::new` would need a frame over SBF's 4 KB.
+    let mut m = MatchState::zeroed();
+    m.reset(
         seed,
         MatchOptions {
             stake: g.stake,
@@ -365,7 +367,7 @@ pub fn handle_advance(ctx: Context<Advance>) -> Result<()> {
     let mut s = ctx.accounts.secrets.load_mut()?;
     check_secrets(&g, &s)?;
     let mut m = load(&g, &s);
-    if catch_up(&mut m, &mut g, slot, CRANK_CATCH_UP) > 0 {
+    if catch_up(&mut m, &g, slot, CRANK_CATCH_UP) > 0 {
         store(&m, &mut g, &mut s);
     }
     Ok(())
@@ -421,7 +423,7 @@ pub struct PlayerSecret<'info> {
     pub peek: AccountLoader<'info, Peek>,
 }
 
-/// Shared by plant_rig and peek_cell: catch up (≤ PLAYER_CATCH_UP ticks), apply the input with
+/// peek_cell: catch up (≤ PLAYER_CATCH_UP ticks), apply the input with
 /// the sim's own rules (`apply_input`), store, and rewrite my Peek from the sim's private view.
 /// The sim ignores an input it refuses and leaves it unspent; `used` reads the per-stage flag it
 /// sets when it takes one, so "not set by this input" = refused = an error (nothing is written).
@@ -441,7 +443,7 @@ fn with_input(
     let side = side_of(&g, &a.player.key())?;
     require!(p.id == g.id && p.side == side, GameError::WrongAccount);
     let mut m = load(&g, &s);
-    catch_up(&mut m, &mut g, slot, PLAYER_CATCH_UP);
+    catch_up(&mut m, &g, slot, PLAYER_CATCH_UP);
     let spent = |m: &MatchState| m.public.side(side).is_some_and(used);
     let before = spent(&m);
     apply_input(&mut m, side, &input);
@@ -453,29 +455,10 @@ fn with_input(
     Ok(())
 }
 
-/// SPEC §6 Rig (rules v4): in any phase while I am alive and not done, once per stage of mine,
-/// name gate `cell` of MY current stage; it turns the opponent's copy of that same stage and
-/// slot into a trap (now if they are on it, when they get there if they are behind). `cell`
-/// keeps its v2 name (the IDL is unchanged) but is a gate SLOT (0..8, the stage's gates in
-/// layout order). The sim alone decides (`lil_dudes_sim::can_rig`); refused (error, nothing
-/// spent): already rigged this stage, I am dead or done, the opponent is dead or done or already
-/// past my stage, they are on it and have revealed that gate, or the slot is not in the stage.
-pub fn handle_plant_rig(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
-    with_input(
-        ctx,
-        SideInput {
-            rig: Some(cell),
-            ..SideInput::default()
-        },
-        |s| s.rig_used,
-        GameError::RigRefused,
-    )
-}
-
-/// SPEC §6 Peek: during my own Fight or Raid, once per stage, see the true value of gate `cell`
-/// (a gate SLOT, as in plant_rig) of my current stage: frozen at this moment, a rigged gate peeks
-/// as ÷2. The result lands in my Peek only. Refused (error, nothing spent): not my Fight/Raid,
-/// already peeked this stage, I am dead, the gate is revealed or not in this stage.
+/// SPEC §6 Peek (SPEC_V5 §4 Scout): during my own Fight or Rush, once per stage, see the true
+/// value of gate `cell` (a gate SLOT) of my current stage. The result lands in my Peek only.
+/// Refused (error, nothing spent): not my Fight/Rush, already scouted this stage, I am dead, the
+/// gate is revealed, the timing gate, or not in this stage.
 pub fn handle_peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
     with_input(
         ctx,
@@ -486,6 +469,45 @@ pub fn handle_peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
         |s| s.peek_used,
         GameError::PeekRefused,
     )
+}
+
+#[derive(Accounts)]
+pub struct PlayerInput<'info> {
+    pub player: Signer<'info>,
+    #[account(mut)]
+    pub game: AccountLoader<'info, Match>,
+    /// Needed to step the sim during the catch-up (nothing secret is written to the Match).
+    #[account(mut)]
+    pub secrets: AccountLoader<'info, Secrets>,
+}
+
+/// SPEC_V5 §4 Champion: during my Fight with a full meter, my next volley is a Champion. Public
+/// (the meter and the pending flag are in the Match). Catch up (≤ PLAYER_CATCH_UP ticks), apply
+/// the input with the sim's own rule, store. Refused (error, nothing spent): not my Fight, the
+/// meter is not full, one is already pending, or I am dead.
+pub fn handle_champion(ctx: Context<PlayerInput>) -> Result<()> {
+    let slot = Clock::get()?.slot;
+    let a = &ctx.accounts;
+    let mut g = a.game.load_mut()?;
+    let mut s = a.secrets.load_mut()?;
+    check_secrets(&g, &s)?;
+    require!(g.status == status::PLAYING, GameError::WrongStatus);
+    let side = side_of(&g, &a.player.key())?;
+    let mut m = load(&g, &s);
+    catch_up(&mut m, &g, slot, PLAYER_CATCH_UP);
+    let pending = |m: &MatchState| m.public.side(side).is_some_and(|s| s.champ_pending);
+    let before = pending(&m);
+    apply_input(
+        &mut m,
+        side,
+        &SideInput {
+            champion: true,
+            ..SideInput::default()
+        },
+    );
+    require!(!before && pending(&m), GameError::ChampionRefused);
+    store(&m, &mut g, &mut s);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------- finish
@@ -522,7 +544,7 @@ fn refresh_peek(peek: &AccountInfo, m: &MatchState, side: u8) -> Result<()> {
     Ok(())
 }
 
-/// Ends the match on the TEE: publishes the seed and every stage's rigs and peeks in the Match
+/// Ends the match on the TEE: publishes the seed and every stage's Scouts in the Match
 /// (Verify and the result screen), refreshes both Peeks to each side's final stage, then
 /// commits + undelegates all four accounts with the
 /// `settle_action` Magic Action. Anyone may finish a match with a result; a player may abort one

@@ -14,9 +14,23 @@ pub const FINAL_STAGE: u8 = (STAGES - 1) as u8;
 /// SPEC §3: stage phases.
 pub const PLANT_TICKS: u32 = 3 * TICKS_PER_SEC;
 pub const TRANSIT_TICKS: u32 = 2 * TICKS_PER_SEC;
-/// SPEC §3: the cannon keeps firing for this long once the final stage's last tower falls;
-/// dudes already on the way still count.
-pub const RAID_TICKS: u32 = 8 * TICKS_PER_SEC;
+/// SPEC_V5 §2: the Rush. Once the final stage's last tower falls (the breach) the cannon keeps
+/// firing for this long and every dude that reaches the town hall scores; when it runs out,
+/// dudes still on the lane do not count (Suparno, 23 Nov) and the player is done.
+pub const RUSH_TICKS: u32 = 70;
+
+/// SPEC_V5 §4: the Champion meter fills 1 per Fight tick; full at CHAMP_TICKS (8 s). A
+/// Champion cohort starts at CHAMP_COUNT dudes and goes through gates like any cohort.
+pub const CHAMP_TICKS: u32 = 8 * TICKS_PER_SEC;
+pub const CHAMP_COUNT: u32 = 8;
+
+/// SPEC_V5 §6: the player whose breach of a fight has the lower match tick scores this.
+pub const FIRST_BONUS: u32 = 50;
+
+/// SPEC_V5 §5: in the final stage, each tower's small wave (every third wave, k % 3 == 1)
+/// comes with one giant enemy cohort of GIANT_COUNT that walks at GIANT_SPEED.
+pub const GIANT_COUNT: u32 = 5;
+pub const GIANT_SPEED: i32 = CRUISE_SPEED * 3 / 5;
 
 /// SPEC §7: one volley every 8 ticks (0.4 s) of one dude.
 pub const FIRE_TICKS: u32 = 8;
@@ -41,6 +55,10 @@ pub const TOWER_HALF_W: i32 = 300;
 /// SPEC §6: a cohort is a point in the sim but is drawn as a small crowd, and a gate has posts,
 /// so a cohort this far outside a gate's (or a crate's) edge still goes through it.
 pub const GATE_GRACE: i32 = 100;
+/// SPEC_V5 §3: the timing gate's value steps ×1 → ×TIMING_MAX → ×1, one step every
+/// TIMING_STEP_TICKS of the player's gate clock: `1 + (t / TIMING_STEP_TICKS) % TIMING_MAX`.
+pub const TIMING_STEP_TICKS: u32 = TICKS_PER_SEC;
+pub const TIMING_MAX: u32 = 5;
 /// SPEC §4: opposing cohorts meet within this x distance once crossed in y.
 pub const CLASH_REACH: i32 = 400;
 /// (impl) ...and only while they are at most this far past each other in y. Larger than the
@@ -100,4 +118,7 @@ const _: () = {
     assert!(COHORT_CAP <= 64 && ENEMY_CAP <= 64);
     // Phase timers fit u16.
     assert!(MATCH_TICKS < u16::MAX as u32);
+    // The Champion meter is a u8.
+    assert!(CHAMP_TICKS <= u8::MAX as u32);
+    assert!(GIANT_SPEED > 0 && GIANT_SPEED < CRUISE_SPEED);
 };

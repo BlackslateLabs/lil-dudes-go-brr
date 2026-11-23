@@ -1,4 +1,5 @@
-//! Match result and the money moved (SPEC §8). Integer only; every floor favours the loser.
+//! Match result and the money moved (SPEC §8, SPEC_V5 §7). Integer only; every floor favours
+//! the loser.
 //! Parity with tools/balance/settle_fuzz.py is tested in tests/settle_parity.rs.
 
 use crate::constants::FEE_BPS;
@@ -15,12 +16,14 @@ pub struct MatchResult {
     pub fee: u64,
 }
 
-/// SPEC §8. `stake` = the matched stake S each player escrowed.
+/// SPEC_V5 §7. `stake` = the matched stake S each player escrowed; `gold` = the scores.
 /// - one player died: the survivor wins, `moved = S`;
-/// - both died (same tick), or both alive with equal gold: draw, nothing moves;
-/// - both alive: the pot 2S splits in the ratio of gold, so the winner (more gold) gains
-///   `moved = floor(S · (g_w − g_l) / (g_w + g_l))` (= `share_w − S`, floored for the loser);
-/// - `fee = floor(moved · FEE_BPS / 10_000)`.
+/// - both died (same tick), or both alive with equal scores: draw, nothing moves;
+/// - both alive, `w > l`: the winner keeps their stake and takes `2 × margin` of the loser's:
+///   `slice_bps = min(10_000, floor(20_000 · (w − l) / (w + l)))`,
+///   `moved = floor(S · slice_bps / 10_000)` (all of it once `w ≥ 3·l`);
+/// - `fee = floor(moved · FEE_BPS / 10_000)`; the winner nets `S + moved − fee`, the loser
+///   `S − moved`.
 pub fn payout(stake: u64, dead: [bool; 2], gold: [u32; 2]) -> MatchResult {
     let ko = dead[0] || dead[1];
     let draw = MatchResult {
@@ -39,9 +42,7 @@ pub fn payout(stake: u64, dead: [bool; 2], gold: [u32; 2]) -> MatchResult {
                 return draw;
             }
             let (w, gw, gl) = if a > b { (0, a, b) } else { (1, b, a) };
-            let lead = u64::from(gw.saturating_sub(gl));
-            let total = u64::from(gw).saturating_add(u64::from(gl));
-            (w, mul_div(stake, lead, total))
+            (w, mul_div(stake, slice_bps(gw, gl), 10_000))
         }
     };
     MatchResult {
@@ -52,7 +53,15 @@ pub fn payout(stake: u64, dead: [bool; 2], gold: [u32; 2]) -> MatchResult {
     }
 }
 
-/// floor(a · b / d) without overflow (a·b fits in u128); here b ≤ d, so the result ≤ a.
+/// SPEC_V5 §7: the winner's slice of the loser's stake in basis points, `2 × margin` capped at
+/// all of it. `w > l` (else 0).
+pub fn slice_bps(w: u32, l: u32) -> u64 {
+    let lead = u64::from(w.saturating_sub(l));
+    let total = u64::from(w).saturating_add(u64::from(l));
+    mul_div(20_000, lead, total).min(10_000)
+}
+
+/// floor(a · b / d) without overflow (a·b fits in u128); 0 when d = 0.
 fn mul_div(a: u64, b: u64, d: u64) -> u64 {
     let q = u128::from(a)
         .saturating_mul(u128::from(b))
@@ -65,30 +74,37 @@ fn mul_div(a: u64, b: u64, d: u64) -> u64 {
 mod tests {
     use super::*;
 
-    const S: u64 = 1_000_000_000; // 1 SOL, as in the SPEC §8 table
-
     #[test]
     fn spec_table() {
+        // SPEC_V5 §7 table, at S = 0.1 SOL.
+        const S: u64 = 100_000_000;
+        let nets = |r: MatchResult| (S + r.moved - r.fee, S - r.moved, r.fee);
         let death = payout(S, [false, true], [300, 900]);
-        assert_eq!(
-            (death.winner, death.ko, death.moved, death.fee),
-            (Some(0), true, S, S / 20)
-        );
-        let clear = payout(S, [false, false], [900, 600]);
-        assert_eq!(
-            (clear.winner, clear.ko, clear.moved, clear.fee),
-            (Some(0), false, 200_000_000, 10_000_000)
-        );
-        let close = payout(S, [false, false], [650, 700]);
-        assert_eq!(close.winner, Some(1));
-        assert_eq!(close.moved, 37_037_037); // 0.037… floored
-        assert_eq!(close.fee, 1_851_851);
+        assert_eq!((death.winner, death.ko), (Some(0), true));
+        assert_eq!(nets(death), (195_000_000, 0, 5_000_000));
+        for (w, l, want) in [
+            (401, 399, (100_475_000, 99_500_000, 25_000)),
+            (520, 480, (107_600_000, 92_000_000, 400_000)),
+            (600, 400, (138_000_000, 60_000_000, 2_000_000)),
+            (700, 300, (176_000_000, 20_000_000, 4_000_000)),
+            (750, 250, (195_000_000, 0, 5_000_000)),
+            (900, 100, (195_000_000, 0, 5_000_000)),
+        ] {
+            let r = payout(S, [false, false], [l, w]);
+            assert_eq!((r.winner, r.ko), (Some(1), false));
+            assert_eq!(nets(r), want, "{w}-{l}");
+        }
+        assert_eq!(slice_bps(401, 399), 50);
+        assert_eq!(slice_bps(3, 1), 10_000);
+        assert_eq!(slice_bps(1, 0), 10_000);
+        assert_eq!(slice_bps(0, 1), 0);
         let draw = payout(S, [false, false], [500, 500]);
         assert_eq!((draw.winner, draw.moved, draw.fee), (None, 0, 0));
     }
 
     #[test]
     fn double_death_and_no_gold_are_draws() {
+        const S: u64 = 1_000_000_000;
         let r = payout(S, [true, true], [900, 0]);
         assert_eq!((r.winner, r.ko, r.moved), (None, true, 0));
         let r = payout(S, [false, false], [0, 0]);
@@ -108,9 +124,14 @@ mod tests {
             for stake in [0, 1, 3, 1_000_003, u64::MAX] {
                 let r = payout(stake, [false, false], [a, b]);
                 assert!(r.moved <= stake && r.fee <= r.moved);
-                // The exact rational share is never rounded up for the winner.
+                // The exact rational slice (2 × margin, capped) is never rounded up.
                 let (gw, gl) = (u128::from(a.max(b)), u128::from(a.min(b)));
-                assert!(u128::from(r.moved) * (gw + gl) <= u128::from(stake) * (gw - gl));
+                let exact = (u128::from(stake) * 2 * (gw - gl)).min(u128::from(stake) * (gw + gl));
+                assert!(u128::from(r.moved) * (gw + gl) <= exact);
+                // winner + loser + fee = 2S.
+                let st = u128::from(stake);
+                let (mv, fee) = (u128::from(r.moved), u128::from(r.fee));
+                assert_eq!(st + mv - fee + (st - mv) + fee, 2 * st);
             }
         }
         assert_eq!(payout(100, [false, false], [1, 0]).moved, 100);

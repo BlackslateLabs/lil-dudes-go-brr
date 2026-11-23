@@ -1,6 +1,6 @@
 // Headless live match on devnet + the TEE, bot vs bot, end to end through LiveSource:
 // create → join → delegate (base) → both LiveSources auto-drive permissions, salts + VRF seed,
-// start (crank) → the WASM Warlord plays both sides through setAim / rig / peek → finish (commit
+// start (crank) → the WASM Warlord plays both sides through setAim / peek / champion → finish (commit
 // + undelegate + Magic Action) → payout check → close → sweep. Burners have 0 SOL.
 //   pnpm --filter @lil-dudes/client live [-- --stake 50000000] [--server http://localhost:8787 --mode queue|room]
 // With --server, matchmaking goes through apps/server (quick-match queue or a room code).
@@ -187,10 +187,10 @@ async function main() {
         }
       }
       if (view.status !== 'playing') return;
-      const [aim, rig, peek] = bots[side]!.decide(src.latestBytes);
+      const [aim, peek, champion] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
-      if (rig! >= 0) src.rig(rig!);
       if (peek! >= 0) src.peek(peek!);
+      if (champion === 1) src.champion();
     });
     src.start();
   }
@@ -206,7 +206,7 @@ async function main() {
     }
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
-      log(`tick ${v.tick} ${v.status} ${v.layoutName} lanes ${v.sides[0].phase} ${v.sides[0].stage + 1}:${v.sides[1].phase} ${v.sides[1].stage + 1} raid ticks ${v.sides[0].raidTicks}:${v.sides[1].raidTicks} gold ${v.sides[0].gold}:${v.sides[1].gold} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
+      log(`tick ${v.tick} ${v.status} ${v.layoutName} lanes ${v.sides[0].phase} ${v.sides[0].stage + 1}:${v.sides[1].phase} ${v.sides[1].stage + 1} rush ticks ${v.sides[0].rushTicks}:${v.sides[1].rushTicks} champ ${v.sides[0].champMeter}:${v.sides[1].champMeter} gold ${v.sides[0].gold}:${v.sides[1].gold} cohorts ${v.sides[0].cohorts.length}:${v.sides[1].cohorts.length}`);
     }
     if (sources.every((s) => s.currentStage === 'finished')) break;
     if (sources.some((s) => s.currentStage === 'finished' || s.currentStage === 'finishing') && (await isOnBase(base, id))) break;
@@ -220,7 +220,7 @@ async function main() {
   const r = matchResultOf(final.state);
   log('result', r, 'tick', final.state.tick);
   const reveal = sources[0]!.reveal();
-  log('seed', reveal?.seed.toString(), reveal?.layoutName, 'stage-1 rigs', reveal?.history[0]?.rigs);
+  log('seed', reveal?.seed.toString(), reveal?.layoutName, 'stage-1 scouts', reveal?.history[0]?.peeks);
   // Result-screen data (step 2): waits for the settlement, then has every field.
   const full = await sources[1]!.awaitReveal(90_000);
   const feed = sources.map((s) => ({ ...s.stats }));
@@ -250,7 +250,7 @@ async function main() {
   const expect = !r || r.winner === null ? [STAKE, STAKE] : r.winner === 0 ? [STAKE + r.moved - r.fee, STAKE - r.moved] : [STAKE - r.moved, STAKE + r.moved - r.fee];
   const payoutOk = settledBy === 'fallback' ? 'see fallback' : deltas[0] === expect[0] && deltas[1] === expect[1];
   log('payout deltas', deltas, 'expected', expect, payoutOk === true ? 'OK' : payoutOk);
-  // Verify (MVP §3.8): the published seed + rigs re-derive every gate revealed on the final board
+  // Verify (MVP §3.8): the published seed re-derives every gate revealed on the final board
   // (each lane's current stage), and the seed gives the layout.
   let checked = 0;
   let mismatches = 0;
@@ -260,14 +260,14 @@ async function main() {
       const stage = final.state.sides[side].stage;
       final.state.sides[side].gates.forEach((g, slot) => {
         if (!g.revealed) return;
-        const want = trueOp(reveal, side, stage, slot);
+        const want = trueOp(reveal, stage, slot);
         checked++;
         if (want.kind !== g.revealed.kind || want.value !== g.revealed.value) mismatches++;
       });
     }
   }
   const verified = !!reveal && mismatches === 0;
-  // The reveal must agree with the chain: payout = balance deltas, txs labelled, GOTCHAs = rigs.
+  // The reveal must agree with the chain: payout = balance deltas, txs labelled, Scouts = deals.
   const revealChecks: Record<string, boolean> = {};
   if (full) {
     revealChecks.settled = full.settlement?.state === 'settled';
@@ -276,16 +276,15 @@ async function main() {
     const whats = full.txs!.map((t) => t.what);
     for (const w of ['create_match', 'join_match', 'delegate_match', 'finish', 'request_seed']) revealChecks[`tx ${w}`] = whats.some((x) => x.startsWith(w));
     revealChecks['tx Magic Action'] = STAKE === 0 || whats.some((x) => x.includes('Magic Action')) || settledBy === 'fallback';
-    revealChecks.gotchasMatchRigs = full.gotchas!.every((g) =>
-      full.history.some((h) => h.rigs[g.riggedBy]?.stage === g.stage && h.rigs[g.riggedBy]?.slot === g.slot && h.sprung[g.riggedBy]),
-    );
     revealChecks.twoStages = full.values.length === STAGES && full.history.length === STAGES;
-    // v4: a rig names the rigger's own stage.
-    revealChecks.rigsOnOwnStage = full.history.every((h) => h.rigs.every((rig) => !rig || rig.stage === h.stage));
+    // Every published Scout shows that gate's dealt value.
+    revealChecks.scoutsMatchDeals = full.history.every((h) =>
+      h.peeks.every((pk) => !pk || JSON.stringify(trueOp(full, h.stage, pk.slot)) === JSON.stringify(pk.op)),
+    );
   }
   const revealOk = !!full && Object.values(revealChecks).every(Boolean);
   log('reveal', revealOk ? 'OK' : 'FAILED', JSON.stringify(revealChecks));
-  if (full) log('why:', full.payout?.why, '| gotchas', full.gotchas?.length, '| txs', full.txs?.map((t) => t.what).join(', '));
+  if (full) log('why:', full.payout?.why, '| txs', full.txs?.map((t) => t.what).join(', '));
   log('verify', verified ? 'OK' : 'FAILED', `${checked} revealed gates checked, ${mismatches} mismatches`);
 
   // 5. Close + sweep back.
@@ -307,7 +306,7 @@ async function main() {
     seed: reveal?.seed.toString(),
     history: reveal?.history,
     verify: { ok: verified, revealedGatesChecked: checked, mismatches },
-    reveal: { ok: revealOk, checks: revealChecks, payout: full?.payout, gotchas: full?.gotchas, settlement: full?.settlement, txs: full?.txs },
+    reveal: { ok: revealOk, checks: revealChecks, payout: full?.payout, settlement: full?.settlement, txs: full?.txs },
     status: m?.header.status,
     txs,
     events: Object.fromEntries(events),

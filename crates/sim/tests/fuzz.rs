@@ -9,8 +9,18 @@ use lil_dudes_sim::rng::SplitMix64;
 use lil_dudes_sim::*;
 
 const SEEDS: u64 = 1_200;
-/// The biggest cohort any layout allows: ×10 per row at most.
-const MAX_COUNT: u32 = VOLLEY_SIZE * 10u32.pow(ROWS_MAX as u32);
+/// The biggest cohort any layout allows: a Champion, then at most ×10 or +30 per row.
+const MAX_COUNT: u32 = max_count(CHAMP_COUNT);
+
+const fn max_count(start: u32) -> u32 {
+    let mut c = start;
+    let mut row = 0;
+    while row < ROWS_MAX {
+        c = if c * 10 > c + 30 { c * 10 } else { c + 30 };
+        row += 1;
+    }
+    c
+}
 
 fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
     let p = &m.public;
@@ -23,13 +33,30 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
         prev_gold[s] = side.gold;
         assert!(usize::from(side.stage) < STAGES);
         assert!(u32::from(side.phase_ticks) < MATCH_TICKS);
-        // The raid and Done only come after the final stage's fight; the raid clock only runs
-        // in the raid (and stays put once done).
+        // The Rush and Done only come after the final stage's fight; the Rush clock only runs
+        // in the Rush (and stays put once done) and never passes RUSH_TICKS.
         if side.stage < FINAL_STAGE {
-            assert!(!matches!(side.phase, Phase::Raid | Phase::Done));
+            assert!(!matches!(side.phase, Phase::Rush | Phase::Done));
         }
-        if !matches!(side.phase, Phase::Raid | Phase::Done) {
-            assert_eq!(side.raid_ticks, 0);
+        if !matches!(side.phase, Phase::Rush | Phase::Done) {
+            assert_eq!(side.rush_ticks, 0);
+        }
+        assert!(u32::from(side.rush_ticks) <= RUSH_TICKS);
+        // The Champion meter stays in range.
+        assert!(u32::from(side.champ_meter) <= CHAMP_TICKS);
+        // Breach ticks: a fight is cleared once, in order, at a tick already played; the
+        // Rush and Done mean the final fight was cleared.
+        for (k, &b) in side.breach_tick.iter().enumerate() {
+            assert!(u32::from(b) < p.tick.max(1));
+            if b != 0 && k > 0 {
+                assert!(side.breach_tick[k - 1] != 0 && side.breach_tick[k - 1] < b);
+            }
+            if usize::from(side.stage) < k {
+                assert_eq!(b, 0);
+            }
+        }
+        if matches!(side.phase, Phase::Rush | Phase::Done) {
+            assert!(side.breach_tick[usize::from(FINAL_STAGE)] != 0);
         }
         // Cannon and aim on the lane.
         assert!((0..LANE_WIDTH).contains(&i32::from(side.cannon_x)));
@@ -70,39 +97,36 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
         assert!(side.enemies[usize::from(side.enemy_len)..]
             .iter()
             .all(|e| *e == Enemy::default()));
-        // Rig / peek flags match the secret history of the current stage.
+        // The peek flag matches the secret history of the current stage.
         let log = &m.secret.history[usize::from(side.stage)];
-        assert_eq!(side.rig_used, log.rigs[s].is_some());
         assert_eq!(side.peek_used, log.peeks[s].is_some());
-        // Gates: unused slots stay blank; revealed = the true value (deal or trap).
+        // Gates: unused slots stay blank; revealed = the true value.
         for (slot, g) in side.gates.iter().enumerate() {
             let slot = slot as u8;
             match st.gates.get(usize::from(slot)) {
                 None => assert_eq!(*g, PublicGate::default()),
                 Some(def) => {
                     assert!(def.x_min.min(def.x) <= g.x && g.x <= def.x_max.max(def.x));
+                    // The timing gate is public and never flips.
+                    if def.slot == Slot::Timing {
+                        assert_eq!(g.revealed, None);
+                    }
                     if let Some(op) = g.revealed {
-                        assert_eq!(op, m.secret.true_op(s as u8, side.stage, slot));
+                        assert_eq!(op, m.secret.true_op(side.stage, slot));
                     }
                 }
             }
         }
     }
-    // Every rig names a real gate, at most one per victim stage; the secrets are the deal.
+    // Every peek names a real gate and shows its true value; the secrets are the deal.
     let deal = deals_for(m.secret.seed);
     assert_eq!(deal.layout, p.layout);
     assert_eq!(deal.values, m.secret.values);
-    for s in 0..2usize {
-        let mut per_stage = [0; STAGES];
-        for (k, log) in m.secret.history.iter().enumerate() {
-            if let Some(r) = log.rigs[s] {
-                // v4: a rig names the rigger's own stage (in the other copy).
-                assert_eq!(usize::from(r.stage), k);
-                assert!(usize::from(r.slot) < stage(p.layout, r.stage).gates.len());
-                per_stage[usize::from(r.stage)] += 1;
-            }
+    for (k, log) in m.secret.history.iter().enumerate() {
+        for pk in log.peeks.iter().flatten() {
+            assert!(usize::from(pk.slot) < stage(p.layout, k as u8).gates.len());
+            assert_eq!(pk.op, deal.op(k as u8, pk.slot));
         }
-        assert!(per_stage.iter().all(|&n| n <= 1));
     }
 }
 

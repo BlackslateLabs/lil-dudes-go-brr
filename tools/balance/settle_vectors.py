@@ -15,8 +15,11 @@ S = 1_000_000_000
 
 
 def cases():
-    # SPEC section 8 table.
+    # SPEC_V5 section 7 table (and the old v4 rows).
     yield S, S, False, True, 300, 900
+    for w, l in [(401, 399), (520, 480), (600, 400), (700, 300), (750, 250), (900, 100)]:
+        yield S, S, False, False, w, l
+        yield S, S, False, False, l, w
     yield S, S, False, False, 900, 600
     yield S, S, False, False, 650, 700
     yield S, S, False, False, 500, 500

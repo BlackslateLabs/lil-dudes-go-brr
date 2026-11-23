@@ -3,7 +3,7 @@
 //!     cargo run -p lil-dudes-sim --example balance --release [-- MATCHES_PER_LAYOUT]
 //!
 //! Prints, per layout: death rate (target ~10–20%) and where deaths happen (Fight 1 / Fight 2 /
-//! the town hall raid), how matches end, match length, Fight and Raid times, gold per side, the
+//! the Rush), how matches end, match length, Fight and Raid times, gold per side, the
 //! raid's share of gold, and the payout as a share of S.
 
 use lil_dudes_sim::rng::mix64;
@@ -24,7 +24,6 @@ struct Stats {
     /// Sum and count of Fight 1, Fight 2 and Raid durations (ticks), over sides that finished them.
     stage_ticks: [u64; 3],
     stage_n: [u64; 3],
-    gotchas: u64,
     peak_cohorts: u64,
     peak_enemies: u64,
     max_count: u64,
@@ -54,7 +53,6 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         for e in ev.as_slice() {
             match *e {
                 Event::Loot { gold, .. } => st.raid_gold += u64::from(gold),
-                Event::Gotcha { .. } => st.gotchas += 1,
                 Event::Phase { side, stage, phase } => {
                     let s = usize::from(side);
                     let ended = |k: usize, st: &mut Stats| {
@@ -66,7 +64,7 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
                         // Fight 1's towers fell.
                         Phase::Transit => ended(0, st),
                         // Fight 2's towers fell: the raid starts on this very tick.
-                        Phase::Raid => {
+                        Phase::Rush => {
                             ended(1, st);
                             started[s][2] = t;
                         }
@@ -98,7 +96,7 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         st.deaths += 1;
         for s in &p.sides {
             if s.dead {
-                let k = if s.phase == Phase::Raid {
+                let k = if s.phase == Phase::Rush {
                     2
                 } else {
                     usize::from(s.stage)
@@ -123,7 +121,7 @@ fn main() {
         "Lil Dudes Go Brr balance (rules v{RULES_VERSION}): {n} Warlord-vs-Warlord matches per layout"
     );
     println!(
-        "{:<12} {:>6} {:>13} {:>5} {:>6} {:>6} {:>7} {:>7} {:>7} {:>6} {:>6} {:>6} {:>5}",
+        "{:<12} {:>6} {:>13} {:>5} {:>6} {:>6} {:>7} {:>7} {:>7} {:>6} {:>6} {:>6}",
         "layout",
         "death",
         "by stage",
@@ -132,11 +130,10 @@ fn main() {
         "len s",
         "F1 s",
         "F2 s",
-        "raid s",
+        "rush s",
         "gold",
-        "raid%",
+        "rush%",
         "pay%S",
-        "gotch"
     );
     let mut all = Stats::default();
     for (id, layout) in LAYOUTS.iter().enumerate() {
@@ -163,7 +160,6 @@ fn main() {
         all.gold += st.gold;
         all.raid_gold += st.raid_gold;
         all.moved += st.moved;
-        all.gotchas += st.gotchas;
         all.peak_cohorts = all.peak_cohorts.max(st.peak_cohorts);
         all.peak_enemies = all.peak_enemies.max(st.peak_enemies);
         all.max_count = all.max_count.max(st.max_count);
@@ -179,7 +175,7 @@ fn main() {
         let pct = |x: u64| 100.0 * x as f64 / n;
         let avg = |k: usize| secs(st.stage_ticks[k] as f64 / st.stage_n[k].max(1) as f64);
         println!(
-            "{:<12} {:>5.1}% {:>4}/{:>3}/{:>3} {:>4.1}% {:>5.1}% {:>6.1} {:>7.1} {:>7.1} {:>7.1} {:>6.0} {:>5.1}% {:>5.1}% {:>5.2}",
+            "{:<12} {:>5.1}% {:>4}/{:>3}/{:>3} {:>4.1}% {:>5.1}% {:>6.1} {:>7.1} {:>7.1} {:>7.1} {:>6.0} {:>5.1}% {:>5.1}%",
             name,
             pct(st.deaths),
             st.deaths_by_stage[0],
@@ -194,7 +190,6 @@ fn main() {
             st.gold as f64 / n / 2.0,
             100.0 * st.raid_gold as f64 / st.gold.max(1) as f64,
             100.0 * st.moved as f64 / (n * 1_000_000.0),
-            st.gotchas as f64 / n,
         );
     }
 }

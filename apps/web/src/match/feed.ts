@@ -24,7 +24,7 @@ type ViewFn = (view: MatchView, priv: PrivateView) => void;
 export class MatchFeed {
   prev: MatchView | null = null;
   cur: MatchView | null = null;
-  priv: PrivateView = { myRig: null, myPeek: null };
+  priv: PrivateView = { myPeek: null };
   curAt = 0;
   /** Previous snapshot of MY lane, by id/slot, for interpolation. */
   prevCohorts = new Map<number, CohortView>();

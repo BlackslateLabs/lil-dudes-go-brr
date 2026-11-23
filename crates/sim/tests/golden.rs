@@ -8,14 +8,13 @@ use lil_dudes_sim::*;
 
 const STAKE: u64 = 100_000_000; // 0.1 SOL
 
-/// [volleys, gate passes, reveals, gotchas, crate hits, waves, clashes, tower hits, loots]
-fn summary(events: &[Event]) -> [usize; 9] {
+/// [volleys, gate passes, reveals, crate hits, waves, clashes, tower hits, loots]
+fn summary(events: &[Event]) -> [usize; 8] {
     let count = |f: fn(&Event) -> bool| events.iter().filter(|e| f(e)).count();
     [
         count(|e| matches!(e, Event::Volley { .. })),
         count(|e| matches!(e, Event::Gate { .. })),
         count(|e| matches!(e, Event::Gate { reveal: true, .. })),
-        count(|e| matches!(e, Event::Gotcha { .. })),
         count(|e| matches!(e, Event::CrateHit { .. })),
         count(|e| matches!(e, Event::Wave { .. })),
         count(|e| matches!(e, Event::Clash { .. })),
@@ -29,7 +28,7 @@ type Golden = (
     [u32; 2],
     [bool; 2],
     Option<MatchResult>,
-    [usize; 9],
+    [usize; 8],
     u64,
 );
 
@@ -48,10 +47,17 @@ fn play(seed: u64) -> Golden {
 
 #[test]
 fn golden_bot_vs_bot_match_per_layout() {
-    assert_eq!(RULES_VERSION, 4);
+    assert_eq!(RULES_VERSION, 5);
     let got: Vec<Golden> = (0..LAYOUTS.len() as u64).map(play).collect();
-    for (seed, g) in got.iter().enumerate() {
-        println!("    // {} (seed {seed})\n    {g:?},", LAYOUTS[seed].name);
+    // Paste-ready for GOLDEN (tools/balance/regen_golden.py does it).
+    for (seed, (tick, gold, dead, res, sum, digest)) in got.iter().enumerate() {
+        let res = res.map_or("None".to_string(), |r| {
+            format!("r({:?}, {}, {}, {})", r.winner, r.ko, r.moved, r.fee)
+        });
+        println!(
+            "GOLDEN    // {}\nGOLDEN    ({tick}, {gold:?}, {dead:?}, {res}, {sum:?}, {digest}),",
+            LAYOUTS[seed].name
+        );
     }
     assert_eq!(got, GOLDEN);
 }
@@ -66,59 +72,59 @@ const fn r(winner: Option<u8>, ko: bool, moved: u64, fee: u64) -> Option<MatchRe
 }
 
 /// (final tick, gold, dead, result, summary, state digest), seed = layout id.
-const GOLDEN: [Golden; LAYOUT_COUNT] = [
+const GOLDEN: &[Golden] = &[
     // Twin Lanes
     (
-        2166,
-        [1480, 1200],
+        1443,
+        [1754, 1720],
         [false, false],
-        r(Some(0), false, 10_447_761, 522_388),
-        [387, 840, 17, 2, 1, 37, 98, 218, 70],
-        7_106_933_334_178_100_052,
+        r(Some(0), false, 1950000, 97500),
+        [315, 704, 16, 2, 41, 52, 210, 16],
+        17288639818947961328,
     ),
     // Conveyor
     (
-        1334,
-        [1604, 862],
+        971,
+        [5539, 5539],
         [false, false],
-        r(Some(0), false, 30_089_213, 1_504_460),
-        [230, 370, 14, 2, 8, 21, 52, 83, 68],
-        16_562_098_528_692_609_389,
+        r(None, false, 0, 0),
+        [204, 528, 14, 0, 22, 52, 78, 16],
+        11800486111704161906,
     ),
     // Long Shot
     (
-        1374,
-        [1928, 1964],
+        843,
+        [2819, 2819],
         [false, false],
-        r(Some(1), false, 924_974, 46_248),
-        [272, 711, 12, 0, 0, 26, 82, 116, 70],
-        7_450_491_836_997_345_070,
+        r(None, false, 0, 0),
+        [172, 478, 14, 14, 22, 24, 84, 16],
+        8899086096025946973,
     ),
     // Funnel
     (
-        1614,
-        [1586, 1672],
+        2715,
+        [2222, 2294],
         [false, false],
-        r(Some(1), false, 2_639_656, 131_982),
-        [317, 559, 10, 2, 0, 29, 101, 127, 62],
-        5_836_746_022_108_656_878,
+        r(Some(1), false, 3180000, 159000),
+        [634, 1217, 15, 3, 110, 149, 493, 16],
+        5888151537272896329,
     ),
     // Zigzag
     (
-        1510,
-        [1850, 1850],
+        1835,
+        [3921, 3007],
         [false, false],
-        r(None, false, 0, 0),
-        [262, 391, 9, 2, 0, 19, 65, 113, 70],
-        9_134_737_228_476_272_519,
+        r(Some(0), false, 26380000, 1319000),
+        [374, 378, 13, 19, 64, 155, 78, 16],
+        9487727611631195026,
     ),
     // Stairway
     (
-        1638,
-        [1220, 1220],
-        [false, false],
-        r(None, false, 0, 0),
-        [285, 574, 12, 1, 0, 24, 114, 92, 70],
-        18_049_810_760_015_613_189,
+        1076,
+        [461, 461],
+        [true, false],
+        r(Some(1), true, 100000000, 5000000),
+        [230, 397, 14, 0, 26, 46, 124, 0],
+        3023198860960999536,
     ),
 ];

@@ -14,7 +14,7 @@ import { Buffer } from 'buffer';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import idl from '../idl/lil_dudes.json' with { type: 'json' };
-import { decodePublic, PUBLIC_LEN, type PublicState } from '../codec';
+import { decodePublic, type PublicState } from '../codec';
 import { opFromByte } from '../layout';
 import type { GateOp, PrivateView } from '../types';
 
@@ -194,12 +194,11 @@ export const ixs = {
     new DataView(b.buffer).setInt16(0, x, true);
     return ix('set_aim', b, { player, game: a.game });
   },
-  /** Rig from my own lane: gate `slot` of MY current stage, trapped in the opponent's copy of
-   *  that stage (rules v4; the IDL still calls the arg `cell`). */
-  plantRig(a: MatchAccounts, player: PublicKey, side: 0 | 1, slot: number) {
-    return ix('plant_rig', Uint8Array.of(slot), { player, game: a.game, secrets: a.secrets, peek: a.peeks[side] });
+  /** Call my Champion (rules v5): public, refused unless my meter is full in my Fight. */
+  champion(a: MatchAccounts, player: PublicKey) {
+    return ix('champion', new Uint8Array(), { player, game: a.game, secrets: a.secrets });
   },
-  /** Peek my gate `slot` of my current stage. */
+  /** Scout my gate `slot` of my current stage (the IDL calls the arg `cell`). */
   peekCell(a: MatchAccounts, player: PublicKey, side: 0 | 1, slot: number) {
     return ix('peek_cell', Uint8Array.of(slot), { player, game: a.game, secrets: a.secrets, peek: a.peeks[side] });
   },
@@ -210,22 +209,22 @@ export const ixs = {
 
 // --- account decoders (byte offsets of state.rs, after the 8-byte discriminator) ----------------
 
-// Rules v4 Match (programs/lil_dudes/src/state.rs): the same fields in the same order; the
-// published history shrinks 24 → 16 bytes (2 stages) and the codec state grows 1,470 → 1,474,
-// and `_pad` grows 2 → 6, so the account keeps its size: 1,784 bytes + 8. Offsets here are in
-// the account data (they include the 8-byte discriminator).
-/** Codec history length (verify.ts HISTORY_LEN): 2 stages × 2 sides × 4 bytes. */
-const HISTORY_BYTES = 16;
+// Rules v5 Match (programs/lil_dudes/src/state.rs): the same offsets as v4. The 8 GOTCHA bytes
+// are reserved (zero), the published history shrinks 16 → 8 bytes (padding keeps `state` at the
+// same offset), the codec state grows 1,474 → 1,484 and 6 tail bytes keep the struct a multiple
+// of 8: 1,800 bytes + 8. Offsets here are in the account data (they include the discriminator).
+/** Codec history length (verify.ts HISTORY_LEN): 2 stages × 2 sides × [peek slot, peek op]. */
+const HISTORY_BYTES = 8;
 const OFF = {
   id: 8, stake: 16, picks: 24, createdAt: 40, joinedAt: 48, readySlot: 56, seedReqSlot: 64, startSlot: 72, seed: 80,
-  players: 88, burners: 152, treasury: 216, names: 248, status: 280, flags: 281, gotcha: 288, history: 296, state: 318,
+  players: 88, burners: 152, treasury: 216, names: 248, status: 280, flags: 281, history: 296, state: 318,
 } as const;
 /** Offset of the codec public state in the Match account data. */
 export const STATE_OFFSET = OFF.state;
-/** 1,792 bytes (the getProgramAccounts size filter). */
-export const MATCH_LEN = STATE_OFFSET + PUBLIC_LEN;
-/** Secrets account data: 8 + id, VRF output, both salts, the codec secret part (40 B) at 112. */
-export const SECRETS_LEN = 152;
+/** 1,808 bytes (the getProgramAccounts size filter): the state plus 6 tail bytes. */
+export const MATCH_LEN = 8 + 1_800;
+/** Secrets account data: 8 + id, VRF output, both salts, the codec secret part (32 B) at 112. */
+export const SECRETS_LEN = 144;
 
 export interface MatchHeader {
   id: bigint;
@@ -243,8 +242,6 @@ export interface MatchHeader {
   names: [string, string];
   status: number;
   flags: number;
-  /** Last rig sprung in each side's lane: the tick it fired, the gate slot, who planted it. */
-  gotcha: [{ tick: number; slot: number; riggedBy: number } | null, { tick: number; slot: number; riggedBy: number } | null];
   /** Published at finish: codec history bytes (see verify.ts decodeHistory). */
   history: Uint8Array;
 }
@@ -260,11 +257,6 @@ export function decodeMatch(data: Uint8Array): MatchAccount {
   const u64 = (at: number) => dv.getBigUint64(at, true);
   const key = (at: number) => new PublicKey(data.subarray(at, at + 32));
   const name = (at: number) => dec.decode(data.subarray(at, at + 16)).replace(/\0+$/, '');
-  const gotcha = (s: number) => {
-    const at = OFF.gotcha + 4 * s;
-    const tick = dv.getUint16(at, true);
-    return tick === 0xffff ? null : { tick, slot: data[at + 2]!, riggedBy: data[at + 3]! };
-  };
   return {
     header: {
       id: u64(OFF.id),
@@ -281,31 +273,28 @@ export function decodeMatch(data: Uint8Array): MatchAccount {
       names: [name(OFF.names), name(OFF.names + 16)],
       status: data[OFF.status]!,
       flags: data[OFF.flags]!,
-      gotcha: [gotcha(0), gotcha(1)],
       history: data.slice(OFF.history, OFF.history + HISTORY_BYTES),
     },
     state: decodePublic(data, OFF.state),
   };
 }
 
-/** One player's private Peek account: the rig they planted and the peek they made,
- *  each tagged with the stage it belongs to (an entry from an earlier stage is stale). */
+/** One player's private Peek account: the Scout they made, tagged with the stage it belongs to
+ *  (an entry from an earlier stage is stale). */
 export interface PeekAccount {
   side: number;
   /** The owner's stage when the program last wrote this account (null = never written). */
   stage: number | null;
-  /** The opponent gate rigged in `stage`: the victim's stage (v4: = `stage`) and slot. */
-  rig: { stage: number; slot: number } | null;
-  /** The owner's peek: in its stage `stage`, gate `slot`, true value `op` (`div` = rigged). */
+  /** The owner's Scout: in its stage `stage`, gate `slot`, true value `op`. */
   peek: { stage: number; slot: number; op: GateOp } | null;
 }
 
 export const PEEK_LEN = 8 + 48;
 const NONE = 255;
 
-/** Peek account (unchanged in v4): after the discriminator, `id u64, owner Pubkey, side u8`, then `stage`
- *  (255 = never written), `rig_stage` (255 = none), `rig_slot`, `peek_stage` (255 = none),
- *  `peek_slot`, `peek_op` (k = ×k, 0x80 | k = ÷k), `_pad`. */
+/** Peek account (same layout since v2): after the discriminator, `id u64, owner Pubkey, side u8`,
+ *  then `stage` (255 = never written), 2 reserved bytes (the v4 rig), `peek_stage` (255 = none),
+ *  `peek_slot`, `peek_op` (the op byte), `_pad`. */
 export function decodePeek(data: Uint8Array): PeekAccount {
   if (data.length < PEEK_LEN) throw new Error(`Peek account: ${data.length} bytes`);
   const b = (i: number) => data[8 + i]!;
@@ -314,20 +303,16 @@ export function decodePeek(data: Uint8Array): PeekAccount {
   return {
     side: b(40),
     stage: stage === NONE ? null : stage,
-    rig: stage === NONE || b(42) === NONE ? null : { stage: b(42), slot: b(43) },
     peek: b(44) === NONE || !op ? null : { stage: b(44), slot: b(45), op },
   };
 }
 
-/** The PrivateView for a player now in their stage `myStage`: only this stage's rig and peek.
- *  The program writes the Peek only on a rig, a peek or finish (`advance` can't), so after a
- *  stage change it stays stale until then: `stage` != my stage = nothing this stage yet. */
+/** The PrivateView for a player now in their stage `myStage`: only this stage's Scout.
+ *  The program writes the Peek only on a Scout or at finish (`advance` can't), so after a stage
+ *  change it stays stale until then: `stage` != my stage = nothing this stage yet. */
 export function peekPrivateView(p: PeekAccount | null, myStage: number): PrivateView {
-  if (!p || p.stage !== myStage) return { myRig: null, myPeek: null };
-  return {
-    myRig: p.rig ? { ...p.rig } : null,
-    myPeek: p.peek && p.peek.stage === myStage ? { stage: p.peek.stage, slot: p.peek.slot, op: p.peek.op } : null,
-  };
+  if (!p || p.stage !== myStage) return { myPeek: null };
+  return { myPeek: p.peek && p.peek.stage === myStage ? { stage: p.peek.stage, slot: p.peek.slot, op: p.peek.op } : null };
 }
 
 // --- TEE auth + sending ------------------------------------------------------------------------

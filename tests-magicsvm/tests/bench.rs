@@ -62,6 +62,8 @@ fn crowded(seed: u64, dx: i16) -> MatchState {
                 y: 6_800 - (i as i16) * 20,
                 age: 50,
                 last_row: rows,
+                // Rules v5: the worst case has Champions in flight too.
+                champion: i % 5 == 0,
             };
             id += 1;
         }
@@ -74,6 +76,7 @@ fn crowded(seed: u64, dx: i16) -> MatchState {
                 x: 1_000 + dx,
                 y: 5_800 + (j as i16) * 60,
                 tower: 0,
+                giant: j % 4 == 0,
             };
             id += 1;
         }
