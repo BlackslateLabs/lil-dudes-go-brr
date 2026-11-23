@@ -353,6 +353,19 @@ impl Game {
         )
     }
 
+    /// `set_fire` (rules v6): press or let go of the trigger.
+    pub fn set_fire_ix(&self, player: Address, on: bool) -> Instruction {
+        self.idl.ix(
+            "set_fire",
+            &[u8::from(on)],
+            &[
+                ("player", player),
+                ("game", self.game),
+                ("secrets", self.secrets),
+            ],
+        )
+    }
+
     /// `champion` (rules v5): public, no Peek.
     pub fn champion_ix(&self, player: Address) -> Instruction {
         self.idl.ix(

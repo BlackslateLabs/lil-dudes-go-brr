@@ -510,6 +510,31 @@ pub fn handle_champion(ctx: Context<PlayerInput>) -> Result<()> {
     Ok(())
 }
 
+/// Rules v6 trigger: the cannon fires only while it is held. Catch up (≤ PLAYER_CATCH_UP
+/// ticks), apply the input with the sim's own rule, store. Never refused while playing: letting
+/// go with a full meter in my Fight also calls the Champion (the sim decides; public state).
+pub fn handle_set_fire(ctx: Context<PlayerInput>, on: bool) -> Result<()> {
+    let slot = Clock::get()?.slot;
+    let a = &ctx.accounts;
+    let mut g = a.game.load_mut()?;
+    let mut s = a.secrets.load_mut()?;
+    check_secrets(&g, &s)?;
+    require!(g.status == status::PLAYING, GameError::WrongStatus);
+    let side = side_of(&g, &a.player.key())?;
+    let mut m = load(&g, &s);
+    catch_up(&mut m, &g, slot, PLAYER_CATCH_UP);
+    apply_input(
+        &mut m,
+        side,
+        &SideInput {
+            fire: Some(on),
+            ..SideInput::default()
+        },
+    );
+    store(&m, &mut g, &mut s);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------- finish
 
 #[commit]

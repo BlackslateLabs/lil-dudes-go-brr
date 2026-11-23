@@ -219,6 +219,31 @@ fn champion_follows_the_v5_rules_and_rides_the_next_volley() {
 }
 
 #[test]
+fn the_cannon_fires_only_while_held_and_letting_go_releases_the_champion() {
+    let mut g = Game::new(27);
+    g.to_ready(0, 0);
+    g.to_playing();
+    let a = g.burner(0);
+    run_to_tick(&mut g, PLANT_TICKS + 4 * FIRE_TICKS);
+    let s = g.public(Ephemeral).sides[0];
+    assert!(!s.firing && s.cohort_len == 0, "no trigger, no volleys");
+    g.er(g.set_fire_ix(a.pubkey(), true), &[&a]).unwrap();
+    assert!(g.public(Ephemeral).sides[0].firing);
+    let t = g.public(Ephemeral).tick;
+    run_to_tick(&mut g, t + 2 * FIRE_TICKS + 1);
+    assert!(g.public(Ephemeral).sides[0].cohort_len > 0, "fires while held");
+    // Let go with a full meter: the Champion is called (and fires on the next tick).
+    set_champ_meter(&mut g, 0, CHAMP_TICKS as u8);
+    g.er(g.set_fire_ix(a.pubkey(), false), &[&a]).unwrap();
+    let s = g.public(Ephemeral).sides[0];
+    assert!(!s.firing && s.champ_pending && s.champ_meter == 0);
+    let stranger = Keypair::new();
+    assert!(g
+        .er(g.set_fire_ix(stranger.pubkey(), true), &[&stranger])
+        .is_err());
+}
+
+#[test]
 fn finish_publishes_settles_by_action_and_refuses_a_second_settle() {
     const S: u64 = 100_000_000;
     let mut g = Game::new(21);

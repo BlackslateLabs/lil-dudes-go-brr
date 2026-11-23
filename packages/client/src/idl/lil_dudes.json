@@ -1517,6 +1517,42 @@
       ]
     },
     {
+      "name": "set_fire",
+      "discriminator": [
+        124,
+        81,
+        189,
+        206,
+        67,
+        120,
+        6,
+        199
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "secrets",
+          "docs": [
+            "Needed to step the sim during the catch-up (nothing secret is written to the Match)."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "on",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "settle",
       "discriminator": [
         175,

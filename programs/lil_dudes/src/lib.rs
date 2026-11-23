@@ -109,6 +109,12 @@ pub mod lil_dudes {
         tee::handle_champion(ctx)
     }
 
+    /// Rules v6: press (`on`) or let go of the trigger; letting go with a full meter in my
+    /// Fight releases the Champion.
+    pub fn set_fire(ctx: Context<PlayerInput>, on: bool) -> Result<()> {
+        tee::handle_set_fire(ctx, on)
+    }
+
     // `cell` is a gate slot since rules v3 (name kept so the IDL does not change).
     pub fn peek_cell(ctx: Context<PlayerSecret>, cell: u8) -> Result<()> {
         tee::handle_peek_cell(ctx, cell)
