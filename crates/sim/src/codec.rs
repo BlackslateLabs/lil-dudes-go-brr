@@ -8,7 +8,7 @@
 //! Lossless for every state the rules can reach: ids, tower/crate HP and phase timers fit their
 //! narrower fields (checked at compile time below). Decoding never panics on garbage; it clamps.
 //!
-//! PUBLIC (PUBLIC_LEN = 1,484 bytes)
+//! PUBLIC (PUBLIC_LEN = 1,500 bytes, codec v6)
 //! ```text
 //!   0  u8   CODEC_VERSION
 //!   1  u8   flags: 1 bot side 0 | 2 bot side 1 | 4 tutorial | 8 has result | 16 ko
@@ -19,25 +19,25 @@
 //!  16  u64  moved
 //!  24  u64  fee
 //!  32  u16  next_cohort_id
-//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 725 each:
+//!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 733 each:
 //!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 champion pending | 32 peek used
 //!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
 //!       12 u8 cohort_len | 13 u8 enemy_len
-//!       14 towers 2 × u16 hp | 18 crates 2 × u16 hp
-//!       22 gates 8 × [i16 x, u8 revealed op (0 = face-down)]
-//!       46 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age,
+//!       14 towers 2 × u16 hp | 18 crates 3 × u16 hp
+//!       24 gates 10 × [i16 x, u8 revealed op (0 = face-down)]
+//!       54 cohorts 40 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 age,
 //!                               u8 last_row | 128 champion]
-//!      526 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 1 = giant]
-//!      718 u16 rush_ticks | 720 u8 champ_meter | 721 2 × u16 breach_tick (per fight)
+//!      534 enemies 16 × 12 B: [u16 id, u32 count, i16 x, i16 y, u8 tower, u8 1 = giant]
+//!      726 u16 rush_ticks | 728 u8 champ_meter | 729 2 × u16 breach_tick (per fight)
 //! ```
 //! phase: 0 plant, 1 fight, 2 transit, 3 rush, 4 done. Op byte: `k` = ×k, `0x40 | n` = +n,
 //! `0x80 | k` = ÷k, `0xC0 | n` = −n.
 //!
-//! SECRET (SECRET_LEN = 32 bytes)
+//! SECRET (SECRET_LEN = 36 bytes)
 //! ```text
 //!   0  u64  seed
-//!   8  values 2 stages × 8 slots × op byte
-//!  24  history 2 stages × 2 sides × [peek slot (255 = none), peek op]
+//!   8  values 2 stages × 10 slots × op byte
+//!  28  history 2 stages × 2 sides × [peek slot (255 = none), peek op]
 //! ```
 
 use crate::constants::{
@@ -49,7 +49,7 @@ use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, Secr
 use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Bump when either layout changes (the TS decoder checks byte 0 of the public part).
-pub const CODEC_VERSION: u8 = 5;
+pub const CODEC_VERSION: u8 = 6;
 
 pub const HEADER_LEN: usize = 34;
 pub const GATE_LEN: usize = 3;
@@ -87,11 +87,11 @@ const F_PEEK: u8 = 32;
 const C_CHAMP: u8 = 128;
 
 const _: () = {
-    assert!(SIDE_LEN == 725);
-    assert!(PUBLIC_LEN == 1_484);
+    assert!(SIDE_LEN == 733);
+    assert!(PUBLIC_LEN == 1_500);
     // last_row (≤ ROWS_MAX) never reaches the Champion bit.
     assert!(crate::constants::ROWS_MAX < C_CHAMP as usize);
-    assert!(SECRET_LEN == 32);
+    assert!(SECRET_LEN == 36);
     assert!(HISTORY_LEN == 8);
     // The on-chain commit limit is 10,240 bytes including the account header.
     assert!(PUBLIC_LEN + 64 < 10_240);

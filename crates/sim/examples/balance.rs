@@ -25,6 +25,14 @@ struct Stats {
     stage_ticks: [u64; 3],
     stage_n: [u64; 3],
     peak_cohorts: u64,
+    /// v6 battle metrics, over Fight ticks of both sides: ticks with enemies on the lane, enemy
+    /// units summed, my units summed, clashes and those in the middle half of the lane.
+    fight_ticks: u64,
+    foe_ticks: u64,
+    foe_units: u64,
+    my_units: u64,
+    clashes: u64,
+    mid_clashes: u64,
     peak_enemies: u64,
     max_count: u64,
 }
@@ -53,6 +61,13 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
         for e in ev.as_slice() {
             match *e {
                 Event::Loot { gold, .. } => st.raid_gold += u64::from(gold),
+                Event::Clash { y, .. } => {
+                    st.clashes += 1;
+                    let y = i32::from(y);
+                    if y > LANE_LENGTH / 8 && y < TOWER_Y * 3 / 4 {
+                        st.mid_clashes += 1;
+                    }
+                }
                 Event::Phase { side, stage, phase } => {
                     let s = usize::from(side);
                     let ended = |k: usize, st: &mut Stats| {
@@ -74,6 +89,13 @@ fn play(seed: u64, stake: u64, st: &mut Stats, ev: &mut Events<EVENT_CAP>) {
                 }
                 _ => {}
             }
+        }
+        for s in m.public.sides.iter().filter(|s| s.phase == Phase::Fight) {
+            st.fight_ticks += 1;
+            let foes: u64 = s.enemies().iter().map(|e| u64::from(e.count)).sum();
+            st.foe_units += foes;
+            st.foe_ticks += u64::from(foes > 0);
+            st.my_units += s.cohorts().iter().map(|c| u64::from(c.count)).sum::<u64>();
         }
         for s in &m.public.sides {
             st.peak_cohorts = st.peak_cohorts.max(u64::from(s.cohort_len));
@@ -161,6 +183,12 @@ fn main() {
         all.raid_gold += st.raid_gold;
         all.moved += st.moved;
         all.peak_cohorts = all.peak_cohorts.max(st.peak_cohorts);
+        all.fight_ticks += st.fight_ticks;
+        all.foe_ticks += st.foe_ticks;
+        all.foe_units += st.foe_units;
+        all.my_units += st.my_units;
+        all.clashes += st.clashes;
+        all.mid_clashes += st.mid_clashes;
         all.peak_enemies = all.peak_enemies.max(st.peak_enemies);
         all.max_count = all.max_count.max(st.max_count);
     }
@@ -174,6 +202,15 @@ fn main() {
         let n = st.n.max(1) as f64;
         let pct = |x: u64| 100.0 * x as f64 / n;
         let avg = |k: usize| secs(st.stage_ticks[k] as f64 / st.stage_n[k].max(1) as f64);
+        let ft = st.fight_ticks.max(1) as f64;
+        println!(
+            "{:<12} battle: enemies on lane {:>3.0}% of fight time, avg {:>5.1} enemy vs {:>5.0} mine, clashes mid-lane {:>3.0}%",
+            "",
+            100.0 * st.foe_ticks as f64 / ft,
+            st.foe_units as f64 / ft,
+            st.my_units as f64 / ft,
+            100.0 * st.mid_clashes as f64 / st.clashes.max(1) as f64,
+        );
         println!(
             "{:<12} {:>5.1}% {:>4}/{:>3}/{:>3} {:>4.1}% {:>5.1}% {:>6.1} {:>7.1} {:>7.1} {:>7.1} {:>6.0} {:>5.1}% {:>5.1}%",
             name,

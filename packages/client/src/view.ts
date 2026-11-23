@@ -85,7 +85,8 @@ export function laneView(l: LaneState, layout: number, name: string, isBot: bool
   const gates = st.gates.map((def, slot): GateView => {
     const g = l.gates[slot];
     const crate = def.big ? crateOfGate(st, slot) : -1;
-    const revealed = def.timing ? null : (g?.revealed ?? null);
+    const pub = def.timing || def.hazard || def.turbo;
+    const revealed = pub ? null : (g?.revealed ?? null);
     return {
       slot,
       x: g?.x ?? def.x,
@@ -93,9 +94,11 @@ export function laneView(l: LaneState, layout: number, name: string, isBot: bool
       width: def.width,
       big: def.big,
       timing: def.timing,
+      hazard: def.hazard,
+      turbo: def.turbo,
       moving: gateMoving(def),
       revealed,
-      value: def.timing ? { kind: 'mul', value: timing } : revealed,
+      value: def.timing ? { kind: 'mul', value: timing } : def.hazard ? { kind: 'mul', value: 0 } : def.turbo ? { kind: 'mul', value: 1 } : revealed,
       locked: crate >= 0 && (l.crates[crate] ?? 0) > 0,
     };
   });

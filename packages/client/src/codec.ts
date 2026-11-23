@@ -7,7 +7,7 @@ import { matchView, resultOf, sideOf, type CohortRecord, type LaneState, type Ra
 import type { MatchResult, MatchStatus, MatchView } from './types';
 
 /** Must equal crates/sim CODEC_VERSION (byte 0 of the public part). */
-export const CODEC_VERSION = 5;
+export const CODEC_VERSION = 6;
 export const HEADER_LEN = 34;
 export const GATE_LEN = 3;
 export const UNIT_LEN = 12;
@@ -20,9 +20,9 @@ const SIDE_ENEMIES = SIDE_COHORTS + C.COHORT_CAP * UNIT_LEN;
 const SIDE_RUSH = SIDE_ENEMIES + C.ENEMY_CAP * UNIT_LEN;
 const SIDE_CHAMP = SIDE_RUSH + 2;
 const SIDE_BREACH = SIDE_CHAMP + 1;
-/** 725 bytes per side. */
+/** 733 bytes per side. */
 export const SIDE_LEN = SIDE_BREACH + C.STAGES * 2;
-/** 1,484 bytes. */
+/** 1,500 bytes. */
 export const PUBLIC_LEN = HEADER_LEN + 2 * SIDE_LEN;
 /** Offset of a side's aim inside its record (the program writes it directly). */
 export const SIDE_AIM = 4;

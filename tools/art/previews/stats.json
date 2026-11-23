@@ -1,0 +1,71 @@
+{
+ "dudes": {
+  "_bytes": 99456,
+  "champ": {
+   "depth": 1.136,
+   "height": 1.6,
+   "min_y": 0.0,
+   "tris": 1528,
+   "width": 1.396
+  },
+  "dude": {
+   "depth": 0.539,
+   "height": 0.9,
+   "min_y": 0.0,
+   "tris": 472,
+   "width": 0.751
+  },
+  "giant": {
+   "depth": 1.273,
+   "height": 1.5,
+   "min_y": 0.0,
+   "tris": 812,
+   "width": 1.82
+  },
+  "shadow": {
+   "depth": 0.7,
+   "height": 0.0,
+   "min_y": 0.01,
+   "tris": 16,
+   "width": 0.7
+  },
+  "troop": {
+   "depth": 0.502,
+   "height": 0.9,
+   "min_y": 0.0,
+   "tris": 522,
+   "width": 0.734
+  }
+ },
+ "gates": {
+  "_bytes": 64076,
+  "bar": {
+   "depth": 0.5,
+   "height": 0.12,
+   "min_y": 0.0,
+   "tris": 216,
+   "width": 1.0
+  },
+  "lock": {
+   "depth": 0.244,
+   "height": 0.76,
+   "min_y": 0.0,
+   "tris": 284,
+   "width": 0.5
+  },
+  "pillar": {
+   "depth": 0.48,
+   "height": 2.2,
+   "min_y": 0.0,
+   "tris": 1340,
+   "width": 0.48
+  },
+  "ring": {
+   "depth": 0.19,
+   "height": 1.275,
+   "min_y": 0.0,
+   "tris": 732,
+   "width": 1.25
+  }
+ }
+}

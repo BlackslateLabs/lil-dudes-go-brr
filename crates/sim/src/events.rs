@@ -61,7 +61,16 @@ pub enum Event {
         hp: u32,
         gold: u32,
     },
-    /// Tower `tower` fell; `gold` = TOWER_BONUS (SPEC §5).
+    /// v6: tower `tower`'s turret hit cohort `cohort_id` at (`x`, `y`) and `killed` dudes.
+    Shot {
+        side: u8,
+        tower: u8,
+        cohort_id: u32,
+        x: i16,
+        y: i16,
+        killed: u32,
+    },
+    /// Tower `tower` fell (v6: its points came with the hits; `gold` is 0).
     TowerDestroyed { side: u8, tower: u8, gold: u32 },
     /// A Rush cohort of `units` dudes reached the town hall for `gold` (SPEC_V5 §2).
     Loot {

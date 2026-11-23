@@ -1,17 +1,20 @@
-//! The level pool (SPEC §9, re-tuned for SPEC_V5 §3b). A layout is 2 stages: Fight 1 (one
+//! The level pool (SPEC §9, SPEC_V5 §3b, the v6 feel pass). A layout is 2 stages: Fight 1 (one
 //! tower) and Fight 2 (two towers, the town hall behind them, rushed on the same gates once they
-//! fall). Each stage lists its towers, gate rows, gates and crates. Both players get identical
-//! copies; the seed picks the layout (`layout_for(seed)`, public once seeded).
+//! fall). Each stage lists its towers, rows, gates and crates. Both players get identical copies;
+//! the seed picks the layout (`layout_for(seed)`, public once seeded).
 //!
-//! Gate slots: a stage's gates in list order (sorted by row, then x). Scout (peek) names a slot.
-//! A crate sits just below the big gate it locks and covers that gate's span; locked gates never
-//! move. Design rules (SPEC §9, SPEC_V5 §3b): 4 rows, the first ~1,400 from the cannon, rows
-//! ~1,300 apart, the last at 5,300–6,500 (gates in the first half); sparse rows with open lane
-//! between (at least `MIN_GAP` between gates of a row, more than the two GATE_GRACE edges, and
-//! at most two thirds of the lane covered, edges included); every gate inside the narrower
-//! `GATE_BAND`; 3–5 hidden gates and exactly one timing gate per stage; at least one sliding
-//! gate and at most one crate-locked big gate per layout; a big gate without a crate sits early
-//! (row 1 or 2) and off-centre; the towers of a fight in different columns.
+//! Slots: a stage's gates in list order (sorted by row, then x). Scout (peek) names a slot. Hidden
+//! slots (normal, big) are dealt from the seed; public slots are the timing gate, sliding hazards
+//! (they wipe a cohort they touch) and turbo pads (they re-launch it). A crate either locks the big
+//! gate just above it, or stands alone in the back half as a wall to chew through.
+//!
+//! Design rules (v6, from the genre's measured chunks): the first gate row at ~1,900, rows
+//! 1,100–1,400 apart, the growth zone (hidden and timing gates) up front and walls / hazards /
+//! turbo pads behind it; sparse rows with open lane between (at least `MIN_GAP`, at most two
+//! thirds of the lane covered, edges included); everything inside `GATE_BAND`; 3–5 hidden gates and
+//! exactly one timing gate per stage; at most 2 specials (wall, hazard, turbo row) per stage;
+//! something moves in every layout; at most one crate-locked big gate per layout; an exposed big
+//! gate sits early (row 1 or 2) and off-centre; the towers of a fight in different columns.
 //! `tests::layouts_follow_the_design_rules` checks all of it, plus the limits the rules rely on.
 
 use crate::constants::{GATE_GRACE, LAYOUT_COUNT, STAGES, TIMING_MAX, TIMING_STEP_TICKS};
@@ -25,6 +28,18 @@ pub enum Slot {
     Big,
     /// Public: ×1 → ×5 by the player's gate clock (`timing_value`). One per stage.
     Timing,
+    /// Public (v6): a sliding sweeper; a cohort crossing its row inside its span is wiped.
+    Hazard,
+    /// Public (v6): a turbo pad; a cohort crossing it is launched again (LAUNCH_SPEED for
+    /// LAUNCH_TICKS).
+    Turbo,
+}
+
+impl Slot {
+    /// Face-down until passed, dealt from the seed, Scout-able.
+    pub fn hidden(self) -> bool {
+        matches!(self, Slot::Normal | Slot::Big)
+    }
 }
 
 /// SPEC_V5 §3: the timing gate's value `t` ticks into the player's Fight (the gate clock, which
@@ -234,20 +249,43 @@ const fn tower(x: i16, hp: u16, wave_base: u16) -> TowerDef {
     TowerDef { x, hp, wave_base }
 }
 
-/// SPEC_V5 §3b: first row ~1,400, gaps ~1,300, the last row at ~5,500.
-const ROWS: [i16; 4] = [1_400, 2_750, 4_100, 5_500];
-const ROWS_LONG: [i16; 4] = [1_400, 2_800, 4_200, 5_600];
+/// A sliding hazard of `width` sweeping `x_min..x_max` (v6).
+const fn hazard(row: u8, x: i16, x_min: i16, x_max: i16, speed: i16, width: i16) -> GateDef {
+    GateDef {
+        slot: Slot::Hazard,
+        width,
+        ..slide(row, x, x_min, x_max, speed)
+    }
+}
+
+/// A turbo pad (v6).
+const fn turbo(row: u8, x: i16) -> GateDef {
+    GateDef {
+        slot: Slot::Turbo,
+        ..gate(row, x)
+    }
+}
+
+/// A free-standing wall in the back half (v6): a crate that locks nothing.
+const fn wall(x: i16, width: i16, y: i16, hp: u16) -> CrateDef {
+    CrateDef { x, width, y, hp }
+}
+
+/// v6: gate rows from ~1,900, ~1,300 apart; the back-half row for specials at 5,600–5,700.
+const ROWS3: [i16; 3] = [1_900, 3_200, 4_500];
+const ROWS4: [i16; 4] = [1_900, 3_200, 4_400, 5_600];
+const ROWS4B: [i16; 4] = [1_900, 3_200, 4_500, 5_700];
 
 /// Tower strength per layout: (Fight 1 HP, Fight 1 wave_base, Fight 2 HP per tower, Fight 2
-/// wave_base). Tuned per layout with `cargo run -p lil-dudes-sim --example balance --release`
-/// so every layout plays about as long and as dangerously as the others.
+/// wave_base). Tuned per layout with the balance runner so every layout plays about as long and
+/// as dangerously as the others.
 const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
-    (716, 14, 354, 6),
-    (533, 26, 1798, 103),
-    (655, 27, 696, 13),
-    (304, 10, 819, 12),
-    (1811, 30, 59, 5),
-    (411, 19, 276, 6),
+    (906, 111, 497, 24),
+    (1565, 335, 1312, 725),
+    (855, 70, 1790, 226),
+    (374, 47, 900, 33),
+    (842, 59, 524, 31),
+    (1108, 1147, 2086, 80),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
@@ -262,187 +300,195 @@ const fn f2(layout: usize, x: i16) -> TowerDef {
 }
 
 pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
-    // 0. Two clean lanes left and right; in the middle the timing ring, then a slider (fight 1)
-    //    or a locked jackpot (fight 2).
+    // 0. Twin choice up front, the timing ring in the middle, turbo rails / a guarded jackpot
+    //    and a sweeper at the back.
     Layout {
-        name: "Twin Lanes",
+        name: "Twin Choice",
         stages: [
             StageDef {
                 towers: &[f1(0, 1_500)],
-                rows: &ROWS,
+                rows: &ROWS4B,
                 gates: &[
                     gate(0, 900),
                     gate(0, 2_100),
                     timing(1, 1_500),
                     slide(2, 1_500, 900, 2_100, 25),
-                    gate(3, 900),
-                    gate(3, 2_100),
+                    turbo(3, 800),
+                    turbo(3, 2_200),
                 ],
-                crates: &[],
+                crates: &[wall(1_500, 1_200, 6_300, 40)],
             },
             StageDef {
                 towers: &[f2(0, 700), f2(0, 2_300)],
-                rows: &ROWS,
+                rows: &ROWS4,
                 gates: &[
-                    gate(0, 900),
-                    gate(0, 2_100),
+                    gate(0, 800),
+                    gate(0, 2_200),
                     timing(1, 1_500),
-                    big(2, 1_500),
-                    gate(3, 900),
-                    gate(3, 2_100),
+                    gate(2, 800),
+                    big(2, 2_100),
+                    hazard(3, 1_500, 700, 2_300, 30, 800),
                 ],
-                crates: &[lock(1_500, 4_100, 25)],
+                crates: &[lock(2_100, 4_400, 30)],
             },
         ],
     },
-    // 1. Almost everything slides: timing over aiming. Fight 2 opens with an exposed big gate.
+    // 1. The jackpot is exposed on the right, with a sweeper patrolling the next row on that side.
+    //    Fight 2: three lanes, then a back wall with a gap in the middle.
     Layout {
-        name: "Conveyor",
+        name: "Sweeper Bait",
         stages: [
             StageDef {
-                towers: &[f1(1, 2_200)],
-                rows: &ROWS,
+                towers: &[f1(1, 1_500)],
+                rows: &ROWS4B,
                 gates: &[
-                    slide(0, 1_200, 600, 2_400, 30),
-                    gate(1, 900),
-                    timing(1, 2_100),
-                    slide(2, 1_500, 600, 2_400, -40),
-                    slide(3, 1_500, 700, 2_300, 35),
+                    gate(0, 900),
+                    big(0, 2_200),
+                    gate(1, 600),
+                    hazard(1, 2_000, 1_600, 2_400, 35, 600),
+                    timing(2, 1_500),
+                    gate(3, 900),
+                    gate(3, 2_100),
                 ],
                 crates: &[],
             },
             StageDef {
                 towers: &[f2(1, 600), f2(1, 2_400)],
-                rows: &ROWS,
+                rows: &ROWS3,
                 gates: &[
-                    gate(0, 900),
+                    gate(0, 600),
                     big(0, 2_150),
-                    slide(1, 800, 600, 1_000, 30),
-                    slide(1, 2_200, 2_000, 2_400, -30),
-                    timing(2, 1_500),
-                    slide(3, 1_500, 700, 2_300, 50),
+                    timing(1, 1_500),
+                    slide(2, 1_500, 1_000, 2_000, 30),
                 ],
-                crates: &[],
+                crates: &[wall(800, 900, 5_400, 35), wall(2_200, 900, 5_400, 35)],
             },
         ],
     },
-    // 2. The gamble: a locked big gate off to the side, away from the safe path.
+    // 2. A ladder up the left edge, turbo at the back. Fight 2: an exposed flank jackpot with a
+    //    sweeper behind it.
     Layout {
-        name: "Long Shot",
+        name: "Ladder",
         stages: [
             StageDef {
                 towers: &[f1(2, 1_000)],
-                rows: &ROWS_LONG,
+                rows: &ROWS4B,
                 gates: &[
-                    gate(0, 900),
-                    big(0, 2_200),
-                    gate(1, 1_300),
-                    timing(2, 1_000),
-                    slide(3, 1_500, 700, 2_300, 30),
+                    gate(0, 700),
+                    gate(0, 2_100),
+                    gate(1, 700),
+                    timing(1, 2_100),
+                    slide(2, 1_500, 1_000, 2_300, 30),
+                    turbo(3, 700),
                 ],
-                crates: &[lock(2_200, 1_400, 20)],
+                crates: &[],
             },
             StageDef {
-                towers: &[f2(2, 500), f2(2, 2_000)],
-                rows: &ROWS_LONG,
+                towers: &[f2(2, 700), f2(2, 2_200)],
+                rows: &ROWS4,
+                gates: &[
+                    big(0, 800),
+                    gate(0, 2_200),
+                    timing(1, 1_500),
+                    gate(2, 1_000),
+                    gate(2, 2_000),
+                    hazard(3, 800, 600, 1_400, 25, 600),
+                ],
+                crates: &[],
+            },
+        ],
+    },
+    // 3. Three lanes and a centre gate, a wall at the back. Fight 2: a door row of three narrow
+    //    gates after a sliding prize.
+    Layout {
+        name: "Three Lanes",
+        stages: [
+            StageDef {
+                towers: &[f1(3, 2_300)],
+                rows: &ROWS3,
+                gates: &[
+                    gate(0, 600),
+                    gate(0, 2_400),
+                    gate(1, 1_500),
+                    timing(2, 1_500),
+                ],
+                crates: &[wall(1_500, 1_000, 5_800, 30)],
+            },
+            StageDef {
+                towers: &[f2(3, 600), f2(3, 2_400)],
+                rows: &ROWS3,
                 gates: &[
                     gate(0, 1_500),
-                    gate(1, 900),
-                    gate(1, 2_100),
-                    timing(2, 2_000),
-                    slide(3, 1_000, 600, 1_800, 35),
+                    timing(1, 900),
+                    slide(1, 2_150, 1_900, 2_400, 20),
+                    narrow(2, 700, 400),
+                    narrow(2, 1_500, 400),
+                    narrow(2, 2_300, 400),
                 ],
                 crates: &[],
             },
         ],
     },
-    // 3. Everything funnels through the middle; the towers sit out on the flanks.
+    // 4. A calm centre spine with walls on both flanks. Fight 2: twin gates, a guarded jackpot and
+    //    a sweeper across the middle.
     Layout {
-        name: "Funnel",
+        name: "Spine",
         stages: [
             StageDef {
-                towers: &[f1(3, 2_500)],
-                rows: &ROWS,
+                towers: &[f1(4, 1_500)],
+                rows: &ROWS3,
                 gates: &[
-                    narrow(0, 1_500, 700),
-                    narrow(1, 1_050, 500),
-                    narrow(1, 1_950, 500),
-                    timing(2, 1_500),
-                    big(3, 1_500),
+                    gate(0, 1_500),
+                    timing(1, 1_500),
+                    gate(2, 900),
+                    gate(2, 2_100),
                 ],
-                crates: &[lock(1_500, 5_500, 25)],
+                crates: &[wall(700, 800, 6_300, 30), wall(2_300, 800, 6_300, 30)],
             },
             StageDef {
-                towers: &[f2(3, 500), f2(3, 2_500)],
-                rows: &ROWS,
-                gates: &[
-                    narrow(0, 1_050, 500),
-                    narrow(0, 1_950, 500),
-                    slide(1, 1_500, 900, 2_100, 20),
-                    narrow(2, 1_500, 700),
-                    timing(3, 1_500),
-                ],
-                crates: &[],
-            },
-        ],
-    },
-    // 4. Rows alternate sides: no straight line through, pick which rows to take.
-    Layout {
-        name: "Zigzag",
-        stages: [
-            StageDef {
-                towers: &[f1(4, 500)],
-                rows: &ROWS,
+                towers: &[f2(4, 1_000), f2(4, 2_300)],
+                rows: &ROWS4,
                 gates: &[
                     gate(0, 900),
-                    big(1, 900),
-                    gate(1, 2_100),
-                    timing(2, 900),
-                    slide(3, 1_500, 700, 2_300, 30),
-                ],
-                crates: &[],
-            },
-            StageDef {
-                towers: &[f2(4, 1_400), f2(4, 2_600)],
-                rows: &ROWS,
-                gates: &[
                     gate(0, 2_100),
-                    gate(1, 900),
-                    big(1, 2_100),
-                    timing(2, 2_100),
-                    gate(3, 900),
+                    timing(1, 1_500),
+                    gate(2, 800),
+                    big(2, 2_100),
+                    hazard(3, 1_500, 900, 2_100, 35, 600),
                 ],
-                crates: &[lock(2_100, 2_750, 30)],
+                crates: &[lock(2_100, 4_400, 30)],
             },
         ],
     },
-    // 5. A diagonal staircase of single gates (the timing ring beside it): chase it across.
+    // 5. A flank jackpot and a big wall to break. Fight 2: the jackpot comes early beside the
+    //    timing ring, then turbo rails into the towers.
     Layout {
-        name: "Stairway",
+        name: "Bonus Burst",
         stages: [
             StageDef {
-                towers: &[f1(5, 2_400)],
-                rows: &ROWS_LONG,
+                towers: &[f1(5, 1_500)],
+                rows: &ROWS3,
                 gates: &[
                     gate(0, 800),
-                    gate(1, 1_100),
-                    timing(1, 2_200),
-                    gate(2, 1_800),
-                    slide(3, 2_100, 1_700, 2_400, 25),
+                    big(0, 2_200),
+                    timing(1, 1_500),
+                    slide(2, 1_500, 900, 2_100, 30),
                 ],
-                crates: &[],
+                crates: &[wall(1_500, 1_600, 5_600, 40)],
             },
             StageDef {
-                towers: &[f2(5, 600), f2(5, 1_900)],
-                rows: &ROWS_LONG,
+                towers: &[f2(5, 800), f2(5, 2_200)],
+                rows: &ROWS4,
                 gates: &[
+                    gate(0, 800),
                     gate(0, 2_200),
-                    timing(1, 700),
-                    gate(1, 1_700),
-                    big(2, 1_200),
-                    slide(3, 800, 600, 1_400, 25),
+                    timing(1, 800),
+                    big(1, 2_200),
+                    slide(2, 1_500, 1_000, 2_000, 40),
+                    turbo(3, 1_000),
+                    turbo(3, 2_000),
                 ],
-                crates: &[lock(1_200, 4_200, 30)],
+                crates: &[],
             },
         ],
     },
@@ -472,7 +518,7 @@ mod tests {
         let mut names = std::collections::HashSet::new();
         for (id, l) in LAYOUTS.iter().enumerate() {
             assert!(names.insert(l.name), "duplicate name {}", l.name);
-            let (mut sliding, mut locked) = (0, 0);
+            let (mut moving, mut locked) = (0, 0);
             for (s, st) in l.stages.iter().enumerate() {
                 let ctx = format!("layout {id} ({}) stage {s}", l.name);
                 // Towers: 1 in Fight 1, 2 in Fight 2; different columns.
@@ -484,30 +530,55 @@ mod tests {
                 if let [a, b] = st.towers {
                     assert!((a.x - b.x).abs() >= 1_000, "{ctx}: towers too close");
                 }
-                // SPEC_V5 §3b rows: 4, the first ~1,400, ~1,300 apart, the last at 5,300–6,500
-                // (the gates in the first half of the lane).
-                assert_eq!(st.rows.len(), ROWS_MAX, "{ctx}");
-                assert_eq!(st.rows[0], 1_400, "{ctx}");
+                // Rows: 3..=ROWS_MAX, the first ~1,900, 1,100–1,400 apart, all well before the
+                // towers.
+                assert!((3..=ROWS_MAX).contains(&st.rows.len()), "{ctx}");
+                assert!((1_700..=2_100).contains(&st.rows[0]), "{ctx}");
                 for w in st.rows.windows(2) {
-                    assert!((1_250..=1_450).contains(&(w[1] - w[0])), "{ctx}");
+                    assert!((1_100..=1_400).contains(&(w[1] - w[0])), "{ctx}");
                 }
                 let last = i32::from(*st.rows.last().unwrap());
-                assert!((5_300..=6_500).contains(&last), "{ctx}");
-                assert!(last < LANE_LENGTH / 2 + 600, "{ctx}");
-                // Gates: ≤ GATES_MAX, sorted by row then x, 3–5 hidden and exactly one timing
-                // gate, 1–3 per row, inside GATE_BAND, MIN_GAP of open lane between any two of a
-                // row wherever they slide.
+                assert!(last <= TOWER_Y - 1_200, "{ctx}");
+                // Slots: ≤ GATES_MAX, sorted, 3–5 hidden, exactly one timing gate.
                 assert!(st.gates.len() <= GATES_MAX, "{ctx}");
                 let timing = st.gates.iter().filter(|g| g.slot == Slot::Timing).count();
                 assert_eq!(timing, 1, "{ctx}: one timing gate per stage");
-                let hidden = st.gates.len() - timing;
+                let hidden = st.gates.iter().filter(|g| g.slot.hidden()).count();
                 assert!((3..=5).contains(&hidden), "{ctx}: {hidden} hidden gates");
                 for w in st.gates.windows(2) {
                     assert!((w[0].row, w[0].x) < (w[1].row, w[1].x), "{ctx}: slot order");
                 }
+                // Growth zone first: no hidden or timing gate behind a turbo row; turbo pads
+                // and walls sit in the back half.
+                let growth_last = st
+                    .gates
+                    .iter()
+                    .filter(|g| g.slot.hidden() || g.slot == Slot::Timing)
+                    .map(|g| g.row)
+                    .max()
+                    .unwrap();
+                for g in st.gates.iter().filter(|g| g.slot == Slot::Turbo) {
+                    assert!(g.row > growth_last, "{ctx}: turbo pad inside the growth zone");
+                    assert!(!g.moving(), "{ctx}");
+                }
+                // Specials: walls, hazards, turbo rows; at most 2 per stage.
+                let walls = st
+                    .crates
+                    .iter()
+                    .filter(|c| !st.gates.iter().any(|g| g.slot == Slot::Big && g.x == c.x))
+                    .count();
+                let hazards = st.gates.iter().filter(|g| g.slot == Slot::Hazard).count();
+                let turbo_rows = st
+                    .gates
+                    .iter()
+                    .filter(|g| g.slot == Slot::Turbo)
+                    .map(|g| g.row)
+                    .collect::<std::collections::HashSet<_>>()
+                    .len();
+                assert!(walls + hazards + turbo_rows <= 2, "{ctx}: too many specials");
                 for row in 0..st.rows.len() as u8 {
                     let in_row: Vec<_> = st.gates.iter().filter(|g| g.row == row).collect();
-                    assert!((1..=3).contains(&in_row.len()), "{ctx} row {row}");
+                    assert!(in_row.len() <= 3, "{ctx} row {row}");
                     for (i, a) in in_row.iter().enumerate() {
                         for b in &in_row[i + 1..] {
                             let (a, b) = (sweep(a), sweep(b));
@@ -515,8 +586,6 @@ mod tests {
                             assert!(gap >= MIN_GAP, "{ctx} row {row}: gap {gap}");
                         }
                     }
-                    // Open lane: the row leaves at least a third of the lane uncovered, counting
-                    // the GATE_GRACE edges.
                     let covered: i32 = in_row
                         .iter()
                         .map(|g| i32::from(g.width) + 2 * GATE_GRACE)
@@ -534,15 +603,17 @@ mod tests {
                         "{ctx}: gate outside the band ({lo}..{hi})"
                     );
                     assert!(g.width >= 400, "{ctx}");
-                    let want = match g.slot {
-                        Slot::Big => BIG_W,
-                        Slot::Timing => W,
-                        Slot::Normal => g.width,
-                    };
-                    assert_eq!(g.width, want, "{ctx}: big gates are BIG_W, timing gates W");
+                    match g.slot {
+                        Slot::Big => assert_eq!(g.width, BIG_W, "{ctx}"),
+                        Slot::Timing | Slot::Turbo => assert_eq!(g.width, W, "{ctx}"),
+                        Slot::Normal | Slot::Hazard => {}
+                    }
                     if g.moving() {
-                        sliding += 1;
-                        assert!(g.slot == Slot::Normal, "{ctx}: only normal gates slide");
+                        moving += 1;
+                        assert!(
+                            matches!(g.slot, Slot::Normal | Slot::Hazard),
+                            "{ctx}: only normal gates and hazards slide"
+                        );
                         assert!(g.x_min <= g.x && g.x <= g.x_max, "{ctx}");
                         for t in 0..2_000 {
                             let x = g.x_at(t);
@@ -551,7 +622,6 @@ mod tests {
                     } else {
                         assert_eq!((g.x_min, g.x_max), (g.x, g.x), "{ctx}");
                     }
-                    // SPEC_V5 §3b: an exposed big gate sits early and off-centre.
                     let crated = st.crates.iter().any(|c| c.x == g.x);
                     if g.slot == Slot::Big && !crated {
                         assert!(g.row <= 1, "{ctx}: exposed big gate past row 2");
@@ -559,18 +629,25 @@ mod tests {
                         assert!(off >= 500, "{ctx}: exposed big gate centred");
                     }
                 }
-                // Crates: each locks one static big gate, just below its row, and covers its
-                // whole span (both get the same GATE_GRACE edges).
+                // Crates: ≤ CRATES_MAX; a lock sits just below its static big gate and covers
+                // its span; a wall stands in the back half, past the growth zone.
                 assert!(st.crates.len() <= CRATES_MAX, "{ctx}");
                 for c in st.crates {
-                    let g = st
-                        .gates
-                        .iter()
-                        .find(|g| g.x == c.x && g.slot == Slot::Big)
-                        .unwrap_or_else(|| panic!("{ctx}: crate without a big gate"));
-                    assert!(!g.moving() && c.width >= g.width && c.hp > 0, "{ctx}");
-                    assert_eq!(c.y, st.rows[usize::from(g.row)] - CRATE_GAP, "{ctx}");
-                    locked += 1;
+                    assert!(c.hp > 0 && c.width >= 400, "{ctx}");
+                    let (lo, hi) = span(c.x, c.width);
+                    assert!(lo >= GATE_BAND.0 && hi <= GATE_BAND.1, "{ctx}: crate outside");
+                    match st.gates.iter().find(|g| g.x == c.x && g.slot == Slot::Big) {
+                        Some(g) => {
+                            assert!(!g.moving() && c.width >= g.width, "{ctx}");
+                            assert_eq!(c.y, st.rows[usize::from(g.row)] - CRATE_GAP, "{ctx}");
+                            locked += 1;
+                        }
+                        None => {
+                            let growth_y = st.rows[usize::from(growth_last)];
+                            assert!(c.y > growth_y + 500, "{ctx}: wall inside the growth zone");
+                            assert!(i32::from(c.y) < TOWER_Y - 600, "{ctx}: wall at the towers");
+                        }
+                    }
                 }
                 // At most one line (crate or row) crossed per tick, even at launch speed.
                 let mut lines: Vec<i32> = st.rows.iter().map(|&y| i32::from(y)).collect();
@@ -581,11 +658,8 @@ mod tests {
                     assert!(w[1] - w[0] > LAUNCH_SPEED, "{ctx}: lines too close");
                 }
             }
-            assert!(sliding >= 1, "layout {id}: no sliding gate");
-            assert!(
-                locked <= 1,
-                "layout {id}: more than one crate-locked big gate"
-            );
+            assert!(moving >= 1, "layout {id}: nothing moves");
+            assert!(locked <= 1, "layout {id}: more than one crate-locked big gate");
         }
     }
 

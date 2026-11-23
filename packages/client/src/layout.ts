@@ -57,14 +57,18 @@ export function crateOfGate(st: C.StageDef, slot: number): number {
   return st.crates.findIndex((c) => Math.abs(c.x - g.x) * 2 <= g.width && c.y < rowY && rowY - c.y <= 500);
 }
 
-/** Score from the fights alone once the final stage is cleared: every tower's HP of every stage
- *  (1 per point of damage actually dealt) plus TOWER_BONUS per tower (FIRST comes on top). */
+/** Score from the fights alone once the final stage is cleared: TOWER_POINTS per tower of every
+ *  stage (FIRST comes on top). */
 export function fightGold(layout: number): number {
   const l = layoutDef(layout);
   let gold = 0;
-  for (const st of l.stages) for (const t of st.towers) gold += t.hp + C.TOWER_BONUS;
+  for (const st of l.stages) gold += st.towers.length * C.TOWER_POINTS;
   return gold;
 }
+
+/** crates/sim `tower_points`: the points a tower of `max` HP has paid out at `hp` left. */
+export const towerPoints = (max: number, hp: number): number =>
+  max <= 0 ? 0 : Math.floor((Math.max(0, max - hp) * C.TOWER_POINTS) / max);
 
 /** SPEC_V5 §3: the timing gate's value `t` ticks into a Fight (the lane's `phaseTick`; the
  *  Rush keeps counting it): ×1 → ×TIMING_MAX, one step every TIMING_STEP_TICKS. */

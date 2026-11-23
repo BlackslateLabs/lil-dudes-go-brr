@@ -89,7 +89,7 @@ impl Warlord {
         let mut k = 0usize;
         for ((slot, g), def) in (0u8..).zip(side.gates.iter().take(n)).zip(st.gates) {
             // The timing gate is public: nothing to scout.
-            if def.slot == Slot::Timing {
+            if !def.slot.hidden() {
                 continue;
             }
             if let (None, Some(dst)) = (g.revealed, slots.get_mut(k)) {
@@ -214,6 +214,10 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
                     Slot::Big => GUESS_BIG_PM,
                     // SPEC_V5 §3: public, so the bot knows its value on arrival.
                     Slot::Timing => u64::from(timing_value(at)).saturating_mul(1_000),
+                    // v6: a sweeper there on arrival wipes the volley.
+                    Slot::Hazard => 0,
+                    // v6: a turbo pad: a little better than nothing (a faster hit).
+                    Slot::Turbo => 1_100,
                 };
                 score.saturating_mul(guess) / 1_000
             }

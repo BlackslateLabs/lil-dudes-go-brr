@@ -36,6 +36,7 @@
 //!   12 end [winner (-1 draw), ko, moved, fee]
 //!   13 first [side, stage, gold]
 //!   14 rush end [side, dudes still on the lane (not counted)]
+//!   16 shot (v6 turret) [side, tower, cohort id, x, y, killed]
 //!   (A called Champion shows as `champion pending` in the view, then as a volley with the
 //!   champion flag.)
 //!
@@ -50,7 +51,7 @@ use lil_dudes_sim::*;
 use wasm_bindgen::prelude::*;
 
 /// Bump when any layout above changes (offline.ts refuses a mismatch).
-pub const LAYOUT_VERSION: u32 = 4;
+pub const LAYOUT_VERSION: u32 = 5;
 pub const EVENT_STRIDE: usize = 8;
 pub const HEADER_LEN: usize = 10;
 pub const SIDE_FIXED: usize = 14 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
@@ -370,6 +371,14 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
         ]),
         Event::First { side, stage, gold } => f(&[13.0, b(side), b(stage), n(gold)]),
         Event::RushEnd { side, lost } => f(&[14.0, b(side), n(lost)]),
+        Event::Shot {
+            side,
+            tower,
+            cohort_id,
+            x,
+            y,
+            killed,
+        } => f(&[16.0, b(side), b(tower), n(cohort_id), i(x), i(y), n(killed)]),
     }
 }
 
@@ -423,7 +432,8 @@ pub fn codec_version() -> u8 {
 /// compares them). `NORMAL_ODDS` = [[op byte, percent]] with ±N written as +0 / −0 (N =
 /// `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]].
 /// `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
-/// gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
+/// gates: [{row, x, width, big, timing, hazard, turbo, x_min, x_max, speed}], crates: [{x, width, y,
+/// hp}]}`; gate,
 /// tower and crate indices are the slots used everywhere else.
 #[wasm_bindgen]
 pub fn constants_json() -> String {
@@ -435,7 +445,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 53] = [
+    let pairs: [(&str, String); 57] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -477,7 +487,11 @@ pub fn constants_json() -> String {
         ("FATIGUE_END", FATIGUE_END.to_string()),
         ("FATIGUE_MIN_PM", FATIGUE_MIN_PM.to_string()),
         ("TUTORIAL_WAVE_PCT", TUTORIAL_WAVE_PCT.to_string()),
-        ("TOWER_BONUS", TOWER_BONUS.to_string()),
+        ("TOWER_POINTS", TOWER_POINTS.to_string()),
+        ("CLASH_RATE", CLASH_RATE.to_string()),
+        ("TURRET_TICKS", TURRET_TICKS.to_string()),
+        ("TURRET_RANGE", TURRET_RANGE.to_string()),
+        ("TURRET_DAMAGE", TURRET_DAMAGE.to_string()),
         ("LOOT_PER_UNIT", LOOT_PER_UNIT.to_string()),
         ("DEFEND_Y", DEFEND_Y.to_string()),
         ("FEE_BPS", FEE_BPS.to_string()),
@@ -500,12 +514,14 @@ pub fn constants_json() -> String {
 fn layouts_json() -> String {
     let gate = |g: &GateDef| {
         format!(
-            "{{\"row\":{},\"x\":{},\"width\":{},\"big\":{},\"timing\":{},\"x_min\":{},\"x_max\":{},\"speed\":{}}}",
+            "{{\"row\":{},\"x\":{},\"width\":{},\"big\":{},\"timing\":{},\"hazard\":{},\"turbo\":{},\"x_min\":{},\"x_max\":{},\"speed\":{}}}",
             g.row,
             g.x,
             g.width,
             g.slot == Slot::Big,
             g.slot == Slot::Timing,
+            g.slot == Slot::Hazard,
+            g.slot == Slot::Turbo,
             g.x_min,
             g.x_max,
             g.speed
@@ -754,7 +770,7 @@ mod tests {
         assert!(j.contains(
             "\"NORMAL_ODDS\":[[2,30],[3,20],[4,8],[5,2],[64,12],[130,14],[192,12],[131,2]]"
         ));
-        assert!(j.contains("\"PM_BY_ROW\":[0,5,15,30]"));
+        assert!(j.contains("\"PM_BY_ROW\":[0,5,15,30,30,30]"));
         // Balanced braces and brackets (no JSON parser in this crate).
         let depth = j.chars().fold(0i32, |d, c| match c {
             '{' | '[' => d + 1,

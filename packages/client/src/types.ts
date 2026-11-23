@@ -38,6 +38,10 @@ export interface GateView {
   /** The timing gate (SPEC_V5 §3): always face-up, never `revealed`; its value right now is
    *  `timingValue(lane.phaseTick)` (×1 → ×5, one step per second) and `value` below. */
   timing: boolean;
+  /** v6: a sliding sweeper (wipes a cohort it touches); never revealed, `value` ×0. */
+  hazard: boolean;
+  /** v6: a turbo pad (relaunches a cohort); never revealed, `value` ×1. */
+  turbo: boolean;
   /** Slides left/right (ping-pong). */
   moving: boolean;
   /** Set once this lane's first cohort passes (hidden gates only). */
@@ -165,6 +169,8 @@ export type MatchEvent =
   | { type: 'clash'; side: Side; x: number; y: number; killed: number }
   | { type: 'towerHit'; side: Side; tower: number; damage: number; hp: number; gold: number }
   | { type: 'towerDown'; side: Side; tower: number; gold: number }
+  /** v6: tower `tower`'s turret shot cohort `cohortId` at (`x`, `y`) and `killed` dudes. */
+  | { type: 'shot'; side: Side; tower: number; cohortId: number; x: number; y: number; killed: number }
   /** Rush: `count` dudes reached the town hall for `gold`. */
   | { type: 'loot'; side: Side; count: number; gold: number }
   /** `side` cleared fight `stage` first (SPEC_V5 §6). */

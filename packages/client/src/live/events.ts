@@ -20,7 +20,7 @@
 // lane left inside the gap are not recovered.
 import * as C from '../constants';
 import { matchResultOf, type PublicState, type SideState } from '../codec';
-import { applyOp, covers, gateAt, gateXAt, stageDef, timingValue } from '../layout';
+import { applyOp, covers, gateAt, gateXAt, stageDef, timingValue, towerPoints } from '../layout';
 import { firstOf } from '../view';
 import type { GateOp, LanePhase, MatchEvent, Side } from '../types';
 
@@ -29,6 +29,10 @@ const FIGHT = 1;
 const RUSH = 3;
 const DONE = 4;
 const active = (phase: number) => phase === FIGHT || phase === RUSH;
+
+/** crates/sim `in_contact` (v6): crossed in y by at most CLASH_BAND, x within CLASH_REACH. */
+const inContact = (cx: number, cy: number, ex: number, ey: number): boolean =>
+  cy - ey >= 0 && cy - ey <= C.CLASH_BAND && Math.abs(cx - ex) <= C.CLASH_REACH;
 
 /** The events that happened between two snapshots of the public state (`prev` null = first one). */
 export function diffEvents(prev: PublicState | null, next: PublicState): MatchEvent[] {
@@ -73,6 +77,8 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
       const t = a.phaseTicks + k;
       for (const c of cohorts) {
         if (c.count === 0) continue;
+        // v6: a cohort locked in a clash stands (contact with an enemy of the earlier snapshot).
+        if (a.enemies.some((e) => e.count > 0 && inContact(c.x, c.y, e.x, e.y))) continue;
         const prevY = c.y;
         c.y += c.age < C.LAUNCH_TICKS ? C.LAUNCH_SPEED : C.CRUISE_SPEED;
         c.age = Math.min(255, c.age + 1);
@@ -88,8 +94,17 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
           const row = c.lastRow++;
           const slot = gateAt(st, row, c.x, (_, g) => gateXAt(g, t));
           const def = slot >= 0 ? st.gates[slot] : undefined;
-          const op: GateOp | null | undefined = def?.timing ? { kind: 'mul', value: timingValue(t) } : slot >= 0 ? b.gates[slot]?.revealed : null;
+          const op: GateOp | null | undefined = def?.timing
+            ? { kind: 'mul', value: timingValue(t) }
+            : def?.hazard
+              ? { kind: 'mul', value: 0 }
+              : def?.turbo
+                ? { kind: 'mul', value: 1 }
+                : slot >= 0
+                  ? b.gates[slot]?.revealed
+                  : null;
           if (!op) continue;
+          if (def?.turbo) c.age = 0;
           const before = c.count;
           c.count = applyOp(op, before);
           out.push({ type: 'gate', side, slot, cohortId: c.id, op, before, after: c.count });
@@ -116,16 +131,14 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
   // Towers: summed hits; leaving a fight for the next stage means every tower still standing fell.
   const fell = !sameStage && a.phase === FIGHT;
   let towerGold = 0;
-  st.towers.forEach((_, tower) => {
+  st.towers.forEach((def, tower) => {
     const was = a.towers[tower] ?? 0;
     const hp = fell ? 0 : sameStage ? (b.towers[tower] ?? 0) : was;
     if (hp >= was) return;
-    out.push({ type: 'towerHit', side, tower, damage: was - hp, hp, gold: was - hp });
-    towerGold += was - hp;
-    if (hp === 0) {
-      out.push({ type: 'towerDown', side, tower, gold: C.TOWER_BONUS });
-      towerGold += C.TOWER_BONUS;
-    }
+    const gold = towerPoints(def.hp, hp) - towerPoints(def.hp, was);
+    out.push({ type: 'towerHit', side, tower, damage: was - hp, hp, gold });
+    towerGold += gold;
+    if (hp === 0) out.push({ type: 'towerDown', side, tower, gold: 0 });
   });
 
   // FIRST (decided from both lanes' breach ticks in diffEvents).

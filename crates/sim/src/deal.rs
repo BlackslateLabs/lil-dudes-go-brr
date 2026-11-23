@@ -21,7 +21,7 @@ pub const NORMAL_ODDS: [(GateOp, u64); 8] = [
 /// SPEC_V5 §3: N of a ±N gate by row index (row 1 = index 0 has none: there a ±N draw is
 /// re-drawn as × or ÷ from `NORMAL_ODDS` without the ± entries; rows past the table use its
 /// last N).
-pub const PM_BY_ROW: [u8; 4] = [0, 5, 15, 30];
+pub const PM_BY_ROW: [u8; 6] = [0, 5, 15, 30, 30, 30];
 /// The odds mass of the × and ÷ entries (what a row-1 re-draw rolls over).
 pub const MUL_DIV_PCT: u64 = 76;
 /// SPEC_V5 §3: big slot multipliers with their odds in percent.
@@ -62,8 +62,8 @@ pub fn deal_stage(seed: u64, layout: u8, stage_ix: u8) -> [GateOp; GATES_MAX] {
     let mut rng = deal_rng(seed, stage_ix);
     let mut out = [NO_GATE; GATES_MAX];
     for (v, g) in out.iter_mut().zip(stage(layout, stage_ix).gates.iter()) {
-        // The timing gate is public: nothing to deal (it keeps NO_GATE).
-        if g.slot != Slot::Timing {
+        // Public slots (timing gate, hazards, turbo pads): nothing to deal (they keep NO_GATE).
+        if g.slot.hidden() {
             *v = draw(&mut rng, g.slot, g.row);
         }
     }
@@ -147,7 +147,7 @@ mod tests {
                         continue;
                     };
                     let map = match (g.slot, g.row) {
-                        (Slot::Timing, _) => {
+                        (Slot::Timing | Slot::Hazard | Slot::Turbo, _) => {
                             assert_eq!(v, NO_GATE);
                             continue;
                         }

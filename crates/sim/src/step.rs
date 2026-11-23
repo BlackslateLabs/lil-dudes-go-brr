@@ -17,12 +17,13 @@
 //! 4. `tick + 1`; a death, both players done or the time cap ends it      SPEC §3, §8
 
 use crate::constants::{
-    CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED,
+    CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_RATE, CLASH_REACH, COHORT_CAP,
+    CRUISE_SPEED,
     DETECT_Y, ENEMY_CAP, FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE, FIRE_TICKS,
     FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT, GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH,
     LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES,
-    STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_Y, TRANSIT_TICKS, TUTORIAL_WAVE_PCT,
-    VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
+    STEER_STEP, TOWERS_MAX, TOWER_HALF_W, TOWER_POINTS, TOWER_Y, TRANSIT_TICKS, TURRET_DAMAGE,
+    TURRET_RANGE, TURRET_TICKS, TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
 use crate::layouts::{self, covers, timing_value, Slot, StageDef};
@@ -117,7 +118,7 @@ fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
     let exists = layouts::stage(layout, me.stage)
         .gates
         .get(usize::from(slot))
-        .is_some_and(|d| d.slot != Slot::Timing);
+        .is_some_and(|d| d.slot.hidden());
     if !me.phase.active() || me.peek_used || me.dead || !open || !exists {
         return;
     }
@@ -169,6 +170,9 @@ fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
         move_enemies(side);
         clash(side, s, ev);
         hits(side, st, s, ev);
+        if side.phase == Phase::Fight {
+            turrets(side, st, t, s, ev);
+        }
         compact(side);
         if side.enemies().iter().any(|e| e.y <= 0) {
             // SPEC §4: an enemy reached the cannon line.
@@ -251,6 +255,13 @@ fn move_cohorts(
         if c.count == 0 {
             continue;
         }
+        // v6: a cohort locked in a clash stands its ground (the battle line).
+        if enemies
+            .iter()
+            .any(|e| e.count > 0 && in_contact(c.x, c.y, e.x, e.y))
+        {
+            continue;
+        }
         // SPEC §7: 3× cruise speed for the first LAUNCH_TICKS ticks.
         let speed = if u32::from(c.age) < LAUNCH_TICKS {
             LAUNCH_SPEED
@@ -297,17 +308,23 @@ fn move_cohorts(
             c.last_row = c.last_row.saturating_add(1);
             if let Some(slot) = gate_at(st, gates, row, c.x) {
                 if let Some(gate) = gates.get_mut(usize::from(slot)) {
-                    let timing = st
+                    let kind = st
                         .gates
                         .get(usize::from(slot))
-                        .is_some_and(|d| d.slot == Slot::Timing);
-                    let op = if timing {
+                        .map_or(Slot::Normal, |d| d.slot);
+                    let op = match kind {
                         // SPEC_V5 §3: the timing gate's value on the crossing tick (public).
-                        GateOp::Mul(timing_value(gate_t))
-                    } else {
-                        secret.true_op(stage, slot)
+                        Slot::Timing => GateOp::Mul(timing_value(gate_t)),
+                        // v6: a sweeper wipes what it touches.
+                        Slot::Hazard => GateOp::Mul(0),
+                        // v6: a turbo pad relaunches the cohort (count unchanged).
+                        Slot::Turbo => {
+                            c.age = 0;
+                            GateOp::Mul(1)
+                        }
+                        Slot::Normal | Slot::Big => secret.true_op(stage, slot),
                     };
-                    pass_gate(s, slot, c, gate, op, !timing, ev);
+                    pass_gate(s, slot, c, gate, op, kind.hidden(), ev);
                 }
             }
         }
@@ -320,6 +337,14 @@ fn move_cohorts(
             }
         }
     }
+}
+
+/// v6: a cohort of mine at (`cx`, `cy`) and an enemy at (`ex`, `ey`) are in contact once they
+/// have crossed in y (mine at or above theirs, by at most CLASH_BAND) with x at most CLASH_REACH
+/// apart: the clash rule, and while it holds neither moves.
+fn in_contact(cx: i16, cy: i16, ex: i16, ey: i16) -> bool {
+    let crossed = i32::from(cy).saturating_sub(i32::from(ey));
+    (0..=CLASH_BAND).contains(&crossed) && i32::from(cx).abs_diff(i32::from(ex)) <= CLASH_REACH as u32
 }
 
 /// The gate of `row` a cohort at `x` goes through right now, or `None` in a gap (SPEC §6: edges
@@ -418,6 +443,13 @@ fn move_enemies(side: &mut PublicSide) {
         if e.count == 0 {
             continue;
         }
+        // v6: locked in a clash: stand.
+        if mine
+            .iter()
+            .any(|c| c.count > 0 && in_contact(c.x, c.y, e.x, e.y))
+        {
+            continue;
+        }
         let mut best: Option<(i64, i16)> = None;
         for c in mine {
             let ahead = i32::from(e.y).saturating_sub(i32::from(c.y));
@@ -439,8 +471,8 @@ fn move_enemies(side: &mut PublicSide) {
 
 // --- clash -------------------------------------------------------------------------------------
 
-/// SPEC §4: a cohort of mine and an enemy cohort meet once they have crossed in y (mine at or
-/// above theirs, by at most CLASH_BAND) with x at most CLASH_REACH apart; they cancel 1:1.
+/// SPEC §4: a cohort of mine and an enemy cohort in contact (`in_contact`) cancel 1:1, v6: at
+/// most CLASH_RATE units each per tick (a grind; engaged cohorts don't move meanwhile).
 /// Front-most pairs first: both lists are stored oldest (front-most) first.
 fn clash(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
     let PublicSide {
@@ -464,13 +496,10 @@ fn clash(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
             if b.count == 0 {
                 continue;
             }
-            let crossed = i32::from(a.y).saturating_sub(i32::from(b.y));
-            if !(0..=CLASH_BAND).contains(&crossed)
-                || i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32
-            {
+            if !in_contact(a.x, a.y, b.x, b.y) {
                 continue;
             }
-            let killed = a.count.min(b.count);
+            let killed = a.count.min(b.count).min(CLASH_RATE);
             a.count = a.count.saturating_sub(killed);
             b.count = b.count.saturating_sub(killed);
             ev.push(Event::Clash {
@@ -527,22 +556,26 @@ fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
         if !rush && y >= TOWER_Y {
             if let Some(i) = tower_hit(c.x, towers, st) {
                 if let (Some(hp), Ok(tower)) = (towers.get_mut(i), u8::try_from(i)) {
-                    let damage = c.count.min(u32::from(*hp));
-                    *hp = u16::try_from(u32::from(*hp).saturating_sub(damage)).unwrap_or(0);
-                    *gold = gold.saturating_add(damage);
+                    let max = st.towers.get(i).map_or(1, |t| u32::from(t.hp));
+                    let before = u32::from(*hp);
+                    let damage = c.count.min(before);
+                    *hp = u16::try_from(before.saturating_sub(damage)).unwrap_or(0);
+                    // v6: TOWER_POINTS per tower, in proportion to the damage dealt.
+                    let points = tower_points(max, u32::from(*hp))
+                        .saturating_sub(tower_points(max, before));
+                    *gold = gold.saturating_add(points);
                     ev.push(Event::TowerHit {
                         side: s,
                         tower,
                         damage,
                         hp: u32::from(*hp),
-                        gold: damage,
+                        gold: points,
                     });
                     if *hp == 0 {
-                        *gold = gold.saturating_add(TOWER_BONUS);
                         ev.push(Event::TowerDestroyed {
                             side: s,
                             tower,
-                            gold: TOWER_BONUS,
+                            gold: 0,
                         });
                     }
                     c.count = 0;
@@ -552,6 +585,52 @@ fn hits(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
         }
         if y >= LANE_LENGTH {
             c.count = 0;
+        }
+    }
+}
+
+/// v6: the points a tower of `max` HP has paid out once it is down to `hp`: TOWER_POINTS ×
+/// damage / max, floored (all of TOWER_POINTS at 0 HP).
+pub fn tower_points(max: u32, hp: u32) -> u32 {
+    let dealt = u64::from(max.saturating_sub(hp));
+    let p = dealt
+        .saturating_mul(u64::from(TOWER_POINTS))
+        .checked_div(u64::from(max))
+        .unwrap_or(0);
+    u32::try_from(p).unwrap_or(TOWER_POINTS)
+}
+
+/// v6: each live tower shoots every TURRET_TICKS (towers take turns, half a period apart): it hits
+/// the front-most cohort of mine within TURRET_RANGE of the tower line for TURRET_DAMAGE.
+fn turrets(side: &mut PublicSide, st: &StageDef, t: u32, s: u8, ev: &mut impl EventSink) {
+    let PublicSide {
+        cohorts,
+        cohort_len,
+        towers,
+        ..
+    } = side;
+    for (i, (&hp, def)) in (0u32..).zip(towers.iter().zip(st.towers)) {
+        let offset = i.saturating_mul(TURRET_TICKS / 2);
+        if hp == 0 || t.saturating_add(offset).checked_rem(TURRET_TICKS) != Some(0) {
+            continue;
+        }
+        let reach = TOWER_Y.saturating_sub(TURRET_RANGE);
+        let target = cohorts
+            .iter_mut()
+            .take(usize::from(*cohort_len))
+            .filter(|c| c.count > 0 && i32::from(c.y) >= reach)
+            .max_by_key(|c| (c.y, core::cmp::Reverse(i32::from(c.x).abs_diff(i32::from(def.x)))));
+        if let Some(c) = target {
+            let killed = c.count.min(TURRET_DAMAGE);
+            c.count = c.count.saturating_sub(killed);
+            ev.push(Event::Shot {
+                side: s,
+                tower: u8::try_from(i).unwrap_or(0),
+                cohort_id: c.id,
+                x: c.x,
+                y: c.y,
+                killed,
+            });
         }
     }
 }
