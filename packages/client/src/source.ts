@@ -18,6 +18,10 @@ export interface MatchSource {
   stop(): void;
   /** Target cannon x, 0..LANE_WIDTH. Call freely on drag; sources throttle as needed. */
   setAim(x: number): void;
+  /** Press (`true`) or let go of (`false`) the trigger (rules v6): the cannon fires only while it
+   *  is held, every volley charges the Champion meter, and letting go with a full meter in my
+   *  Fight releases the Champion. Call on pointer down / up; sources dedupe repeats. */
+  setFiring(on: boolean): void;
   /** Call the Champion (SPEC_V5 §4): my next volley is a Champion. Only in my Fight with a full
    *  meter (`LaneView.champMeter >= CHAMP_TICKS`) and none pending; refused calls are ignored. */
   champion(): void;

@@ -1,7 +1,7 @@
 // LiveSource: a match on the Private Ephemeral Rollup, behind the same MatchSource contract as
 // MockSource / OfflineSource. It subscribes to the public Match (and the player's own private
 // Peek) over the TEE websocket, plays the snapshots out at 20 Hz ~3 ticks behind the newest
-// (TECH §5), derives the events, and sends set_aim / champion / peek_cell signed by the
+// (TECH §5), derives the events, and sends set_aim / set_fire / champion / peek_cell signed by the
 // device's burner (no wallet popups, no SOL needed on the TEE).
 //
 // With `autoDrive` (default) it also runs the match's TEE choreography itself: init_permissions,
@@ -99,10 +99,14 @@ export class LiveSource implements MatchSource {
   private disposed = false;
   private stage: LiveStage = 'connecting';
   /** champion / peek: one request at a time, and none once it took. */
-  private inflight = { champion: false, peek: false };
-  /** TEE txs this source sent (set_aim folded into one line), for reveal().txs. */
+  private inflight = { champion: false, peek: false, fire: false };
+  /** Rules v6 trigger: what the player wants and what the program last took. */
+  private wantFire = false;
+  private sentFire = false;
+  /** TEE txs this source sent (set_aim and set_fire each folded into one line), for reveal().txs. */
   private teeTxs: TxRecord[] = [];
   private aimCount = 0;
+  private fireCount = 0;
   private baseTxs: TxRecord[] = [];
   private settlement: SettlementInfo = { state: 'pending' };
   private tracking: Promise<void> | null = null;
@@ -170,6 +174,29 @@ export class LiveSource implements MatchSource {
   setAim(x: number): void {
     if (!Number.isFinite(x)) return;
     this.pendingAim = Math.round(Math.max(0, Math.min(C.LANE_WIDTH - 1, x)));
+  }
+
+  /** Rules v6 trigger. Sent in order, one at a time; presses and releases that cancel out while
+   *  one is in flight are dropped (a release after a press always goes out, so a charged
+   *  Champion is never lost). */
+  setFiring(on: boolean): void {
+    this.wantFire = on;
+    void this.flushFire();
+  }
+
+  private async flushFire(): Promise<void> {
+    if (this.inflight.fire) return;
+    this.inflight.fire = true;
+    try {
+      while (this.wantFire !== this.sentFire && !this.disposed) {
+        const on = this.wantFire;
+        if (this.newest.account.header.status !== Status.PLAYING) break;
+        if (!(await this.tx('set_fire', ixs.setFire(this.accounts, this.opts.burner.publicKey, on), true))) break;
+        this.sentFire = on;
+      }
+    } finally {
+      this.inflight.fire = false;
+    }
   }
 
   /** Call my Champion: sent only when `canChampion()` says yes on the newest state (the program
@@ -269,9 +296,9 @@ export class LiveSource implements MatchSource {
     const isLobby = (t: TxRecord) => ['create_match', 'join_match', 'delegate_match'].includes(t.what);
     const lobby = this.baseTxs.filter(isLobby);
     const after = this.baseTxs.filter((t) => !isLobby(t));
-    const aims = this.aimCount
-      ? [{ ...this.teeTxs.find((t) => t.what === 'set_aim')!, what: `set_aim ×${this.aimCount}` }]
-      : [];
+    const folded = (what: string, n: number) =>
+      n ? [{ ...this.teeTxs.find((t) => t.what === what)!, what: `${what} ×${n}` }] : [];
+    const aims = [...folded('set_aim', this.aimCount), ...folded('set_fire', this.fireCount)];
     return {
       ...base,
       matchId: this.matchId.toString(),
@@ -282,7 +309,7 @@ export class LiveSource implements MatchSource {
       finalTick: state.tick,
       payout: payoutOf(h.stake, result, { aborted, names: h.names, dead }),
       // Chronological: lobby (base) → this device's TEE txs → commit / settlement / close (base).
-      txs: [...lobby, ...this.teeTxs.filter((t) => t.what !== 'set_aim'), ...aims, ...after],
+      txs: [...lobby, ...this.teeTxs.filter((t) => t.what !== 'set_aim' && t.what !== 'set_fire'), ...aims, ...after],
       settlement: { ...this.settlement },
       matchUrl: ACCOUNT_EXPLORER(this.accounts.game.toBase58()),
     };
@@ -503,6 +530,9 @@ export class LiveSource implements MatchSource {
   private record(what: string, signature: string): void {
     if (what === 'set_aim') {
       if (this.aimCount++ > 0) return;
+    }
+    if (what === 'set_fire') {
+      if (this.fireCount++ > 0) return;
     }
     this.teeTxs.push({ what, signature, layer: 'tee', url: TEE_EXPLORER(signature, this.opts.teeRpc ?? TEE_RPC), by: this.mySide });
   }

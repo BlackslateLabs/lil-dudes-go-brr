@@ -8,7 +8,8 @@ import type { MatchEvent, MatchView, PrivateView } from '../src/types';
 
 /** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs: bot on side 1, idle side 0
  *  (both finish; the idle mid-lane cannon wins narrowly, 1,826 to 1,818). */
-const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, digest: 10_144_432_015_304_223_342n, tick: 2091 };
+// Bot vs bot (rules v6: an idle player never fires). Same match as crates/sim-wasm PARITY_DIGEST.
+const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, selfBot: true, digest: 11_513_745_549_247_634_464n, tick: 1140 };
 
 function playOut(src: { view: MatchView; step(): void }, onTick?: (view: MatchView) => void) {
   let guard = 0;
@@ -37,13 +38,13 @@ test('TS constants and layouts equal the Rust ones in the WASM build', () => {
 });
 
 test('bundled WASM is built from the current sim (parity digest)', () => {
-  assert.equal(simRulesVersion(), 5);
+  assert.equal(simRulesVersion(), 6);
   const src = new OfflineSource(PARITY);
   playOut(src);
   assert.equal(src.view.tick, PARITY.tick);
   assert.equal(src.digest(), PARITY.digest, 'packages/sim-wasm/pkg is stale: run packages/sim-wasm/build.sh');
   const r = src.view.result!;
-  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [0, null, [1826, 1818], 430_000]);
+  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [null, null, [1862, 1862], 0]);
   assert.equal(r.fee, Math.floor((r.moved * C.FEE_BPS) / 10_000));
   assert.deepEqual(src.view.sides.map((s) => s.phase), ['done', 'done']);
   src.dispose();
@@ -173,7 +174,44 @@ test('a player scouts in their fight (private view by stage and slot; never the 
   src.dispose();
 });
 
-test('the Champion: charged by fight time, called once, rides the next volley', () => {
+test('the trigger: no volleys until held; held volleys charge the Champion', () => {
+  const src = new OfflineSource({ seed: 21n, botSeed: 22n });
+  let mine = 0;
+  src.subscribe((_v, _p, events) => {
+    mine += events.filter((e) => e.type === 'volley' && e.side === 0).length;
+  });
+  for (let i = 0; i < C.PLANT_TICKS + 40; i++) src.step();
+  assert.equal(mine, 0, 'no trigger, no volleys');
+  assert.equal(src.view.sides[0].champMeter, 0, 'and no charge');
+  src.setFiring(true);
+  for (let i = 0; i < 40; i++) src.step();
+  assert.ok(mine >= 4, `${mine} volleys while held`);
+  assert.equal(src.view.sides[0].champMeter, mine * C.FIRE_TICKS);
+  src.dispose();
+});
+
+test('letting go with a full meter releases the Champion', () => {
+  const src = new OfflineSource({ seed: 21n, botSeed: 22n });
+  const volleys: { champion: boolean; count: number }[] = [];
+  src.subscribe((_v, _p, events) => {
+    for (const e of events) if (e.type === 'volley' && e.side === 0) volleys.push({ champion: e.champion, count: e.count });
+  });
+  src.setFiring(true);
+  let guard = 0;
+  while (!src.canChampion() && !src.view.result) {
+    src.setAim(src.view.sides[0].enemies[0]?.x ?? C.LANE_WIDTH / 2);
+    src.step();
+    assert.ok(guard++ < C.MATCH_TICKS);
+  }
+  if (src.view.result) return src.dispose();
+  src.setFiring(false);
+  src.step();
+  assert.deepEqual(volleys.find((v) => v.champion), { champion: true, count: C.CHAMP_COUNT });
+  assert.equal(src.view.sides[0].champMeter, 0);
+  src.dispose();
+});
+
+test('the Champion: charged by shooting, called once, rides the next volley', () => {
   const src = new OfflineSource({ seed: 21n, botSeed: 22n });
   const volleys: { champion: boolean; count: number }[] = [];
   src.subscribe((_v, _p, events) => {
@@ -183,7 +221,8 @@ test('the Champion: charged by fight time, called once, rides the next volley', 
   src.champion();
   src.step();
   assert.equal(src.view.sides[0].champPending, false);
-  // Keep the lane alive while the meter fills.
+  // Keep the lane alive while the meter fills (it charges per volley, so hold the trigger).
+  src.setFiring(true);
   let guard = 0;
   while (!src.canChampion() && !src.view.result) {
     src.setAim(src.view.sides[0].enemies[0]?.x ?? C.LANE_WIDTH / 2);
