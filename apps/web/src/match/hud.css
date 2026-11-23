@@ -121,10 +121,11 @@
 }
 
 /* ---------- Opponent progress line (replaces the mini-lane) ---------- */
+/* Sits on the grass below the lane, left of the thumb buttons, so it never covers the base. */
 .hud.progress-line {
-  top: calc(max(6px, env(safe-area-inset-top)) + 50px);
+  bottom: max(14px, env(safe-area-inset-bottom));
   left: 10px;
-  right: 10px;
+  right: 86px;
   height: 28px;
   display: flex;
   align-items: center;
