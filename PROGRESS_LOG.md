@@ -1055,3 +1055,23 @@ played on a phone.
 **Next / handoff:** Kai: client v5 exports `RUSH_TICKS`, `CHAMP_TICKS`, `LaneView.rushTicks`, `champMeter`,
 `champPending`, `MatchSource.champion()`, and a FIRST event or field; the web picks them up by name.
 Suparno/Claude: timing-gate ring and new gate labels once the ops exist; LiveSource wiring.
+
+## 2026-11-23 · Suparno · hand-off to Kai: web v5 done, sim v5 started · [HANDOFF] [DECISION]
+**Did:** `web/v5-flow` (pushed, green): the whole v5 front end from the previous entry, plus the progress line and
+tutorial moved to the grass below the lane (they covered the base). Sim v5 was started on our side (Suparno: "don't
+wait"): branch `wip/sim-v5` (green: rig removed, gate ops ÷ and ±, the v5 deal; rules 5, codec 4) and
+`wip/sim-v5-timing-draft` (one WIP commit on top: timing gate + re-tuned layouts, tests NOT updated). The hand-off
+status with exact next steps is at the end of `docs/SPEC_V5.md` on `wip/sim-v5`.
+
+**Decided (Suparno):** Rush end changes SPEC_V5 §2: when the 70-tick Rush runs out, **only dudes that already reached
+the hall count**; dudes still on the lane are not counted, the lane freezes and is Done at once (no travel tail).
+
+**Blocked / risks:** `wip/sim-v5` does not compile with `programs/lil_dudes` or `packages/client` yet (rig removed,
+codec 4, op byte for ± / ÷); that's why it is a separate branch and not in `web/v5-flow`. The WASM pkg there is
+still v4. Not done in the sim: timing gate (draft), Rush end + FIRST, Champion, enemy giants, payout v5, codec tail,
+WASM v5 surface + pkg rebuild, balance run.
+
+**Next / handoff:** Kai: please pick up `wip/sim-v5` (or redo it your way; Suparno's Claude stopped there on usage
+limits), then program v5 and client v5. The web is ready for: `RUSH_TICKS`, `CHAMP_TICKS`, `LaneView.rushTicks`,
+`champMeter`, `champPending`, `MatchSource.champion()`, FIRST events, the op byte with ± and ÷3, the timing gate.
+Logo/mascot concepts are paused (drafts in Suparno's scratchpad).
