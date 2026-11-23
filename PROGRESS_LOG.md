@@ -1149,3 +1149,21 @@ charges from your shots and releases when you let go. SPEC_V5 §4 and §11.6 upd
 - regenerate the IDL with `anchor build` to confirm the hand-written `set_fire` entry matches;
 - re-run the balance runner (bot timing changed slightly: the Champion fires on release, not on the
   next beat).
+
+## 2026-11-23 21:55 IST · Suparno · web / art · [DECISION]
+**Did:**
+- New logo (Face-Off C: our knight vs the red Base Bot on two slanted team cards, bolt between,
+  "LIL DUDES GO BRR!" wordmark) on the Home screen and in the screen-transition wipe
+  (`public/brand/logo.webp`; replaces the CSS text logo).
+- PWA icons: `icon-192/512.png`, a maskable 512 (heads inside the safe circle), `apple-touch-icon.png`,
+  and the favicon `icon.svg`; manifest and `index.html` updated, logo preloaded.
+- Vector masters in `tools/brand/`; CREDITS rows for the logo art (ours) and Luckiest Guy (Apache 2.0,
+  outlines only, no font file shipped).
+
+**Decided:** (Suparno) logo direction Face-Off with the team-panel backdrop, picked from the art
+picks page. Lilita One stays the in-game display font.
+
+**Blocked / risks:** none.
+
+**Next / handoff:** none for Kai. The VS screen still uses the old blob avatars; the mascot heads
+could replace them.
