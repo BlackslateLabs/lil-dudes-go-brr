@@ -247,3 +247,63 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
 4. Champion charge = 8 s of fight time.
 5. Payout: the winner keeps their own stake (≥ 50%), and the loser's stake is split by `2 × margin`
    with **no cap** (the loser gets 0 only when the winner scores ≥ 3× as much).
+
+---
+
+## Status (sim v5, hand-off, 23 Nov)
+
+Branch `wip/sim-v5` (not pushed). Sim tests, clippy `-D warnings` and fmt are green at every commit.
+
+**Done**
+- `8ab52ab` Sim v5: remove rig. No rig input, `can_rig`, GOTCHA or `rig_used`. Secret history is
+  now `[peek slot, peek op]` per stage and side (SECRET_LEN 32, HISTORY_LEN 8). Codec v4,
+  RULES_VERSION 5. `tools/balance/regen_golden.py` re-records the goldens and the WASM parity
+  digest.
+- `88a30e9` Sim v5: gate ops ÷ ± and the v5 deal. GateOp Add/Sub. Op byte: `k` = ×k,
+  `0x40|n` = +n, `0x80|k` = ÷k, `0xC0|n` = −n. The §3 table, with N = 5/15/30 by row; a ±N drawn
+  on row 1 is re-drawn as × or ÷. WASM views, events and peeks carry the op byte, and
+  `constants_json` gains `PM_BY_ROW`.
+
+**Not done**
+- Timing gate and the v5 layouts (§3, §3b): about 80% written, in `git stash` ("WIP sim v5
+  commit 3"). It has `Slot::Timing`, `timing_value`, `TIMING_STEP_TICKS`/`TIMING_MAX`, the six
+  layouts re-tuned (4 rows 1,400…5,500/5,700, `GATE_BAND` 300–2,700, one timing gate per stage,
+  at most one crate) and the new layout test.
+- Rush end, FIRST, Champion, enemy giants, payout v5, bot + balance, and the full WASM surface
+  plus the pkg rebuild.
+- **(Suparno) Rush-end rule change, to apply:** when `RUSH_TICKS` (70) runs out, only dudes that
+  already reached the hall count. Dudes still on the lane are not counted: clear them and go
+  Done at once. Emit `RushEnd { side }` (no gold) so the UI can freeze. This replaces §2's "every
+  dude still on the lane is counted too".
+
+**Next steps**
+1. `git stash pop`, then:
+   - add a `Slot::Timing` arm in `bot::path_score`: × `timing_value(now + travel_ticks(row_y))`;
+   - skip timing slots in `bot::random_hidden`;
+   - add the `gate_t` argument to the `move_cohorts` calls in `step/tests.rs`;
+   - update the layout-0 positions in the step and bot tests (gates now at 900 / 2,100; timing
+     at slot 2; slider at slot 3; F2 crate at y 3,800);
+   - in the fuzz test, check that timing gates never reveal;
+   - re-record with `python tools/balance/regen_golden.py`, then commit.
+2. Rush: rename Raid to Rush (`rush_ticks`, `RUSH_TICKS` = 70), apply the rule above, and add
+   `breach_tick[2]` per side plus FIRST (+50 to the lower tick, settled in `step` when the later
+   side breaches, or in `finish` for a single breach).
+3. Champion: `champ_meter` (u8, fills in Fight, `CHAMP_TICKS` 160, carries over),
+   `champ_pending`, `SideInput.champion`, a count-8 cohort flagged `champion` (codec: bit 7 of the
+   cohort `last_row` byte, flag 16 of the side flags), and an `Event::Champion`. The bot fires it
+   when charged.
+4. Giants: in Fight 2 each small wave adds one giant enemy (5, speed ×0.6, flag in the enemy
+   record byte 11).
+5. Payout: `slice_bps` per §7 in `payout.rs`, then update `settle_fuzz.py` and regenerate the
+   vectors.
+6. Codec side tail: u8 `champ_meter` and 2 × u16 `breach_tick` (SIDE_LEN 725).
+7. Balance: tune `TUNE` in `layouts.rs` for 10–20% deaths and a 60–90 s average.
+8. WASM layout v4: rebuild with `bash packages/sim-wasm/build.sh`.
+
+**Breaks outside the sim** (by design, for Kai and Suparno):
+- `programs/lil_dudes` uses `SideInput.rig`, `can_rig`, `Rig`, `StageLog.rigs`, `rig_used`, the
+  4-byte history layout and `plant_rig`/`RigRefused`.
+- `packages/client`: the codec is v4 (no rig flag; history is 2 B per entry), op bytes now
+  include 0x40/0xC0, the WASM `set_input(side, aim, peek)` drops `rig`, and `can_rig`,
+  `can_rig_bytes` and the gotcha event are gone. The committed `packages/sim-wasm/pkg` is still
+  v4 (not rebuilt).
