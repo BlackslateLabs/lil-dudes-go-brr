@@ -72,8 +72,6 @@ pub fn handle_create_match(
     g.rules_version = u8::try_from(lil_dudes_sim::RULES_VERSION).unwrap_or(u8::MAX);
     g.vault_bump = b.vault;
     g.bumps = [b.game, b.secrets, b.peek0, b.peek1];
-    let [lo, hi] = NO_TICK.to_le_bytes();
-    g.gotcha = [[lo, hi, NONE, NONE]; 2];
     g.history = [NONE; HISTORY_LEN];
     encode_public(&pre_match_public(0), &mut g.state);
 
@@ -84,8 +82,7 @@ pub fn handle_create_match(
         p.side = side;
         p.owner = if side == 0 { burner } else { Pubkey::default() };
         p.stage = NONE;
-        p.rig_stage = NONE;
-        p.rig_slot = NONE;
+        p._reserved = [NONE; 2];
         p.peek_stage = NONE;
         p.peek_slot = NONE;
     }

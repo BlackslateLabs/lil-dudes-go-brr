@@ -76,8 +76,6 @@ pub enum Event {
     /// `side`'s Rush ran out: `lost` dudes still on the lane do not count (SPEC_V5 §2). The
     /// lane is cleared and `side` is Done.
     RushEnd { side: u8, lost: u32 },
-    /// `side` called the Champion; it rides the next volley (SPEC_V5 §4).
-    Champion { side: u8 },
     /// `side` entered `phase` of `stage` (SPEC §3). Transit already names the next stage.
     Phase { side: u8, stage: u8, phase: Phase },
     /// An enemy reached `side`'s cannon line (SPEC §4).

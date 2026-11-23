@@ -14,10 +14,12 @@ pub enum GameError {
     WrongAccount,
     #[msg("too early to cancel or abort")]
     TooEarly,
-    #[msg("the rig was refused (used this stage, opponent dead, done or past your stage, revealed or a bad slot)")]
-    RigRefused,
     #[msg(
-        "the peek was refused (not your fight or raid, used this stage, revealed or a bad slot)"
+        "the champion was refused (not your fight, meter not full, one already pending, or dead)"
+    )]
+    ChampionRefused,
+    #[msg(
+        "the scout was refused (not your fight or rush, used this stage, revealed, the timing gate or a bad slot)"
     )]
     PeekRefused,
     #[msg("the match has no result yet")]

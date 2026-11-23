@@ -262,28 +262,33 @@ pub struct MatchState {
 impl MatchState {
     /// A fresh match at tick 0: both players in the Plant of Fight 1 on the seed's layout.
     pub fn new(seed: u64, options: MatchOptions) -> Self {
-        let deal = Deal::new(seed);
+        let mut m = Self::zeroed();
+        m.reset(seed, options);
+        m
+    }
+
+    /// `*self = MatchState::new(seed, options)`, built in place. On-chain this keeps every
+    /// stack frame small (the whole state is ~2 KB, and SBF frames are 4 KB), so the program
+    /// calls it on a zeroed state instead of `new`.
+    #[inline(never)]
+    pub fn reset(&mut self, seed: u64, options: MatchOptions) {
         let layout = layout_for(seed);
         let mid = (LANE_WIDTH / 2) as i16;
-        let mut side = PublicSide::EMPTY;
-        side.cannon_x = mid;
-        side.aim = mid;
-        side.load_stage(layout, 0);
-        Self {
-            public: PublicState {
-                tick: 0,
-                options,
-                layout,
-                sides: [side; 2],
-                next_cohort_id: 1,
-                result: None,
-            },
-            secret: SecretState {
-                seed,
-                values: deal.values,
-                history: [StageLog::default(); STAGES],
-            },
+        let p = &mut self.public;
+        p.tick = 0;
+        p.options = options;
+        p.layout = layout;
+        p.next_cohort_id = 1;
+        p.result = None;
+        for side in p.sides.iter_mut() {
+            *side = PublicSide::EMPTY;
+            side.cannon_x = mid;
+            side.aim = mid;
+            side.load_stage(layout, 0);
         }
+        self.secret.seed = seed;
+        self.secret.values = Deal::new(seed).values;
+        self.secret.history = [StageLog::default(); STAGES];
     }
 
     /// An all-zero state to decode into (`codec::decode_*` overwrite every field). Unlike `new`,
@@ -464,6 +469,25 @@ mod tests {
                 }
             }
             assert_eq!(m.secret.values, Deal::new(seed).values);
+        }
+    }
+
+    #[test]
+    fn reset_equals_new() {
+        for seed in [0u64, 5, 77, u64::MAX] {
+            let opts = MatchOptions {
+                stake: 9,
+                bot: [true, false],
+                tutorial: true,
+            };
+            let mut m = MatchState::new(1, MatchOptions::default());
+            m.public.sides[1].gold = 99;
+            m.secret.history[0].peeks[0] = Some(Peek {
+                slot: 1,
+                op: GateOp::Mul(2),
+            });
+            m.reset(seed, opts);
+            assert_eq!(m, MatchState::new(seed, opts));
         }
     }
 

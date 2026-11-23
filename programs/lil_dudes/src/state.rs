@@ -4,8 +4,8 @@
 //! - `Match`    public; delegated to the TEE. Header + the sim's public state (codec bytes).
 //! - `Secrets`  private (ephemeral permission, no members) once `init_permissions` ran; delegated.
 //!   VRF output, both players' salts, the sim's secret state (seed, every stage's true gate
-//!   values, the rig/peek history).
-//! - `Peek[s]`  private (member = side s's burner); delegated. That player's own rig and peek in
+//!   values, the Scout history).
+//! - `Peek[s]`  private (member = side s's burner); delegated. That player's own Scout result in
 //!   their current stage.
 //! - `Vault`    system-owned PDA on the base layer, never delegated: both stakes until settled.
 use anchor_lang::prelude::*;
@@ -28,8 +28,8 @@ pub const PLAYER_CATCH_UP: u32 = 2;
 /// Crank: one `advance` every 50 ms of wall time. The tick follows ER slots, so if slots run
 /// slower than 10 ms a match outlasts MATCH_TICKS crank runs: schedule 1.5× (covers slots up to
 /// 15 ms; later runs are cheap no-ops, and anyone can still `advance` by hand). Rules v4 (as
-/// v3): MATCH_TICKS = 3,600 (the 3:00 cap), so 5,400 runs. Only the match length matters here,
-/// not the stage count (the Raid now runs in place at the end of stage 1).
+/// v3, v5): MATCH_TICKS = 3,600 (the 3:00 cap), so 5,400 runs. Only the match length matters
+/// here, not the stage count (the Rush runs in place at the end of stage 1).
 pub const CRANK_INTERVAL_MS: i64 = 50;
 pub const CRANK_ITERATIONS: i64 = lil_dudes_sim::MATCH_TICKS as i64 * 3 / 2;
 const _: () = assert!(CRANK_ITERATIONS == 5_400);
@@ -48,19 +48,17 @@ pub const OPEN_ANYONE_SECS: i64 = 20 * 60;
 pub const JOIN_ANYONE_SECS: i64 = 5 * 60;
 pub const ABORT_ANYONE_SLOTS: u64 = 30_000;
 
-/// Peek fields: no stage written yet / no rig / no peek.
+/// Peek fields: no stage written yet / no Scout.
 pub const NONE: u8 = u8::MAX;
-/// Gotcha record: tick value meaning "none yet".
-pub const NO_TICK: u16 = u16::MAX;
 
-/// Published at `finish`: the codec's history part (2 stages × 2 sides × 4 bytes = 16).
+/// Published at `finish`: the codec's history part (2 stages × 2 sides × 2 bytes = 8).
 pub const HISTORY_LEN: usize = lil_dudes_sim::codec::HISTORY_LEN;
 
 /// The deployed program only ever delegates to MagicBlock's devnet TEE validator: privacy of
 /// Secrets/Peek depends on it (a match on a public ER would expose everything).
 pub const TEE_VALIDATOR: Pubkey = pubkey!("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
 
-/// Fees (SPEC §8, 5% of the money moved) go here: the deploy wallet on devnet.
+/// Fees (SPEC_V5 §7, 5% of the money moved) go here: the deploy wallet on devnet.
 #[cfg(not(feature = "magicsvm"))]
 pub const TREASURY: Pubkey = pubkey!("FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB");
 /// Test build (feature "magicsvm"): a fixed address the tests fund.
@@ -126,16 +124,18 @@ pub struct Match {
     pub vault_bump: u8,
     /// Bumps of Match, Secrets, Peek[0], Peek[1].
     pub bumps: [u8; 4],
-    /// Last rig sprung in each side's copy: [tick lo, tick hi, gate slot, rigged by]; tick
-    /// NO_TICK = none. The slot is in the stage that side was in at that tick.
-    pub gotcha: [[u8; 4]; 2],
-    /// Published at `finish`: every stage's rigs and peeks (codec history layout).
+    /// Rules v5: was the rig GOTCHA record (rigs are gone). Zero; kept so the offsets the TS
+    /// decoder reads stay put.
+    pub _reserved: [u8; 8],
+    /// Published at `finish`: every stage's Scouts (codec history layout).
     pub history: [u8; HISTORY_LEN],
-    /// Rules v4: the history shrank 24 → 16 bytes and the public state grew 1,470 → 1,474, so
-    /// 6 bytes here keep the struct at 1,784 with no padding (Pod) and `history` where it was.
-    pub _pad: [u8; 6],
+    /// Rules v5: the history shrank 16 → 8 bytes; 14 bytes here keep `state` at offset 310.
+    pub _pad: [u8; 14],
     /// The sim's public state (crates/sim codec, PUBLIC part).
     pub state: [u8; PUBLIC_LEN],
+    /// Rules v5: the public state grew 1,474 → 1,484; 6 bytes keep the struct a multiple of 8
+    /// (Pod, no implicit padding).
+    pub _tail: [u8; 6],
 }
 
 #[account(zero_copy)]
@@ -149,10 +149,10 @@ pub struct Secrets {
     pub state: [u8; SECRET_LEN],
 }
 
-/// One player's private view (the sim's `PrivateView`): what they rigged and peeked during their
-/// current stage. Rewritten from the sim after each of the owner's `plant_rig` / `peek_cell` and
-/// at `finish`; `stage` says which stage it describes, so one whose `stage` is behind the side's
-/// public stage is stale (nothing rigged or peeked in the new stage yet).
+/// One player's private view (the sim's `PrivateView`): their Scout during their current stage.
+/// Rewritten from the sim after each of the owner's `peek_cell` and at `finish`; `stage` says
+/// which stage it describes, so one whose `stage` is behind the side's public stage is stale
+/// (nothing scouted in the new stage yet).
 #[account(zero_copy)]
 #[repr(C)]
 pub struct Peek {
@@ -162,11 +162,10 @@ pub struct Peek {
     pub side: u8,
     /// The owner's stage when this was last written (NONE before the first write).
     pub stage: u8,
-    /// The rig the owner placed during that stage: the victim's stage and gate slot (NONE = none).
-    pub rig_stage: u8,
-    pub rig_slot: u8,
-    /// The owner's peek during that stage: its stage (NONE = none), gate slot and the true op
-    /// (`GateOp::to_byte`: k for ×k, 0x80 | k for ÷k).
+    /// Rules v5: was the rig (stage, slot). Always NONE; kept so the offsets stay put.
+    pub _reserved: [u8; 2],
+    /// The owner's Scout during that stage: its stage (NONE = none), gate slot and the true op
+    /// (`GateOp::to_byte`: k = ×k, 0x40 | n = +n, 0x80 | k = ÷k, 0xC0 | n = −n).
     pub peek_stage: u8,
     pub peek_slot: u8,
     pub peek_op: u8,
@@ -178,17 +177,17 @@ pub const SECRETS_SPACE: usize = 8 + core::mem::size_of::<Secrets>();
 pub const PEEK_SPACE: usize = 8 + core::mem::size_of::<Peek>();
 
 const _: () = {
-    assert!(core::mem::size_of::<Match>() == 1_784);
-    assert!(core::mem::size_of::<Secrets>() == 144);
+    assert!(core::mem::size_of::<Match>() == 1_800);
+    assert!(core::mem::size_of::<Secrets>() == 136);
     assert!(core::mem::size_of::<Peek>() == 48);
-    // Rules v4 codec sizes the layout below is built for.
-    assert!(PUBLIC_LEN == 1_474);
-    assert!(SECRET_LEN == 40);
-    assert!(HISTORY_LEN == 16);
+    // Rules v5 codec sizes the layout below is built for.
+    assert!(PUBLIC_LEN == 1_484);
+    assert!(SECRET_LEN == 32);
+    assert!(HISTORY_LEN == 8);
     // The history is the tail of the secret part (copied as-is at `finish`).
     assert!(SECRET_LEN - HISTORY_LEN == lil_dudes_sim::codec::S_HISTORY);
     // Fixed offsets the TS decoder reads (packages/client), after the 8-byte discriminator.
-    assert!(core::mem::offset_of!(Match, gotcha) == 280);
+    assert!(core::mem::offset_of!(Match, _reserved) == 280);
     assert!(core::mem::offset_of!(Match, history) == 288);
     assert!(core::mem::offset_of!(Match, state) == 310);
     assert!(core::mem::offset_of!(Secrets, state) == 104);

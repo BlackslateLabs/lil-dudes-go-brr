@@ -36,7 +36,8 @@
 //!   12 end [winner (-1 draw), ko, moved, fee]
 //!   13 first [side, stage, gold]
 //!   14 rush end [side, dudes still on the lane (not counted)]
-//!   15 champion called [side]
+//!   (A called Champion shows as `champion pending` in the view, then as a volley with the
+//!   champion flag.)
 //!
 //! PRIVATE LAYOUT (`private_view(side)`), for that side's current stage:
 //!   stage, peek slot (-1 none), peek op byte (0 none)
@@ -369,7 +370,6 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
         ]),
         Event::First { side, stage, gold } => f(&[13.0, b(side), b(stage), n(gold)]),
         Event::RushEnd { side, lost } => f(&[14.0, b(side), n(lost)]),
-        Event::Champion { side } => f(&[15.0, b(side)]),
     }
 }
 

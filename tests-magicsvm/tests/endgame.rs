@@ -1,15 +1,19 @@
-//! M3 step 5, rules v4: rig and peek by gate slot (private; a rig in any phase on my own current
-//! stage of the opponent's copy, refused once they are past it, on revealed or missing gates and
-//! twice a stage; a peek only in my Fight / Raid), finish (publish + commit + undelegate + Magic
-//! Action), the permissionless settle fallback, abort, close.
+//! Rules v5: Scout by gate slot (private; only in my Fight / Rush, once a stage, never the timing
+//! gate), Champion (public; my Fight, a full meter, one at a time; it rides the next volley),
+//! finish (publish + commit + undelegate + Magic Action), the permissionless settle fallback,
+//! abort, close.
 
 mod common;
 
 use common::game::*;
-use lil_dudes_sim::codec::{encode_secret, HEADER_LEN, SECRET_LEN, SIDE_LEN, S_HISTORY};
-use lil_dudes_sim::deal::RIG_OP;
-use lil_dudes_sim::layouts::stage;
-use lil_dudes_sim::{payout, Peek, Phase, Rig, LANE_WIDTH, MATCH_TICKS, PLANT_TICKS};
+use lil_dudes_sim::codec::{
+    encode_secret, HEADER_LEN, SECRET_LEN, SIDE_CHAMP, SIDE_LEN, S_HISTORY,
+};
+use lil_dudes_sim::layouts::{stage, Slot};
+use lil_dudes_sim::{
+    payout, Peek, Phase, CHAMP_COUNT, CHAMP_TICKS, FIRE_TICKS, LANE_WIDTH, MATCH_TICKS,
+    PLANT_TICKS,
+};
 use magicsvm::TransactionTarget::{Base, Ephemeral};
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -38,22 +42,18 @@ fn run_to_tick(g: &mut Game, tick: u32) {
     }
 }
 
-fn rig_ix(g: &Game, who: &Keypair, side: usize, slot: u8) -> Instruction {
-    g.secret_input_ix("plant_rig", who.pubkey(), g.peeks[side], slot)
-}
-
 fn peek_ix(g: &Game, who: &Keypair, side: usize, slot: u8) -> Instruction {
     g.secret_input_ix("peek_cell", who.pubkey(), g.peeks[side], slot)
 }
 
-/// Test surgery: puts `side` on `stage` (codec side byte 0) without touching anything else.
-fn set_stage(g: &mut Game, side: usize, stage: u8) {
-    let at = off::STATE + HEADER_LEN + side * SIDE_LEN;
+/// Test surgery: sets `side`'s Champion meter (codec side tail) without touching anything else.
+fn set_champ_meter(g: &mut Game, side: usize, meter: u8) {
+    let at = off::STATE + HEADER_LEN + side * SIDE_LEN + SIDE_CHAMP;
     let game = g.game;
-    g.poke_ephemeral(&game, at, &[stage]);
+    g.poke_ephemeral(&game, at, &[meter]);
 }
 
-/// The 7 view bytes of a Peek: [stage, rig stage, rig slot, peek stage, peek slot, peek op, pad].
+/// The 7 view bytes of a Peek: [stage, reserved ×2, peek stage, peek slot, peek op, pad].
 fn view(peek: &[u8]) -> [u8; 7] {
     peek[peek_off::STAGE..peek_off::STAGE + 7]
         .try_into()
@@ -61,7 +61,7 @@ fn view(peek: &[u8]) -> [u8; 7] {
 }
 
 #[test]
-fn rig_and_peek_follow_the_v4_rules_and_stay_private() {
+fn scout_follows_the_v5_rules_and_stays_private() {
     let mut g = Game::new(20);
     g.to_ready(0, 0);
     g.to_playing();
@@ -74,146 +74,65 @@ fn rig_and_peek_follow_the_v4_rules_and_stay_private() {
             "both start in the Plant"
         );
     }
-    let gates = stage(p.layout, 0).gates.len() as u8;
-    // B fires at a gate it is sure to pass; A rigs a gate of B's off that path when it can.
+    let st = stage(p.layout, 0);
+    let gates = st.gates.len() as u8;
+    let timing = (0u8..)
+        .zip(st.gates.iter())
+        .find_map(|(slot, d)| (d.slot == Slot::Timing).then_some(slot))
+        .expect("one timing gate per stage");
+    // B fires at a gate it is sure to pass; it scouts a gate off that path.
     let (aim_slot, aim_x) = sure_gate(p.layout, 0).expect("a sure gate in stage 0");
-    let rig_slot = off_path_gate(p.layout, 0, aim_x, aim_slot).unwrap_or((aim_slot + 1) % gates);
+    // Scouted at fight tick 2, before any volley reaches row 1, so any other hidden gate is
+    // still face-down.
+    let target = off_path_gate(p.layout, 0, aim_x, aim_slot)
+        .or_else(|| (0..gates).find(|&s| s != aim_slot && s != timing))
+        .expect("another hidden gate");
     g.er(g.set_aim_ix(b.pubkey(), aim_x), &[&b]).unwrap();
     // Nobody has written their Peek yet.
     let theirs = g.peek_bytes(1, Some(b.pubkey())).unwrap();
     assert_eq!((theirs[peek_off::SIDE], theirs[peek_off::STAGE]), (1, NONE));
 
-    // Plant: peeking is refused.
+    // Plant: refused.
     assert!(
-        g.er(peek_ix(&g, &b, 1, rig_slot), &[&b]).is_err(),
-        "peeked in the plant"
+        g.er(peek_ix(&g, &b, 1, target), &[&b]).is_err(),
+        "scouted in the plant"
     );
-    // Refused rigs: a slot the stage does not have, a stranger, someone else's Peek.
+    run_to_tick(&mut g, PLANT_TICKS + 2);
+    assert_eq!(g.public(Ephemeral).sides[1].phase, Phase::Fight);
+    // Refused: a missing slot, the timing gate, a stranger, someone else's Peek, a revealed gate.
     assert!(
-        g.er(rig_ix(&g, &a, 0, gates), &[&a]).is_err(),
-        "rigged a missing slot"
+        g.er(peek_ix(&g, &b, 1, gates), &[&b]).is_err(),
+        "scouted a missing slot"
+    );
+    assert!(
+        g.er(peek_ix(&g, &b, 1, timing), &[&b]).is_err(),
+        "scouted the timing gate"
     );
     let stranger = Keypair::new();
     assert!(
-        g.er(rig_ix(&g, &stranger, 0, rig_slot), &[&stranger])
+        g.er(peek_ix(&g, &stranger, 1, target), &[&stranger])
             .is_err(),
-        "stranger rigged"
+        "stranger scouted"
     );
     assert!(
-        g.er(rig_ix(&g, &a, 1, rig_slot), &[&a]).is_err(),
-        "rigged through the opponent's Peek"
+        g.er(peek_ix(&g, &a, 1, target), &[&a]).is_err(),
+        "scouted through the opponent's Peek"
     );
-    // A revealed gate (test surgery: B's aim gate shown face-up with its true value).
     let truth = g.secret_raw(Ephemeral).values[0][usize::from(aim_slot)];
     g.reveal_gate(1, aim_slot, truth.to_byte());
-    assert_eq!(
-        g.public(Ephemeral).sides[1].gates[usize::from(aim_slot)].revealed,
-        Some(truth)
-    );
-    assert!(
-        g.er(rig_ix(&g, &a, 0, aim_slot), &[&a]).is_err(),
-        "rigged a revealed gate"
-    );
-    assert!(
-        !g.public(Ephemeral).sides[0].rig_used,
-        "a refused rig was spent"
-    );
-
-    // A valid rig: under A's stage 0, naming B's stage 0, in A's Peek only.
-    g.er(rig_ix(&g, &a, 0, rig_slot), &[&a]).unwrap();
-    let secret = g.secret_raw(Ephemeral);
-    assert_eq!(
-        secret.history[0].rigs[0],
-        Some(Rig {
-            stage: 0,
-            slot: rig_slot
-        })
-    );
-    assert_eq!(
-        secret.true_op(1, 0, rig_slot),
-        RIG_OP,
-        "B's gate is a trap now"
-    );
-    assert!(g.public(Ephemeral).sides[0].rig_used);
-    let mine = g
-        .peek_bytes(0, Some(a.pubkey()))
-        .expect("my Peek is visible to me");
-    assert_eq!(mine[peek_off::SIDE], 0);
-    assert_eq!(
-        view(&mine),
-        [0, 0, rig_slot, NONE, NONE, 0, 0],
-        "A's Peek after the rig"
-    );
-    assert!(
-        g.peek_bytes(0, Some(b.pubkey())).is_none(),
-        "opponent reads my Peek"
-    );
-    assert!(g.peek_bytes(0, None).is_none(), "anyone reads my Peek");
-    // A second rig in the same stage: refused.
-    let other = (0..gates)
-        .find(|&s| s != rig_slot && s != aim_slot)
-        .unwrap_or(rig_slot);
-    assert!(
-        g.er(rig_ix(&g, &a, 0, other), &[&a]).is_err(),
-        "rigged twice in a stage"
-    );
-
-    // Fight: rigging still works (rules v4: any phase), on a gate still face-down in A's copy
-    // of our shared stage; peeking works once per stage, on an unrevealed gate.
-    run_to_tick(&mut g, PLANT_TICKS + 2);
-    let p = g.public(Ephemeral);
-    assert_eq!(p.sides[1].phase, Phase::Fight, "B's plant is over");
-    let a_x = p.sides[0].aim;
-    let a_down = |s: u8| p.sides[0].gates[usize::from(s)].revealed.is_none();
-    let b_rig = off_path_gate(p.layout, 0, a_x, NONE)
-        .filter(|&s| a_down(s))
-        .or_else(|| (0..gates).find(|&s| a_down(s)))
-        .expect("a face-down gate in A's copy");
-    g.er(rig_ix(&g, &b, 1, b_rig), &[&b])
-        .expect("a rig during my Fight is accepted");
-    let secret = g.secret_raw(Ephemeral);
-    assert_eq!(
-        secret.history[0].rigs[1],
-        Some(Rig {
-            stage: 0,
-            slot: b_rig
-        })
-    );
-    assert_eq!(
-        secret.true_op(0, 0, b_rig),
-        RIG_OP,
-        "A's gate is a trap now"
-    );
-    assert!(g.public(Ephemeral).sides[1].rig_used);
     assert!(
         g.er(peek_ix(&g, &b, 1, aim_slot), &[&b]).is_err(),
-        "peeked a revealed gate"
-    );
-    assert!(
-        g.er(peek_ix(&g, &b, 1, gates), &[&b]).is_err(),
-        "peeked a missing slot"
+        "scouted a revealed gate"
     );
     assert!(
         !g.public(Ephemeral).sides[1].peek_used,
-        "a refused peek was spent"
+        "a refused scout was spent"
     );
-    // The rigged gate peeks as the trap (it is off B's path, so still face-down) unless this
-    // layout had no off-path gate and it got revealed.
-    let p = g.public(Ephemeral);
-    let face_down = |s: u8| p.sides[1].gates[usize::from(s)].revealed.is_none();
-    let target = if face_down(rig_slot) {
-        rig_slot
-    } else {
-        (0..gates)
-            .find(|&s| face_down(s))
-            .expect("a face-down gate")
-    };
+
+    // A valid Scout: the true value, in B's Peek only.
     g.er(peek_ix(&g, &b, 1, target), &[&b]).unwrap();
     let secret = g.secret_raw(Ephemeral);
-    let truth = secret.true_op(1, 0, target);
-    if target == rig_slot {
-        assert_eq!(truth, RIG_OP, "a rigged gate peeks as ÷2");
-    }
+    let truth = secret.true_op(0, target);
     assert_eq!(
         secret.history[0].peeks[1],
         Some(Peek {
@@ -225,80 +144,78 @@ fn rig_and_peek_follow_the_v4_rules_and_stay_private() {
     let theirs = g.peek_bytes(1, Some(b.pubkey())).unwrap();
     assert_eq!(
         view(&theirs),
-        [0, 0, b_rig, 0, target, truth.to_byte(), 0],
-        "B's Peek after the rig and the peek"
+        [0, NONE, NONE, 0, target, truth.to_byte(), 0],
+        "B's Peek after the scout"
     );
     assert!(
         g.peek_bytes(1, Some(a.pubkey())).is_none(),
         "A reads B's Peek"
     );
-    // A's Peek is untouched by B's peek.
-    assert_eq!(
-        view(&g.peek_bytes(0, Some(a.pubkey())).unwrap()),
-        view(&mine)
-    );
+    assert!(g.peek_bytes(1, None).is_none(), "anyone reads B's Peek");
+    // A's Peek is untouched.
+    let mine = g.peek_bytes(0, Some(a.pubkey())).unwrap();
+    assert_eq!(mine[peek_off::PEEK_STAGE], NONE);
+    // Once per stage.
     let again = (0..gates)
-        .find(|&s| s != target && face_down(s))
+        .find(|&s| s != target && s != aim_slot && s != timing)
         .unwrap_or(target);
     assert!(
         g.er(peek_ix(&g, &b, 1, again), &[&b]).is_err(),
-        "peeked twice in a stage"
+        "scouted twice in a stage"
     );
 }
 
 #[test]
-fn rig_reaches_ahead_but_not_behind_the_opponent() {
-    // Rules v4: my rig names a gate of MY current stage in the opponent's copy. Refused (and not
-    // spent) once they have moved past that stage; accepted for a stage they have not reached
-    // yet (it springs when they get there). Stages are set by test surgery at tick 0.
+fn champion_follows_the_v5_rules_and_rides_the_next_volley() {
     let mut g = Game::new(26);
     g.to_ready(0, 0);
     g.to_playing();
     let a = g.burner(0);
-    let layout = g.public(Ephemeral).layout;
-    let slot = 0u8;
-    assert!(usize::from(slot) < stage(layout, 1).gates.len());
-
-    // B is already on stage 1 while A is on stage 0: A cannot rig B's (finished) stage 0.
-    set_stage(&mut g, 1, 1);
-    assert_eq!(
-        [
-            g.public(Ephemeral).sides[0].stage,
-            g.public(Ephemeral).sides[1].stage
-        ],
-        [0, 1]
-    );
+    // Plant: refused (not a Fight), even with a full meter.
+    set_champ_meter(&mut g, 0, CHAMP_TICKS as u8);
     assert!(
-        g.er(rig_ix(&g, &a, 0, slot), &[&a]).is_err(),
-        "rigged a stage the opponent already passed"
+        g.er(g.champion_ix(a.pubkey()), &[&a]).is_err(),
+        "champion in the plant"
     );
+    assert!(!g.public(Ephemeral).sides[0].champ_pending);
+    run_to_tick(&mut g, PLANT_TICKS + 2);
+    // Fight, meter not full: refused, nothing spent.
+    set_champ_meter(&mut g, 0, 10);
+    assert_eq!(g.public(Ephemeral).sides[0].phase, Phase::Fight);
     assert!(
-        !g.public(Ephemeral).sides[0].rig_used,
-        "a refused rig was spent"
+        g.er(g.champion_ix(a.pubkey()), &[&a]).is_err(),
+        "champion before the meter is full"
     );
-    assert_eq!(g.secret_raw(Ephemeral).history[0].rigs[0], None);
-
-    // A on stage 1, B still on stage 0: the rig lands on B's stage 1, ahead of them.
-    set_stage(&mut g, 1, 0);
-    set_stage(&mut g, 0, 1);
-    let before = g.secret_raw(Ephemeral).true_op(1, 0, slot);
-    g.er(rig_ix(&g, &a, 0, slot), &[&a])
-        .expect("a rig on a stage the opponent has not reached");
-    let secret = g.secret_raw(Ephemeral);
-    assert_eq!(secret.history[1].rigs[0], Some(Rig { stage: 1, slot }));
-    assert_eq!(
-        secret.true_op(1, 1, slot),
-        RIG_OP,
-        "B's stage-1 gate is a trap"
+    let stranger = Keypair::new();
+    assert!(
+        g.er(g.champion_ix(stranger.pubkey()), &[&stranger])
+            .is_err(),
+        "stranger called a champion"
     );
-    assert_eq!(
-        secret.true_op(1, 0, slot),
-        before,
-        "B's current stage untouched"
+    // Full: accepted; public, pending, the meter empties.
+    set_champ_meter(&mut g, 0, CHAMP_TICKS as u8);
+    g.er(g.champion_ix(a.pubkey()), &[&a]).unwrap();
+    let s = g.public(Ephemeral).sides[0];
+    assert!(s.champ_pending, "pending after the call");
+    assert_eq!(s.champ_meter, 0);
+    assert!(!g.public(Ephemeral).sides[1].champ_pending);
+    // Not twice while one is pending.
+    set_champ_meter(&mut g, 0, CHAMP_TICKS as u8);
+    assert!(
+        g.er(g.champion_ix(a.pubkey()), &[&a]).is_err(),
+        "two champions pending"
     );
-    assert!(g.public(Ephemeral).sides[0].rig_used);
-    let mine = g.peek_bytes(0, Some(a.pubkey())).unwrap();
-    assert_eq!(view(&mine), [1, 1, slot, NONE, NONE, 0, 0], "A's Peek");
+    // The crank fires it: the next volley is a Champion cohort of CHAMP_COUNT.
+    let t = g.public(Ephemeral).tick;
+    run_to_tick(&mut g, t + FIRE_TICKS + 1);
+    let s = g.public(Ephemeral).sides[0];
+    assert!(!s.champ_pending, "fired");
+    let champ = s
+        .cohorts()
+        .iter()
+        .find(|c| c.champion)
+        .expect("a champion cohort on the lane");
+    assert!(champ.count >= 1 && champ.count <= CHAMP_COUNT * 10);
 }
 
 #[test]
@@ -308,11 +225,11 @@ fn finish_publishes_settles_by_action_and_refuses_a_second_settle() {
     g.to_ready(S, S);
     g.to_playing();
     let (a, b) = (g.burner(0), g.burner(1));
-    // A rigs the gate B fires through: B's first cohort springs it (GOTCHA), and the history
-    // has something to publish.
+    // B fires at a sure gate; A scouts one off its own path in its Fight, so the history has
+    // something to publish.
     let layout = g.public(Ephemeral).layout;
-    let (slot, x) = sure_gate(layout, 0).expect("a sure gate in stage 0");
-    g.er(rig_ix(&g, &a, 0, slot), &[&a]).unwrap();
+    let (_, x) = sure_gate(layout, 0).expect("a sure gate in stage 0");
+    let slot = off_path_gate(layout, 0, (LANE_WIDTH / 2) as i16, NONE).expect("an off-path gate");
     g.er(g.set_aim_ix(b.pubkey(), x), &[&b]).unwrap();
     g.er(g.set_aim_ix(a.pubkey(), (LANE_WIDTH / 2) as i16), &[&a])
         .unwrap();
@@ -321,24 +238,20 @@ fn finish_publishes_settles_by_action_and_refuses_a_second_settle() {
         g.er(g.finish_ix(a.pubkey()), &[&a]).is_err(),
         "finished mid-match"
     );
+    run_to_tick(&mut g, PLANT_TICKS + 2);
+    g.er(peek_ix(&g, &a, 0, slot), &[&a]).unwrap();
     run_to_end(&mut g);
     let p = g.public(Ephemeral);
     let r = p.result.unwrap();
     assert!(p.tick <= MATCH_TICKS);
     let dead = [p.sides[0].dead, p.sides[1].dead];
     let gold = [p.sides[0].gold, p.sides[1].gold];
-    assert_eq!(r, payout(S, dead, gold), "SPEC §8 v3 payout");
+    assert_eq!(r, payout(S, dead, gold), "SPEC_V5 §7 payout");
     if r.ko && r.winner.is_some() {
         assert_eq!(r.moved, S, "a death moves the loser's whole stake");
     }
     let d = g.match_data(Ephemeral);
-    let gotcha = &d[off::GOTCHA + 4..off::GOTCHA + 8];
-    assert_ne!(
-        u16::from_le_bytes([gotcha[0], gotcha[1]]),
-        u16::MAX,
-        "GOTCHA on B"
-    );
-    assert_eq!((gotcha[2], gotcha[3]), (slot, 0), "B's gate, rigged by A");
+    assert_eq!(&d[off::RESERVED..off::RESERVED + 8], &[0; 8], "reserved bytes stay zero");
     let secret = g.secret_raw(Ephemeral);
     let w = [g.players[0].wallet.pubkey(), g.players[1].wallet.pubkey()];
     let before = [g.balance(&w[0]), g.balance(&w[1]), g.balance(&TREASURY)];
@@ -360,10 +273,11 @@ fn finish_publishes_settles_by_action_and_refuses_a_second_settle() {
     encode_secret(&secret, &mut encoded);
     let history = &d[off::HISTORY..off::HISTORY + (SECRET_LEN - S_HISTORY)];
     assert_eq!(history, &encoded[S_HISTORY..], "history published");
+    let truth = secret.true_op(0, slot).to_byte();
     assert_eq!(
         history[..4],
-        [0, slot, NONE, 0],
-        "stage 0 of side 0: the rig, no peek"
+        [slot, truth, NONE, 0],
+        "stage 0: side 0 scouted, side 1 did not"
     );
     // Both Peeks were refreshed to each side's final stage and committed with the rest.
     for (side, peek) in g.peeks.iter().enumerate() {
