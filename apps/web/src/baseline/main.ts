@@ -5,6 +5,8 @@ import './baseline.css';
 import { LAYOUTS } from './layouts';
 import { Sim, P } from './sim';
 import { World } from './scene';
+import { Audio } from './audio';
+import { BloomEffect, EffectComposer, EffectPass, RenderPass, ToneMappingEffect, ToneMappingMode, VignetteEffect } from 'postprocessing';
 
 const q = new URLSearchParams(location.search);
 const auto = q.get('auto') === '1';
@@ -15,11 +17,18 @@ const frame = el('div', 'frame', stage);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: auto });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.toneMapping = THREE.NoToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 frame.appendChild(renderer.domElement);
 
 const world = new World();
+const audio = new Audio(); world.audio = audio;
+const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType, multisampling: devicePixelRatio < 1.5 ? 4 : 0 });
+composer.addPass(new RenderPass(world.scene, world.camera));
+composer.addPass(new EffectPass(world.camera,
+  new BloomEffect({ mipmapBlur: true, luminanceThreshold: 1.0, luminanceSmoothing: 0.25, intensity: 0.9, radius: 0.7 }),
+  new VignetteEffect({ offset: 0.35, darkness: 0.35 }),
+  new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })));
 let sim = new Sim(LAYOUTS[layoutIdx]);
 world.build(sim);
 
@@ -35,7 +44,7 @@ const hint = el('div', 'hint', hud); hint.textContent = 'Hold to fire · drag to
 const banner = el('div', 'banner', hud); banner.hidden = true;
 const gear = el('button', 'gear', hud); gear.textContent = '⚙';
 
-champBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); sim.fireChampion(); });
+champBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); void audio.start(); if (sim.champ >= 1) audio.play('champ'); sim.fireChampion(); });
 
 function restart(idx = layoutIdx) {
   layoutIdx = idx; sim = new Sim(LAYOUTS[layoutIdx]); world.build(sim); banner.hidden = true;
@@ -46,10 +55,10 @@ function restart(idx = layoutIdx) {
 // ---------- input ----------
 let dragging = false, lastX = 0;
 const canvas = renderer.domElement;
-canvas.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; sim.cannon.firing = true; hint.hidden = true; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointerdown', (e) => { void audio.start(); dragging = true; lastX = e.clientX; sim.cannon.firing = true; hint.hidden = true; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  const w = canvas.clientWidth; sim.cannon.target = Math.max(-5.3, Math.min(5.3, sim.cannon.target + ((e.clientX - lastX) / w) * 16)); lastX = e.clientX;
+  const w = canvas.clientWidth; sim.cannon.target = Math.max(-5.3, Math.min(5.3, sim.cannon.target + ((e.clientX - lastX) / w) * 14)); lastX = e.clientX;
 });
 const up = () => { dragging = false; sim.cannon.firing = false; };
 canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
@@ -58,6 +67,7 @@ addEventListener('keydown', (e) => {
   if (e.key >= '1' && e.key <= String(LAYOUTS.length)) restart(Number(e.key) - 1);
   if (e.key === 'c') sim.fireChampion();
   if (e.key === 'p') panel.hidden = !panel.hidden;
+  if (e.key === 'm') audio.toggle();
 });
 
 // ---------- tuning panel ----------
@@ -96,7 +106,7 @@ function resize() {
   let w = full ? W : Math.min(W, H * 9 / 19.5), h = full ? H : w * 19.5 / 9;
   if (h > H) { h = H; w = h * 9 / 19.5; }
   frame.style.width = `${w}px`; frame.style.height = `${h}px`;
-  renderer.setSize(w, h);
+  renderer.setSize(w, h); composer.setSize(w, h);
   world.setCamera(w / h);
 }
 addEventListener('resize', resize);
@@ -119,12 +129,13 @@ function frameLoop(now: number) {
   while (acc >= STEP) { sim.step(STEP); acc -= STEP; }
   world.setCamera(canvas.clientWidth / canvas.clientHeight);
   world.draw(sim, dt, time);
-  renderer.render(world.scene, world.camera);
+  composer.render(dt);
   // HUD
   (you.querySelector('i') as HTMLElement).textContent = String(sim.count(0));
   (foe.querySelector('i') as HTMLElement).textContent = String(sim.count(1));
   hpRow.style.setProperty('--hp', String(sim.cannon.hp / P.cannonHp));
   champBtn.style.setProperty('--fill', String(sim.champ));
+  if (sim.champ >= 1 && !champBtn.classList.contains('ready')) audio.play('champReady');
   champBtn.classList.toggle('ready', sim.champ >= 1);
   if (sim.over && banner.hidden) {
     banner.hidden = false;

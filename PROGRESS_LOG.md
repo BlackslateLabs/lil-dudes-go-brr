@@ -1132,3 +1132,12 @@ recording, then change it toward our own ideas from there.
 
 **Next:** Kai plays it and gives direction; iterate the look/feel; then port the locked numbers into
 the Rust sim (v6) and the real arena.
+- **v2 (same day, after Kai: "too bland, the crowd is dots"):** main's candy look (raised tiled lane
+  with a blue cannon apron and red base zone, red/white candy kerbs, mown meadow with Kenney nature
+  scenery, sky gradient), bloom + vignette (postprocessing), main's town hall, wall and towers
+  (Kenney, enemy-tinted, scaled 13/18). New crowd character (`dude.ts`): helmet, big eyes, backpack,
+  GPU-animated legs/arms, dark outline (inverted hull sharing the instance matrix), clones hop out
+  of gates. Gates coloured by size (×2 blue, ×3 teal, ×4 purple, ×5+ gold) with glowing caps;
+  blocks with a dude icon; star sparks, clash puffs, tower hit flash and sink; sounds + music from
+  main's set (`M` mutes); 1:1 drag.
+

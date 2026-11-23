@@ -6,9 +6,9 @@ export const P = {
   speed: 2.7, // u/s cruise (reference 2.5–2.9)
   boost: 9, // u/s at the muzzle, easing to cruise
   boostTime: 0.3,
-  fireInterval: 0.3, // s between shots (reference base cannon 0.38)
+  fireInterval: 0.24, // s between shots (reference base cannon 0.38)
   perShot: 1,
-  radius: 0.24, // body radius for spacing
+  radius: 0.22, // body radius for spacing
   clashR: 0.5,
   waveFirst: 3,
   waveGap: 6.5,
@@ -82,7 +82,7 @@ export class Sim {
     if (this.over) { this.compact(); return; }
     this.t += dt;
     const c = this.cannon;
-    c.x += (Math.max(-LANE.cannonClamp, Math.min(LANE.cannonClamp, c.target)) - c.x) * Math.min(1, dt * 18);
+    c.x += (Math.max(-LANE.cannonClamp, Math.min(LANE.cannonClamp, c.target)) - c.x) * Math.min(1, dt * 30);
     c.recoil = Math.max(0, c.recoil - dt * 6);
     c.cool -= dt;
     if (c.firing) {
