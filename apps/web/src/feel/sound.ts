@@ -224,4 +224,36 @@ export const sfx = {
   click() {
     play('click');
   },
+
+  // --- v5 cues (contract for the flow/HUD work; implemented in the sound pass) -----------------
+  /** BREACH! stamp when your last Fight 2 tower falls. */
+  breach() {},
+  /** Rush countdown tick: n = 3, 2, 1, then 0 for "TIME!". */
+  countdown(_n: number) {},
+  /** One rung of a rising count-up ladder (step 0, 1, 2, … gets higher). */
+  ladder(_step: number) {},
+  /** The payout landing in your pill: coin shower. */
+  payout() {},
+  /** VS screen: cards slide in (whoosh) and the "VS" impact. */
+  whoosh() {},
+  vsHit() {},
+  /** Logo wipe closing / opening. */
+  wipeIn() {},
+  wipeOut() {},
+  /** The big PLAY / Quick Match press (longer than a click). */
+  playButton() {},
+  /** Enemies are getting close to your cannon line (call at most every 2 s). */
+  danger() {},
+  /** Champion meter full / Champion launched. */
+  champCharged() {},
+  champLaunch() {},
 };
+
+/** v5 mix: duck battle sounds during the end sequence and result (contract; implemented in the sound pass). */
+export function setBattleDuck(_on: boolean) {}
+
+/** Music beds (contract; implemented in the sound pass). `null` stops the music. */
+export function playMusic(_track: 'menu' | 'match' | 'win' | 'lose' | null) {}
+
+/** Phone vibration on big moments only (contract; implemented in the sound pass). */
+export function haptic(_kind: 'tap' | 'charged' | 'big') {}
