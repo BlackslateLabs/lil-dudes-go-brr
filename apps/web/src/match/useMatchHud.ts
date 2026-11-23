@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import * as client from '@lil-dudes/client';
-import { FINAL_STAGE, LANE_LENGTH, RAID_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView } from '@lil-dudes/client';
+import { FINAL_STAGE, LANE_LENGTH, RAID_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView, type Side } from '@lil-dudes/client';
 import { haptic, setBattleDuck, sfx } from '../feel/sound';
 import { HUD_RESET, useHud } from '../hud';
-import { useApp } from '../store';
+import { useApp, type ScoreParts } from '../store';
 import type { MatchFeed } from './feed';
 
 /** After the last end stamp (TIME!, OVERRUN!, THEY FELL!), hold this long before the result. */
@@ -29,6 +29,8 @@ export function isBreach(phase: LanePhase | string): boolean {
   return phase === 'raid' || phase === 'rush';
 }
 
+const emptyParts = (): ScoreParts => ({ damage: 0, towers: 0, first: 0, rush: 0 });
+
 /** Drives the HUD store, sound and the end-of-match hand-off from a feed. For the real match only. */
 export function useMatchHud(feed: MatchFeed) {
   useEffect(() => {
@@ -40,6 +42,8 @@ export function useMatchHud(feed: MatchFeed) {
     let lastHud = 0;
     let endTimer: ReturnType<typeof setTimeout> | undefined;
     let lastDanger = -Infinity;
+    // Score parts per side (indexed by Side), tallied from events for the result ceremony.
+    const parts: [ScoreParts, ScoreParts] = [emptyParts(), emptyParts()];
     let hall = 0;
     const banner = (text: string, tone: 'good' | 'bad' | 'gold') => hud.set({ banner: { text, tone, at: performance.now() } });
 
@@ -132,12 +136,14 @@ export function useMatchHud(feed: MatchFeed) {
           if (mine) sfx.wave();
           break;
         case 'towerHit':
+          parts[e.side].damage += e.gold;
           if (mine) sfx.hit(false);
           break;
         case 'crate':
           if (mine) sfx.crate(e.broken);
           break;
         case 'towerDown':
+          parts[e.side].towers += e.gold;
           if (mine) {
             sfx.towerDown();
             // The last Fight 2 tower is the BREACH! stamp instead.
@@ -145,11 +151,16 @@ export function useMatchHud(feed: MatchFeed) {
           }
           break;
         case 'loot':
+          // v4 raid loot; v5's Rush count (2 per dude) arrives the same way.
+          parts[e.side].rush += e.gold;
           if (mine) {
             sfx.loot();
             hall += e.count;
           }
           break;
+        // TODO(v5 FIRST): when the client emits the FIRST bonus (an event like
+        // `{ type: 'first', side, gold }`, or a `first` field on the lane), add it here:
+        //   parts[e.side].first += e.gold;
         case 'stage':
           if (mine && e.phase === 'plant') {
             hud.set({ peeking: false });
@@ -176,17 +187,20 @@ export function useMatchHud(feed: MatchFeed) {
           hud.set({ ended: { won, died, at: now }, danger: false, hallCount: hall });
           if (won === true) sfx.win();
           else if (won === false) sfx.lose();
+          if (import.meta.env.DEV) {
+            for (const side of [0, 1] as Side[]) {
+              const p = parts[side];
+              const sum = p.damage + p.towers + p.first + p.rush;
+              if (sum !== e.result.gold[side]) console.warn(`score parts of side ${side} sum to ${sum}, gold is ${e.result.gold[side]}`, p);
+            }
+          }
           useApp.getState().setLastMatch({
             result: e.result,
             mySide: me,
             names: [v.sides[me].name, v.sides[them].name],
             stake: v.stake,
             layoutName: v.layoutName,
-            // Tallied from events by the score-parts work; zeros until then.
-            breakdown: [
-              { damage: 0, towers: 0, first: 0, rush: 0 },
-              { damage: 0, towers: 0, first: 0, rush: 0 },
-            ],
+            breakdown: [{ ...parts[0] }, { ...parts[1] }],
           });
           // Let the end sequence finish: hold after the latest stamp (TIME!, OVERRUN!, THEY FELL!).
           const fresh = useHud.getState();
