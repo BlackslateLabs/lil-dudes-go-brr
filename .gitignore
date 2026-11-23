@@ -12,6 +12,7 @@ CLAUDE.md
 CLAUDE.local.md
 .claude/
 pvt-docs/
+teardown/
 
 # rust / anchor
 target/

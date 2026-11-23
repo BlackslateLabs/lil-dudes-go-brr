@@ -1000,3 +1000,27 @@ keeps ticking; consider starting the match once assets are ready. No outline pas
 **Next / handoff:** Suparno: listen and play on a phone; pick music. Claude: start the match after
 assets load, music once picked, KayKit crates when available. Kai: nothing needed for the glow-up
 (no `packages/client` changes).
+
+## 2026-11-23 08:50 IST · Kai · rules v5 agreed · [DECISION] [HANDOFF]
+**Decided (Kai):** rules v5 = changes on top of Suparno's v4, written in `docs/SPEC_V5.md` (and linked from the top of
+`docs/SPEC.md`). In short:
+- **Rig removed. Opponent mini-lane removed** → a thin progress line (their stage, tower HP bar, score).
+- **End of Fight 2 = BREACH → 3.5 s Rush** (`RUSH_TICKS` 70) instead of the 8 s raid; whatever is still on the lane
+  when it ends is counted (2 per dude). No mini-rush after Fight 1.
+- **Gates:** hidden ×2–×5, ÷2/÷3, +N/−N (± only from row 2, sized to the row), big ×6–×10 behind crates, plus **one
+  timing gate per stage** (visible, cycles ×1→×5 one step per second by phase tick).
+- **Champion** (meter = 160 fight ticks, a cohort worth 8 that multiplies through gates, new `champion()` ix) +
+  **Scout** (= Peek, unchanged). Same for both players.
+- **Score** = v4 gold + **FIRST +50** per fight (lower breach tick) + Rush count. No time bonus.
+- **Payout (both survive):** winner keeps own stake + takes `2 × margin` of the loser's stake (margin = (w−l)/(w+l),
+  no cap); 5% fee on what moves. Death: survivor takes the pot.
+- **Screens:** VS screen with the real chain steps as loading copy, tutorial bubbles in the first bot match, BREACH →
+  3-2-1 end sequence, scripted result with the payout counting up, Rematch, Verify, no pause in PvP. Layout rules
+  (gates further down the lane, at most one locked big gate) are in SPEC_V5 §3b.
+
+**Next / handoff:**
+- **Suparno:** please read `docs/SPEC_V5.md`. Stop work on the rig button and the mini-lane.
+  - Must: VS screen, end sequence, result ceremony, progress line.
+  - Should: tutorial bubbles, logo wipe, sound pass.
+  - Tiers are in §10.
+- **Kai:** sim v5 → program v5 → one deploy.

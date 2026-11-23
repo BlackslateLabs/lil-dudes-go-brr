@@ -1,5 +1,9 @@
 # Lil Dudes Go Brr: Game Spec v4
 
+> **v5 (23 Nov 2026): see [`SPEC_V5.md`](SPEC_V5.md).** It lists the changes to this v4 spec (no rig,
+> Rush end, hidden ×/÷/± gates, timing gate, Champion, FIRST bonus, new payout). Where they disagree,
+> SPEC_V5 wins.
+
 Status: **PROPOSED (2026-11-22), replaces v3.** Suparno decided the direction; Kai to confirm or
 amend (PROGRESS_LOG). Numbers are starting values, measured from the genre where possible, to tune
 in playtests. The idea in plain words: [IDEA.md](IDEA.md). Tech: [TECH.md](TECH.md).
