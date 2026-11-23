@@ -20,7 +20,7 @@
 //!  24  u64  fee
 //!  32  u16  next_cohort_id
 //!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 720 each:
-//!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 rig used | 32 peek used
+//!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 32 peek used
 //!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
 //!       12 u8 cohort_len | 13 u8 enemy_len
 //!       14 towers 2 × u16 hp | 18 crates 2 × u16 hp
@@ -31,12 +31,11 @@
 //! ```
 //! phase: 0 plant, 1 fight, 2 transit, 3 raid, 4 done. Op byte: `k` = ×k, `0x80 | k` = ÷k.
 //!
-//! SECRET (SECRET_LEN = 40 bytes)
+//! SECRET (SECRET_LEN = 32 bytes)
 //! ```text
 //!   0  u64  seed
 //!   8  values 2 stages × 8 slots × op byte
-//!  24  history 2 stages × 2 sides × [rig stage (255 = none), rig slot, peek slot (255 = none),
-//!        peek op]   (stage = the actor's own stage; the rig names the victim's stage)
+//!  24  history 2 stages × 2 sides × [peek slot (255 = none), peek op]
 //! ```
 
 use crate::constants::{
@@ -44,11 +43,11 @@ use crate::constants::{
     STAGES, TOWERS_MAX, WAVE_GAPS,
 };
 use crate::payout::MatchResult;
-use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, Rig, SecretState};
+use crate::state::{MatchOptions, Peek, PublicGate, PublicSide, PublicState, SecretState};
 use crate::types::{Cohort, Enemy, GateOp, Phase};
 
 /// Bump when either layout changes (the TS decoder checks byte 0 of the public part).
-pub const CODEC_VERSION: u8 = 3;
+pub const CODEC_VERSION: u8 = 4;
 
 pub const HEADER_LEN: usize = 34;
 pub const GATE_LEN: usize = 3;
@@ -64,7 +63,7 @@ pub const PUBLIC_LEN: usize = HEADER_LEN + 2 * SIDE_LEN;
 /// Offset of the aim inside a side (the program writes it directly).
 pub const SIDE_AIM: usize = 4;
 
-const LOG_LEN: usize = 4;
+const LOG_LEN: usize = 2;
 const S_VALUES: usize = 8;
 pub const S_HISTORY: usize = S_VALUES + STAGES * GATES_MAX;
 pub const HISTORY_LEN: usize = STAGES * 2 * LOG_LEN;
@@ -78,13 +77,12 @@ const F_RESULT: u8 = 8;
 const F_KO: u8 = 16;
 const F_PHASE: u8 = 7;
 const F_DEAD: u8 = 8;
-const F_RIG: u8 = 16;
 const F_PEEK: u8 = 32;
 
 const _: () = {
     assert!(PUBLIC_LEN == 1_474);
-    assert!(SECRET_LEN == 40);
-    assert!(HISTORY_LEN == 16);
+    assert!(SECRET_LEN == 32);
+    assert!(HISTORY_LEN == 8);
     // The on-chain commit limit is 10,240 bytes including the account header.
     assert!(PUBLIC_LEN + 64 < 10_240);
     // Lossless narrowing: one volley per side every FIRE_TICKS and at most one wave per tower
@@ -183,7 +181,6 @@ pub fn encode_public(p: &PublicState, out: &mut [u8; PUBLIC_LEN]) {
 fn encode_side(s: &PublicSide, buf: &mut [u8]) {
     let flags = (s.phase.code() & F_PHASE)
         | (if s.dead { F_DEAD } else { 0 })
-        | (if s.rig_used { F_RIG } else { 0 })
         | (if s.peek_used { F_PEEK } else { 0 });
     let live = s.cohorts();
     let foes = s.enemies();
@@ -259,7 +256,6 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
     s.stage = byte(buf, 0);
     s.phase = Phase::from_code(flags & F_PHASE);
     s.dead = flags & F_DEAD != 0;
-    s.rig_used = flags & F_RIG != 0;
     s.peek_used = flags & F_PEEK != 0;
     s.cannon_x = i16_at(buf, 2);
     s.aim = i16_at(buf, SIDE_AIM);
@@ -331,14 +327,10 @@ pub fn encode_secret(x: &SecretState, out: &mut [u8; SECRET_LEN]) {
     for (op, at) in x.values.iter().flatten().zip(S_VALUES..) {
         set(out, at, op.to_byte());
     }
-    let logs = x
-        .history
-        .iter()
-        .flat_map(|l| l.rigs.iter().zip(l.peeks.iter()));
-    for ((rig, peek), at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
-        let (rs, rslot) = rig.map_or((NONE, 0), |r| (r.stage, r.slot));
+    let logs = x.history.iter().flat_map(|l| l.peeks.iter());
+    for (peek, at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
         let (pslot, pop) = peek.map_or((NONE, 0), |p| (p.slot, p.op.to_byte()));
-        put(out, at, [rs, rslot, pslot, pop]);
+        put(out, at, [pslot, pop]);
     }
 }
 
@@ -348,16 +340,9 @@ pub fn decode_secret(buf: &[u8; SECRET_LEN], x: &mut SecretState) {
     for (op, at) in x.values.iter_mut().flatten().zip(S_VALUES..) {
         *op = GateOp::from_byte(byte(buf, at));
     }
-    let logs = x
-        .history
-        .iter_mut()
-        .flat_map(|l| l.rigs.iter_mut().zip(l.peeks.iter_mut()));
-    for ((rig, peek), at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
-        let [rs, rslot, pslot, pop] = get(buf, at);
-        *rig = (rs != NONE).then_some(Rig {
-            stage: rs,
-            slot: rslot,
-        });
+    let logs = x.history.iter_mut().flat_map(|l| l.peeks.iter_mut());
+    for (peek, at) in logs.zip((S_HISTORY..).step_by(LOG_LEN)) {
+        let [pslot, pop] = get(buf, at);
         *peek = (pslot != NONE).then(|| Peek {
             slot: pslot,
             op: GateOp::from_byte(pop),
@@ -399,7 +384,10 @@ mod tests {
             y: 9,
             tower: 9,
         }; ENEMY_CAP];
-        back.secret.history[1].rigs[0] = Some(Rig { stage: 9, slot: 9 });
+        back.secret.history[1].peeks[0] = Some(Peek {
+            slot: 9,
+            op: GateOp::Div(9),
+        });
         decode_public(&pub_buf, &mut back.public);
         decode_secret(&sec_buf, &mut back.secret);
         assert_eq!(back, *m, "roundtrip at tick {}", m.public.tick);
@@ -411,7 +399,7 @@ mod tests {
 
     #[test]
     fn roundtrip_whole_matches() {
-        let mut saw = [false; 3]; // a rig, a peek, enemies on the field
+        let mut saw = [false; 2]; // a peek, enemies on the field
         for seed in 0..40u64 {
             let mut m = MatchState::new(
                 seed,
@@ -431,22 +419,20 @@ mod tests {
                 if rng.below(10) == 0 {
                     inputs.sides[0] = SideInput {
                         aim: Some(rng.below(LANE_WIDTH as u64) as i32),
-                        rig: Some(rng.below(9) as u8),
                         peek: Some(rng.below(9) as u8),
                     };
                 }
                 step(&mut m, &inputs, &mut NoEvents);
-                saw[2] |= m.public.sides.iter().any(|s| s.enemy_len > 0);
+                saw[1] |= m.public.sides.iter().any(|s| s.enemy_len > 0);
                 if m.public.tick % 7 == 0 || m.public.result.is_some() {
                     roundtrip(&m);
                 }
             }
             for log in &m.secret.history {
-                saw[0] |= log.rigs.iter().any(Option::is_some);
-                saw[1] |= log.peeks.iter().any(Option::is_some);
+                saw[0] |= log.peeks.iter().any(Option::is_some);
             }
         }
-        assert_eq!(saw, [true; 3]);
+        assert_eq!(saw, [true; 2]);
     }
 
     #[test]
@@ -461,10 +447,7 @@ mod tests {
         decode_secret(&sec_buf, &mut z.secret);
         assert_eq!(z, m);
         assert_eq!(pub_buf[0], CODEC_VERSION);
-        assert_eq!(
-            history_bytes(&sec_buf),
-            &[NONE, 0, NONE, 0].repeat(STAGES * 2)[..]
-        );
+        assert_eq!(history_bytes(&sec_buf), &[NONE, 0].repeat(STAGES * 2)[..]);
     }
 
     #[test]

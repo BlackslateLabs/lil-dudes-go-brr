@@ -40,14 +40,11 @@ pub fn play_bots(seed: u64, stake: u64) -> (MatchState, Vec<Event>) {
     (m, all)
 }
 
-/// A player mashing everything: random aims (some off the lane), rigs and peeks (some invalid).
+/// A player mashing everything: random aims (some off the lane) and peeks (some invalid).
 pub fn random_input(r: &mut SplitMix64) -> SideInput {
     let mut i = SideInput::default();
     if r.below(100) < 30 {
         i.aim = Some(r.below(8_000) as i32 - 2_000);
-    }
-    if r.below(100) < 5 {
-        i.rig = Some(r.below(12) as u8);
     }
     if r.below(100) < 5 {
         i.peek = Some(r.below(12) as u8);

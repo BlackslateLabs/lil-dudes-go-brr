@@ -70,11 +70,10 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
         assert!(side.enemies[usize::from(side.enemy_len)..]
             .iter()
             .all(|e| *e == Enemy::default()));
-        // Rig / peek flags match the secret history of the current stage.
+        // The peek flag matches the secret history of the current stage.
         let log = &m.secret.history[usize::from(side.stage)];
-        assert_eq!(side.rig_used, log.rigs[s].is_some());
         assert_eq!(side.peek_used, log.peeks[s].is_some());
-        // Gates: unused slots stay blank; revealed = the true value (deal or trap).
+        // Gates: unused slots stay blank; revealed = the true value.
         for (slot, g) in side.gates.iter().enumerate() {
             let slot = slot as u8;
             match st.gates.get(usize::from(slot)) {
@@ -82,27 +81,21 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
                 Some(def) => {
                     assert!(def.x_min.min(def.x) <= g.x && g.x <= def.x_max.max(def.x));
                     if let Some(op) = g.revealed {
-                        assert_eq!(op, m.secret.true_op(s as u8, side.stage, slot));
+                        assert_eq!(op, m.secret.true_op(side.stage, slot));
                     }
                 }
             }
         }
     }
-    // Every rig names a real gate, at most one per victim stage; the secrets are the deal.
+    // Every peek names a real gate and shows its true value; the secrets are the deal.
     let deal = deals_for(m.secret.seed);
     assert_eq!(deal.layout, p.layout);
     assert_eq!(deal.values, m.secret.values);
-    for s in 0..2usize {
-        let mut per_stage = [0; STAGES];
-        for (k, log) in m.secret.history.iter().enumerate() {
-            if let Some(r) = log.rigs[s] {
-                // v4: a rig names the rigger's own stage (in the other copy).
-                assert_eq!(usize::from(r.stage), k);
-                assert!(usize::from(r.slot) < stage(p.layout, r.stage).gates.len());
-                per_stage[usize::from(r.stage)] += 1;
-            }
+    for (k, log) in m.secret.history.iter().enumerate() {
+        for pk in log.peeks.iter().flatten() {
+            assert!(usize::from(pk.slot) < stage(p.layout, k as u8).gates.len());
+            assert_eq!(pk.op, deal.op(k as u8, pk.slot));
         }
-        assert!(per_stage.iter().all(|&n| n <= 1));
     }
 }
 

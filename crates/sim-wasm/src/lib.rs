@@ -9,7 +9,8 @@
 //!   then per side (0, 1):
 //!           stage (0 fight 1, 1 fight 2), phase (0 plant, 1 fight, 2 transit, 3 raid (the
 //!           town hall raid of fight 2), 4 done), phase ticks (the raid keeps counting the
-//!           fight's), dead, cannon x, aim, gold, rig used, peek used, is bot, raid ticks,
+//!           fight's), dead, cannon x, aim, gold, 0 (reserved, was rig used), peek used, is bot,
+//!           raid ticks,
 //!           2 tower hp, 2 crate hp,
 //!           8 gates × [x, op] (op 0 = face-down, +k = ×k, -k = ÷k; slots past the stage's
 //!           gate count are [0, 0]),
@@ -20,7 +21,7 @@
 //! EVENT LAYOUT (`events()`), EVENT_STRIDE numbers per event: type, then up to 7 fields:
 //!    0 volley [side, id, x, count]
 //!    1 gate [side, slot, cohort id, op (+k / -k), before, after, reveal (0/1)]
-//!    2 gotcha [side, slot, rigged by]
+//!    2 (unused since rules v5)
 //!    3 crate hit [side, crate, cohort id, absorbed, hp left]
 //!    4 crate broken [side, crate]
 //!    5 wave [side, tower, enemy id, x, count, merged (0/1)]
@@ -33,7 +34,7 @@
 //!   12 end [winner (-1 draw), ko, moved, fee]
 //!
 //! PRIVATE LAYOUT (`private_view(side)`), for that side's current stage:
-//!   stage, rig victim stage (-1 none), rig slot (-1 none), peek slot (-1 none), peek op (+k / -k)
+//!   stage, peek slot (-1 none), peek op (+k / -k)
 
 use lil_dudes_sim::layouts::{GateDef, Slot, StageDef};
 use lil_dudes_sim::*;
@@ -77,14 +78,13 @@ impl SimMatch {
     }
 
     /// Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
-    /// `rig` / `peek` are gate slots of `side`'s own current stage (the rig lands on the same
-    /// slot of the opponent's copy, see `can_rig`). Later calls before the step win.
-    pub fn set_input(&mut self, side: u8, aim: Option<i32>, rig: Option<u8>, peek: Option<u8>) {
+    /// `peek` (Scout) is a gate slot of `side`'s own current stage. Later calls before the step
+    /// win.
+    pub fn set_input(&mut self, side: u8, aim: Option<i32>, peek: Option<u8>) {
         let Some(p) = self.pending.sides.get_mut(usize::from(side)) else {
             return;
         };
         p.aim = aim.or(p.aim);
-        p.rig = rig.or(p.rig);
         p.peek = peek.or(p.peek);
     }
 
@@ -141,7 +141,7 @@ impl SimMatch {
                 f64::from(side.cannon_x),
                 f64::from(side.aim),
                 f64::from(side.gold),
-                flag(side.rig_used),
+                0.0,
                 flag(side.peek_used),
                 flag(is_bot),
                 f64::from(side.raid_ticks),
@@ -189,17 +189,9 @@ impl SimMatch {
         let pv = self.state.private_view(side);
         vec![
             f64::from(pv.stage),
-            pv.rig.map_or(-1.0, |r| f64::from(r.stage)),
-            pv.rig.map_or(-1.0, |r| f64::from(r.slot)),
             pv.peek.map_or(-1.0, |p| f64::from(p.slot)),
             op_num(pv.peek.map(|p| p.op)),
         ]
-    }
-
-    /// Whether `side` may rig gate `slot` (of its own current stage, in the opponent's copy)
-    /// right now (SPEC §6). The UI greys out the rest; the sim refuses them anyway.
-    pub fn can_rig(&self, side: u8, slot: u8) -> bool {
-        lil_dudes_sim::can_rig(&self.state.public, side, slot)
     }
 
     /// Digest of the full state (public + secret), for parity checks and Verify.
@@ -207,9 +199,8 @@ impl SimMatch {
         self.state.digest()
     }
 
-    /// Every stage's rigs and peeks so far (codec history layout: 2 stages × 2 sides ×
-    /// [rig victim stage, rig slot, peek slot, peek op byte], 255 = none; the stage index is
-    /// the actor's own stage). The live result screen reads the same bytes from the Match.
+    /// Every stage's peeks so far (codec history layout: 2 stages × 2 sides × [peek slot, peek
+    /// op byte], slot 255 = none). The live result screen reads the same bytes from the Match.
     pub fn history(&self) -> Vec<u8> {
         let mut out = [0u8; SECRET_LEN];
         codec::encode_secret(&self.state.secret, &mut out);
@@ -235,7 +226,7 @@ pub struct Bot {
 
 #[wasm_bindgen]
 impl Bot {
-    /// `seed` must be independent of the match seed (it only drives tie-breaks and rig/peek slots).
+    /// `seed` must be independent of the match seed (it only drives tie-breaks and peek slots).
     #[wasm_bindgen(constructor)]
     pub fn new(side: u8, seed: u64) -> Bot {
         Bot {
@@ -245,18 +236,14 @@ impl Bot {
     }
 
     /// The bot's input for the tick the given public state is about to process:
-    /// `[aim, rig slot, peek slot]`, each -1 for none. Garbage or short input gives `[-1, -1, -1]`.
+    /// `[aim, peek slot]`, each -1 for none. Garbage or short input gives `[-1, -1]`.
     pub fn decide(&mut self, public_bytes: &[u8]) -> Vec<i32> {
         let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
-            return vec![-1, -1, -1];
+            return vec![-1, -1];
         };
         codec::decode_public(bytes, &mut self.view);
         let i = self.inner.decide(&self.view);
-        vec![
-            i.aim.unwrap_or(-1),
-            i.rig.map_or(-1, i32::from),
-            i.peek.map_or(-1, i32::from),
-        ]
+        vec![i.aim.unwrap_or(-1), i.peek.map_or(-1, i32::from)]
     }
 }
 
@@ -309,11 +296,6 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
             n(after),
             flag(reveal),
         ]),
-        Event::Gotcha {
-            side,
-            slot,
-            rigged_by,
-        } => f(&[2.0, b(side), b(slot), b(rigged_by)]),
         Event::CrateHit {
             side,
             crate_ix,
@@ -377,7 +359,7 @@ pub fn layout_version() -> u32 {
 
 /// DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × value k (×k)];
 /// slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
-/// its published seed (Verify and the result screen); rigs come from `history()`.
+/// its published seed (Verify and the result screen); peeks come from `history()`.
 #[wasm_bindgen]
 pub fn deals_for(seed: u64) -> Vec<u8> {
     let d = lil_dudes_sim::deals_for(seed);
@@ -396,18 +378,6 @@ pub fn gate_x_at(layout: u8, stage: u8, slot: u8, t: u32) -> i32 {
         .gates
         .get(usize::from(slot))
         .map_or(0, |g| i32::from(g.x_at(t)))
-}
-
-/// `can_rig` on the on-chain public state (codec bytes), for live matches: whether `side` may
-/// rig gate `slot` of its own current stage right now (SPEC §6). False on garbage input.
-#[wasm_bindgen]
-pub fn can_rig_bytes(public_bytes: &[u8], side: u8, slot: u8) -> bool {
-    let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
-        return false;
-    };
-    let mut view = MatchState::zeroed().public;
-    codec::decode_public(bytes, &mut view);
-    lil_dudes_sim::can_rig(&view, side, slot)
 }
 
 /// crates/sim CODEC_VERSION (byte 0 of the on-chain public state).
@@ -541,7 +511,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 18_369_198_370_544_550_614;
+const PARITY_DIGEST: u64 = 17_730_922_410_161_454_090;
 
 #[cfg(test)]
 mod tests {
@@ -614,13 +584,16 @@ mod tests {
     #[test]
     fn inputs_reach_the_sim_and_bots_override() {
         let mut h = SimMatch::new(1, 2, 0, 0b10, false);
-        h.set_input(0, Some(0), Some(1), None);
-        h.set_input(1, Some(2999), None, None); // bot side: ignored
+        for _ in 0..PLANT_TICKS {
+            h.step();
+        }
+        h.set_input(0, Some(0), Some(1));
+        h.set_input(1, Some(2999), None); // bot side: ignored
         h.step();
         assert_eq!(h.state.public.sides[0].aim, 0);
         let pv = h.private_view(0);
-        assert_eq!(&pv[..3], &[0.0, 0.0, 1.0]);
-        assert_eq!(pv[3], -1.0);
+        assert_eq!(&pv[..2], &[0.0, 1.0]);
+        assert_eq!(pv[2], op_num(Some(h.state.secret.values[0][1])));
         assert_ne!(h.state.public.sides[1].aim, 2999);
     }
 
@@ -630,6 +603,7 @@ mod tests {
     fn parity_match_digest() {
         let mut h = SimMatch::new(42, 7, 100_000_000, 0b10, false);
         while h.step() {}
+        println!("PARITY_DIGEST = {}", h.digest());
         assert_eq!(h.digest(), PARITY_DIGEST);
     }
 
@@ -656,13 +630,9 @@ mod tests {
         let i = direct.decide(&m.public);
         assert_eq!(
             handle.decide(&bytes),
-            vec![
-                i.aim.unwrap_or(-1),
-                i.rig.map_or(-1, i32::from),
-                i.peek.map_or(-1, i32::from)
-            ]
+            vec![i.aim.unwrap_or(-1), i.peek.map_or(-1, i32::from)]
         );
-        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1, -1]);
+        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1]);
     }
 
     #[test]
@@ -677,7 +647,7 @@ mod tests {
                 assert_eq!(v[1 + s * GATES_MAX + slot], op.to_byte());
             }
         }
-        // History of a played match: the bots rig early in their first fight.
+        // History of a played match: the bots peek at the start of their first fight.
         let mut h = SimMatch::new(5, 6, 0, 0b11, false);
         while h.step() {}
         let hist = h.history();
@@ -693,23 +663,6 @@ mod tests {
         let side1 = walk_side(&v, HEADER_LEN);
         assert_eq!(v[side1 + 10], 77.0);
         assert_eq!(v[HEADER_LEN + 10], 0.0);
-    }
-
-    #[test]
-    fn can_rig_matches_the_sim() {
-        let mut h = SimMatch::new(5, 6, 0, 0, false);
-        let bytes = h.public_bytes();
-        for slot in 0..10u8 {
-            let want = lil_dudes_sim::can_rig(&h.state.public, 0, slot);
-            assert_eq!(h.can_rig(0, slot), want);
-            assert_eq!(can_rig_bytes(&bytes, 0, slot), want);
-        }
-        assert!(h.can_rig(0, 0));
-        h.set_input(0, None, Some(0), None);
-        h.step();
-        assert!(!h.can_rig(0, 1));
-        assert!(!can_rig_bytes(&h.public_bytes(), 0, 1));
-        assert!(!can_rig_bytes(&[0u8; 3], 0, 0));
     }
 
     #[test]

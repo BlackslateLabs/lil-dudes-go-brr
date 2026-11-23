@@ -3,7 +3,7 @@
 //! towers, gate rows, gates and crates. Both players
 //! get identical copies; the seed picks the layout (`layout_for(seed)`, public once seeded).
 //!
-//! Gate slots: a stage's gates in list order (sorted by row, then x). Rig and Peek name a slot.
+//! Gate slots: a stage's gates in list order (sorted by row, then x). Scout (peek) names a slot.
 //! A crate sits just below the big gate it locks and covers that gate's span; locked gates never
 //! move. Design rules (SPEC §9): sparse rows with open lane between (at least `MIN_GAP` between
 //! gates of a row, more than the two GATE_GRACE edges, and at most two thirds of the lane
