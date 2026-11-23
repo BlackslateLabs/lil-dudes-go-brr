@@ -1024,3 +1024,34 @@ assets load, music once picked, KayKit crates when available. Kai: nothing neede
   - Should: tutorial bubbles, logo wipe, sound pass.
   - Tiers are in §10.
 - **Kai:** sim v5 → program v5 → one deploy.
+
+## 2026-11-23 · Suparno · web v5 front end (HUD, end sequence, flow, result, sound) · [DECISION] [HANDOFF]
+**Did:** (branch `web/v5-flow`, plan in `docs/FRONTEND_V5.md`)
+- **Match HUD:** rig removed (button, mode, gate frame, taps, GOTCHA overlay); opponent mini-lane replaced by a
+  progress line (their stage, tower HP %, score); your score big in the top bar, slim timer, cog menu (sound,
+  vibration, leave/forfeit with confirm, no pause); Scout (= peek) renamed; danger pulse when enemies pass 25% of
+  the lane; the match starts only once the models have loaded.
+- **End sequence:** BREACH! stamp → 3-2-1 gradient numerals synced to the raid/Rush clock with a live hall counter
+  → TIME!; OVERRUN! / THEY FELL! stamps; battle sounds ducked from the breach. Score parts (damage, towers, FIRST,
+  Rush) tallied per side from events for the result.
+- **Flow:** screens home → VS → match → result with a logo wipe; one primary button on Home (PLAY VS BOT, or
+  QUICK MATCH + Room Code on a paid chip, staked play unlocks after the first bot match); stake confirm sheet;
+  VS screen (You vs Bot, or the real chain steps for staked play); scripted result (parts count up, payout bar,
+  +SOL pill with coins, fee, Rematch/Home, Verify links, "New record!"); first-match tutorial bubbles with
+  gentler Fight 1 waves (the sim's tutorial option). A bot is always labelled "Bot".
+- **Sound:** 16 new cues (breach, countdown, ladder, payout, VS, wipe, play button, danger, Champion), battle /
+  ui / music buses with ducking, haptics on big moments, music by screen. Music picked by Suparno (all CC0):
+  "Pixel Sprinter" (match) and "Flowerbed Fields" (menu) by Zane Little Music, "Victory" by celestialghost8,
+  "Game over short jingle" by Kosmo The Cat. Credits logged.
+
+**Decided:** (Suparno) keep the Kenney look for this pass; music as above.
+
+**Blocked / risks:** Waits on Kai's client v5: Champion data (`champMeter`, `champion()`; the button is built and
+hidden until then), `RUSH_TICKS` / `rushTicks` (the end sequence falls back to the v4 raid clock), FIRST events,
+the timing gate and ± / ÷3 gate ops, the v5 payout, and LiveSource for Quick Match / Room Code. When the client
+drops the `gotcha` event, `apps/web/src/arena/Fx.tsx` needs its gotcha branch removed. Not yet heard on speakers or
+played on a phone.
+
+**Next / handoff:** Kai: client v5 exports `RUSH_TICKS`, `CHAMP_TICKS`, `LaneView.rushTicks`, `champMeter`,
+`champPending`, `MatchSource.champion()`, and a FIRST event or field; the web picks them up by name.
+Suparno/Claude: timing-gate ring and new gate labels once the ops exist; LiveSource wiring.

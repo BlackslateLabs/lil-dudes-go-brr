@@ -1,6 +1,6 @@
 # Front end for v5: the plan
 
-Status: **in progress** (Suparno, 23 Nov 2026), on branch `web/v5-flow`. This is the web side of
+Status: **streams A–C built** (Suparno, 23 Nov 2026) on branch `web/v5-flow`; the "later" rows wait for Kai's client v5. This is the web side of
 `docs/SPEC_V5.md` §8 and §10. Kai's side (sim v5, Champion, program, client contract, server) is in
 SPEC_V5 §9–10.
 
