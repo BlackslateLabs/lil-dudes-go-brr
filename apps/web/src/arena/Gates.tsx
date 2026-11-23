@@ -5,7 +5,6 @@ import type { GateView } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
 import { useHud } from '../hud';
 import type { MatchFeed } from '../match/feed';
-import { canRigSlot } from '../match/rig';
 import { GLASS_PAD, makeGlassMaterial } from './glass';
 import { labelTexture } from './labelTexture';
 import { GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
@@ -17,12 +16,11 @@ const TILT = -0.5;
 const PANEL_H = 2.3;
 const FLIP_TIME = 0.12; // s: label punch ~1.4× (TECH §5)
 const PASS_FLASH = 0.35; // s: a crowd going through
-const GOTCHA_FLASH = 0.9; // s: red flash when my dudes spring a trap
 
 type Look = keyof typeof GLASS;
 
 const RIM = Object.fromEntries(Object.entries(GLASS).map(([k, v]) => [k, new Color(v.rim)])) as Record<Look, Color>;
-const TRAP_RED = new Color('#ff2a3c');
+const SHRINK_RED = new Color('#ff2a3c');
 
 function gateLook(g: GateView): Look {
   if (!g.revealed) return g.big ? 'gold' : 'unknown';
@@ -34,21 +32,18 @@ function gateLook(g: GateView): Look {
 interface GateHits {
   /** slot → time (s, performance clock) a crowd last went through, and whether it got smaller. */
   pass: Map<number, { at: number; shrink: boolean }>;
-  /** `stage|slot` → time my dudes sprang a trap there (the crack stays for that gate). */
-  gotcha: Map<string, number>;
 }
 
 const now = () => performance.now() / 1000;
 
 /** The current stage's gates in your lane. Gates come and go with the stage, so this is a pool. */
 export function Gates({ feed, interactive }: { feed: MatchFeed; interactive: boolean }) {
-  const hits = useMemo<GateHits>(() => ({ pass: new Map(), gotcha: new Map() }), []);
+  const hits = useMemo<GateHits>(() => ({ pass: new Map() }), []);
   useEffect(
     () =>
       feed.onEvent((e) => {
         if (!('side' in e) || e.side !== feed.mySide) return;
         if (e.type === 'gate') hits.pass.set(e.slot, { at: now(), shrink: e.after < e.before });
-        else if (e.type === 'gotcha') hits.gotcha.set(`${e.stage}|${e.slot}`, now());
         else if (e.type === 'stage') hits.pass.clear();
       }),
     [feed, hits],
@@ -125,29 +120,18 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
     u.uTime.value = clock.elapsedTime;
     marker.current.visible = !!peek && !g.revealed;
 
-    // Rig: in rig mode the gates you can rig pulse red; the one you rigged keeps a red frame
-    // (it's their copy that's rigged, shown here so you know where your trap waits).
-    const mine = feed.priv.myRig;
-    const rigged = !!mine && mine.stage === lane.stage && mine.slot === g.slot;
-    const target = useHud.getState().rigging && canRigSlot(feed, g.slot);
-    u.uRig.value = rigged ? 0.95 : target ? 0.4 + 0.55 * Math.abs(Math.sin(clock.elapsedTime * 5)) : 0;
-
-    // Flashes: reveal (white), crowd through (rim colour, or red if it shrank), gotcha (red + crack).
+    // Flashes: reveal (white), crowd through (rim colour, or red if it shrank).
     const t = now();
     const since = flipAt.current < 0 ? Infinity : clock.elapsedTime - flipAt.current;
     const pass = hits.pass.get(g.slot);
     const passK = pass ? Math.max(0, 1 - (t - pass.at) / PASS_FLASH) : 0;
-    const hitAt = hits.gotcha.get(ident);
-    const gotK = hitAt === undefined ? 0 : Math.max(0, 1 - (t - hitAt) / GOTCHA_FLASH);
     const revealK = Math.max(0, 1 - since / 0.3);
-    u.uCrack.value = hitAt === undefined ? 0 : Math.min(1, (t - hitAt) / 0.08);
-    u.uFlashColor.value.copy(gotK > 0 || pass?.shrink ? TRAP_RED : RIM[look]);
-    u.uFlash.value = Math.max(passK * 0.32, gotK * (0.6 + 0.4 * Math.sin(t * 40)), revealK);
+    u.uFlashColor.value.copy(pass?.shrink ? SHRINK_RED : RIM[look]);
+    u.uFlash.value = Math.max(passK * 0.32, revealK);
 
     const k = Math.min(1, since / FLIP_TIME);
-    const pop = 1 + 0.4 * Math.sin(k * Math.PI) + passK * passK * 0.08 + gotK * gotK * 0.12;
+    const pop = 1 + 0.4 * Math.sin(k * Math.PI) + passK * passK * 0.08;
     face.current.scale.set(pop, pop, 1);
-    face.current.rotation.z = gotK > 0 ? Math.sin(t * 55) * 0.05 * gotK : 0;
   });
 
   const onTap = (e: ThreeEvent<MouseEvent>) => {
@@ -156,15 +140,6 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
     const g = lane?.gates.find((x) => x.slot === slotRef.current);
     if (!lane || !g) return;
     const hud = useHud.getState();
-    if (hud.rigging) {
-      e.stopPropagation();
-      if (canRigSlot(feed, g.slot)) {
-        feed.source.rig(g.slot);
-        sfx.click();
-        hud.set({ rigging: false });
-      }
-      return;
-    }
     if (g.revealed) return;
     if (hud.peeking && !lane.peekUsed) {
       e.stopPropagation();
