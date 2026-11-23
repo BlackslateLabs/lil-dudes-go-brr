@@ -1109,3 +1109,26 @@ Logo/mascot concepts are paused (drafts in Suparno's scratchpad).
 
 **Next / handoff:** Kai to decide: fix the battle in the sim before the one deploy, then deploy;
 merge `sim-v5` to main. Suparno: pull after the merge; leftover GOTCHA sound/particle helpers can go.
+
+## 2026-11-23 17:40 IST · Kai · baseline playground on `feel/baseline` (local only) · [DECISION]
+
+**Why:** three rounds of art/gameplay changes built from numbers alone didn't look right. New approach:
+build a playable **baseline** matched side by side against frames from Kai's genre-reference gameplay
+recording, then change it toward our own ideas from there.
+
+- **Parked:** the v6 sim/codec/renderer work is a local WIP commit on `feel/v6` (not pushed, not final).
+  Its client side doesn't typecheck yet (11 errors in `packages/client`), on purpose.
+- **New:** `apps/web/baseline.html` + `apps/web/src/baseline/` (plain three.js, own tsconfig, no chain,
+  no Rust sim). Run `pnpm --filter web dev`, open `/baseline.html`.
+  - Units are genre-reference units: lane 13 u wide, cannon at z 0, towers z 26, base z 31; camera
+    FOV 30, pitch 44, static; whole level on one portrait screen.
+  - Agents with real positions: launch boost, cruise 2.7 u/s, gates clone (×N), rails/walls the crowd
+    flows around, counter blocks that eat N dudes, two towers that send waves (first 3 s, then every
+    6.5 s), a base, a cannon with HP, a champion (charges with 8 s of fire, worth 8).
+  - Our own procedural models (bean dude with face, toy cannon, glass gates, block kit, towers,
+    fortress, palms, rocks, water edges), matcap crowd shading, blob shadows, palm shadows on sand.
+  - 4 layouts (keys 1–4), `R` restart, `C` champion, `P`/⚙ tuning panel (camera, dude size, speed,
+    fire rate, waves, HP). Flags: `?layout=n`, `?auto=1` self-play, `?full=1`, `?panel=1`.
+
+**Next:** Kai plays it and gives direction; iterate the look/feel; then port the locked numbers into
+the Rust sim (v6) and the real arena.
