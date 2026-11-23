@@ -56,13 +56,16 @@ impl Deal {
     }
 }
 
-/// One stage's values, in slot order, from that stage's RNG: one draw per gate slot (two for a
-/// ±N drawn on row 1).
+/// One stage's values, in slot order, from that stage's RNG: one draw per hidden gate slot (two
+/// for a ±N drawn on row 1); the timing gate draws nothing and holds NO_GATE.
 pub fn deal_stage(seed: u64, layout: u8, stage_ix: u8) -> [GateOp; GATES_MAX] {
     let mut rng = deal_rng(seed, stage_ix);
     let mut out = [NO_GATE; GATES_MAX];
     for (v, g) in out.iter_mut().zip(stage(layout, stage_ix).gates.iter()) {
-        *v = draw(&mut rng, g.slot, g.row);
+        // The timing gate is public: nothing to deal (it keeps NO_GATE).
+        if g.slot != Slot::Timing {
+            *v = draw(&mut rng, g.slot, g.row);
+        }
     }
     out
 }
@@ -144,6 +147,10 @@ mod tests {
                         continue;
                     };
                     let map = match (g.slot, g.row) {
+                        (Slot::Timing, _) => {
+                            assert_eq!(v, NO_GATE);
+                            continue;
+                        }
                         (Slot::Big, _) => &mut bigs,
                         (_, 0) => &mut first,
                         _ => {
