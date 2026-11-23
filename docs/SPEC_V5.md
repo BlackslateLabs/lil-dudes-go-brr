@@ -128,16 +128,21 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
 
 ## 4. Champion and Scout (same for both players)
 
+- **The trigger (rules v6, Suparno, 23 Nov):** the cannon fires **only while you hold the lane**
+  (finger down; drag to aim while holding). No finger, no volleys. On chain: `set_fire(on)`.
 - **Champion:**
-  - its meter fills 1 per fight tick while you are alive in a Fight; full at `CHAMP_TICKS` = 160
-    (8 s);
-  - tap → the next volley is a **Champion cohort**: count 8, flagged `big`, drawn as one giant with
-    a ×N badge;
-  - it **goes through gates like any cohort** (a ×3 gate makes it worth 24);
+  - its meter fills only by shooting: each volley fired in a Fight adds `FIRE_TICKS` (8); full at
+    `CHAMP_TICKS` = 160 (20 volleys = 8 s of holding). No shooting, no charge;
+  - **let go of the lane with a full meter** → the Champion goes out on the next tick: a
+    **Champion cohort** of count 8, flagged `big`. The 👑 is a meter, not a button
+    (`champion()` still works for scripts and the bot API);
+  - it **goes through gates like any cohort and multiplies**: drawn as one giant per 8 dudes,
+    so a ×3 gate makes three giants;
   - in a clash it counts as its number of dudes;
   - the meter resets and refills; it **carries from Fight 1 into Fight 2;**
-  - the bot fires it as soon as it is charged.
-  - Chain: new player instruction `champion()` (burner-signed); the sim spawns at the next fire tick.
+  - the bot holds the trigger and lets go for one tick as soon as it is charged.
+  - Chain: `set_fire(on)` (burner-signed; a release can call it) and `champion()`; the Champion
+    spawns on the next tick.
 - **Scout** (v4 Peek, unchanged):
   - once per stage, during your Fight or Rush;
   - privately see one of your face-down gates' true value;
@@ -250,6 +255,8 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
 4. Champion charge = 8 s of fight time.
 5. Payout: the winner keeps their own stake (≥ 50%), and the loser's stake is split by `2 × margin`
    with **no cap** (the loser gets 0 only when the winner scores ≥ 3× as much).
+6. (Suparno, 23 Nov evening, rules v6) Hold to fire; the Champion charges by shooting and launches
+   when you let go with a full meter; a Champion multiplies into more giants through gates.
 
 ---
 

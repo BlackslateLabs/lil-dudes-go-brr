@@ -89,6 +89,7 @@ export class MatchFeed {
   }
 
   stop() {
+    this.setFiring(false);
     this.source.stop();
     this.off?.();
     this.off = null;
@@ -118,6 +119,16 @@ export class MatchFeed {
       this.lastAimSent = now;
       this.source.setAim(this.aim);
     }
+  }
+
+  /** Whether my trigger is held (rules v6: the cannon fires only then). */
+  holding = false;
+
+  /** Press / let go of the trigger. Letting go with a full meter releases the Champion. */
+  setFiring(on: boolean) {
+    if (on === this.holding) return;
+    this.holding = on;
+    this.source.setFiring(on);
   }
 
   /** Set an absolute aim and send it now (bots / background matches). */

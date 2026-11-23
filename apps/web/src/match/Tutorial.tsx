@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
-import { FINAL_STAGE, LANE_WIDTH } from '@lil-dudes/client';
+import { CHAMP_TICKS, FINAL_STAGE, LANE_WIDTH } from '@lil-dudes/client';
 import { isTutorialMatch, setTutorialDone, useApp } from '../store';
 import type { MatchFeed } from './feed';
 import '../screens/flow.css';
 
-type StepId = 'aim' | 'gates' | 'tower' | 'defend' | 'breach';
+type StepId = 'fire' | 'aim' | 'gates' | 'tower' | 'champ' | 'defend' | 'breach';
 
 const COPY: Record<StepId, string> = {
-  aim: 'Drag to aim',
+  fire: 'Hold the screen to fire',
+  aim: 'Keep holding and drag to aim',
   gates: 'Gates multiply your dudes',
   tower: 'Break the tower',
+  champ: 'Meter full! Let go to launch your Champion',
   defend: "Don't let them reach you",
-  breach: 'BREACH! Keep firing!',
+  breach: 'BREACH! Keep holding!',
 };
 
-/** Shown in this order; `defend` and `breach` cut in when their moment comes. */
-const ORDER: StepId[] = ['aim', 'gates', 'tower', 'defend', 'breach'];
-const QUEUE: StepId[] = ['aim', 'gates', 'tower'];
+/** Shown in this order; `champ`, `defend` and `breach` cut in when their moment comes. */
+const ORDER: StepId[] = ['fire', 'aim', 'gates', 'tower', 'champ', 'defend', 'breach'];
+const QUEUE: StepId[] = ['fire', 'aim', 'gates', 'tower'];
+/** Cut-ins, most urgent first. */
+const CUT_INS: StepId[] = ['breach', 'defend', 'champ'];
 /** The green tick stays this long before the next bubble. */
 const TICK_MS = 900;
 /** Cut-in bubbles tick themselves off after this long if nothing else does. */
@@ -61,7 +65,7 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
       clearTimeout(advanceTimer);
       clearTimeout(selfTickTimer);
       if (ended) return show(null);
-      const id = (['breach', 'defend'] as StepId[]).find((s) => cut.has(s) && !done.has(s)) ?? QUEUE.find((s) => !done.has(s));
+      const id = CUT_INS.find((s) => cut.has(s) && !done.has(s)) ?? QUEUE.find((s) => !done.has(s));
       // Queue steps wait their turn; once the queue is through, only cut-ins remain.
       show(id ? { id, ticked: false } : null);
       if (id === 'defend') selfTickTimer = setTimeout(() => complete('defend'), DEFEND_MS);
@@ -95,7 +99,8 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
         return;
       }
       if (!('side' in e) || e.side !== me) return;
-      if (e.type === 'gate' || e.type === 'reveal') complete('gates');
+      if (e.type === 'volley') complete(e.champion ? 'champ' : 'fire');
+      else if (e.type === 'gate' || e.type === 'reveal') complete('gates');
       else if (e.type === 'towerDown') complete('tower');
       else if (e.type === 'wave') cutIn('defend');
       else if (e.type === 'clash' && shown?.id === 'defend') complete('defend');
@@ -115,6 +120,7 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
       if (startAim === null) startAim = lane.aimX;
       else if (Math.abs(lane.aimX - startAim) > LANE_WIDTH * 0.04) complete('aim');
       if (lane.phase === 'rush' && lane.stage === FINAL_STAGE) cutIn('breach');
+      if (lane.phase === 'fight' && lane.champMeter >= CHAMP_TICKS && !lane.champPending) cutIn('champ');
     });
 
     // A finger drag anywhere counts as "aimed" right away (the source's aim lags a little).

@@ -1109,3 +1109,43 @@ Logo/mascot concepts are paused (drafts in Suparno's scratchpad).
 
 **Next / handoff:** Kai to decide: fix the battle in the sim before the one deploy, then deploy;
 merge `sim-v5` to main. Suparno: pull after the merge; leftover GOTCHA sound/particle helpers can go.
+
+## 2026-11-23 19:00 IST · Suparno · sim + program + client + web · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `v5-hold-fire`, on top of `web/champion-giants`)
+- **Rules v6, hold to fire (sim):** `PublicSide.firing` (codec: side flag 64, so no layout change)
+  and `SideInput.fire: Option<bool>`. The cannon fires on the volley beat only while the trigger is
+  held. The Champion meter charges +`FIRE_TICKS` per ordinary volley in a Fight (not per tick).
+  Letting go with a full meter in a Fight calls the Champion, and a called Champion goes out on the
+  very next tick, held or not. The bot holds and lets go for one tick when charged.
+  `RULES_VERSION` 6, goldens and `PARITY_DIGEST` regenerated (parity is bot vs bot now, since an idle
+  player never fires), and new tests. Sim 86 + integration tests and sim-wasm 11 tests all green;
+  WASM pkg rebuilt.
+- **Program:** `set_fire(on: bool)` ix (`PlayerInput` accounts; catch up, apply, store; never
+  refused while playing). IDL entry added by hand (no Anchor CLI here). MagicSVM: `set_fire_ix`
+  helper and `the_cannon_fires_only_while_held_and_letting_go_releases_the_champion`. It compiles,
+  but **not run** (no SBF toolchain on my machine).
+- **Client / server:** `MatchSource.setFiring(on)` (offline: `SimMatch.set_fire`, applied at once
+  between ticks; live: `set_fire` txs sent in order and deduped, folded as `set_fire ×N` in the
+  reveal; mock: no-op). The WASM `Bot.decide` returns a 4th number (trigger -1/0/1) and `botTurn`
+  passes it on. Client 24 and server 17 tests green.
+- **Web:**
+  - finger down on the lane = hold (multi-touch aware; blur or tab hide lets go);
+  - "Hold to fire!" prompt;
+  - the 👑 is now a meter (`ChampionMeter`) with a LET GO! tag when full;
+  - launch sound and haptic on the Champion volley;
+  - tutorial gains "Hold the screen to fire" and a "Meter full! Let go…" cut-in;
+  - a Champion draws as one giant per `CHAMP_COUNT` dudes (×2 gate → 2 giants), and the count badge
+    is gone.
+
+**Decided:** (Suparno) rules above, as in the genre: you shoot only while holding, the Champion
+charges from your shots and releases when you let go. SPEC_V5 §4 and §11.6 updated.
+
+**Blocked / risks:**
+- Live matches: a player whose `set_fire` tx lands late fires late (same as `set_aim`).
+- Old MagicSVM tests that expected a human side to fire without input may now see no volleys.
+
+**Next / handoff (Kai):**
+- run MagicSVM (`tests-magicsvm`) and fix any test that assumed auto-fire;
+- regenerate the IDL with `anchor build` to confirm the hand-written `set_fire` entry matches;
+- re-run the balance runner (bot timing changed slightly: the Champion fires on release, not on the
+  next beat).
