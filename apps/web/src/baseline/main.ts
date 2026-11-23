@@ -27,7 +27,7 @@ const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloat
 composer.addPass(new RenderPass(world.scene, world.camera));
 composer.addPass(new EffectPass(world.camera,
   new BloomEffect({ mipmapBlur: true, luminanceThreshold: 1.0, luminanceSmoothing: 0.25, intensity: 0.9, radius: 0.7 }),
-  new VignetteEffect({ offset: 0.35, darkness: 0.35 }),
+  new VignetteEffect({ offset: 0.4, darkness: 0.22 }),
   new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })));
 let sim = new Sim(LAYOUTS[layoutIdx]);
 world.build(sim);

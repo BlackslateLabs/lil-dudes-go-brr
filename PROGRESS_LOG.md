@@ -1155,3 +1155,16 @@ the Rust sim (v6) and the real arena.
   towers with baked AO and matcaps), a fully dressed themed map, the full effects list
   (VIDEO_NOTES §10 in pvt-docs), and obstacle variety (sweepers, push blocks, moving gate rows, cages).
 - **Rule kept:** our own assets only (no files extracted from other games in the build).
+
+## 2026-11-23 22:20 IST · Kai · baseline v3: reference-matched crowd + beach arena · [DECISION]
+
+- **Crowd v3 (`dude.ts`):** one-colour chibi silhouette (head ≈ body, ear tufts, arms out) and a
+  **dynamic matcap** (our own, painted in code: R key light, G rim ring, B spec) mapped to per-team
+  shadow/lit/rim colours; no outlines. Matched side by side against the reference's crowd close-up.
+- **Beach arena (default; `?theme=candy` keeps v2):** warm sand with dune patches and ripples, water
+  channels with animated glints, palms with cut-out fronds (leaf-shaped shadows), rocks, Kenney jungle
+  behind. Gate rows sit on a navy rail across the lane with blue end posts; sand pyramids
+  (`kind: 'spike'` walls) the crowd flows around.
+- **New props (`props.ts`, ours):** twin glass-dome cannon on fat tyres, robot towers (red dome cap,
+  vents, HP band), armoured mech fortress with a glowing hex core.
+

@@ -8,8 +8,11 @@ import { loadPack, mergeParts, tintedMap, type Part, type TintRule } from '../ar
 import { hallParts, wallParts } from '../arena/models/hall';
 import { LANE } from './layouts';
 import { P, CAP, type Sim, type Fx } from './sim';
-import { dudeGeometry, dudeMaterials } from './dude';
+import { dudeGeometry, dudeMaterial, dynamicMatcap, TEAM_LOOK } from './dude';
 import type { Audio } from './audio';
+import { cannonMech, gateRail, mechFortress, palm, robotTower, rock as rockProp, sandTexture, spikeBlock, waterMaterial, rng as rng2 } from './props';
+
+const THEME = new URLSearchParams(location.search).get('theme') === 'candy' ? 'candy' : 'beach';
 
 export const COL = {
   blue: new THREE.Color('#3fa0ff'), blueFresh: new THREE.Color('#a8f6ff'), white: new THREE.Color('#ffffff'), muzzle: new THREE.Color('#dfe6f5'),
@@ -107,12 +110,11 @@ export class World {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(30, 9 / 19.5, 1, 400);
   cam = { pitch: 44, dist: 56, fov: 30, focusZ: 12.8 };
-  dudeScale = 1.0;
+  dudeScale = 0.95;
   time = { value: 0 };
   audio: Audio | null = null;
   private matcap = toyMatcap();
   private blue!: THREE.InstancedMesh; private red!: THREE.InstancedMesh; private champ!: THREE.InstancedMesh;
-  private lines: THREE.InstancedMesh[] = [];
   private shadows!: THREE.InstancedMesh;
   private cannon = new THREE.Group(); private barrel = new THREE.Group();
   private gateObjs: { root: THREE.Group; label: THREE.Mesh; glow: THREE.Mesh; punch: number }[] = [];
@@ -134,14 +136,14 @@ export class World {
       const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#5ec8ff'); gr.addColorStop(0.6, '#a6e3ff'); gr.addColorStop(1, '#dff6ff');
       g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
     });
-    s.add(new THREE.HemisphereLight('#ffffff', '#9fd28a', 1.6));
+    s.add(new THREE.HemisphereLight('#ffffff', THEME === 'beach' ? '#ffe2a8' : '#9fd28a', THEME === 'beach' ? 2.3 : 1.6));
     const sun = new THREE.DirectionalLight('#fff3df', 2.3);
-    sun.position.set(-14, 20, -4); sun.target.position.set(0, 0, -14);
+    sun.position.set(THEME === 'beach' ? -17 : -14, THEME === 'beach' ? 15 : 20, -3); sun.target.position.set(0, 0, -14);
     sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 28, bottom: -28, near: 1, far: 80 });
-    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.03;
+    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.03; sun.shadow.intensity = THEME === 'beach' ? 0.55 : 1;
     s.add(sun, sun.target);
-    this.ground();
+    if (THEME === 'beach') this.beachGround(); else this.ground();
     this.makeCrowds();
     this.makeCannon();
     s.add(this.dyn, this.sparks.points, this.puffs.points);
@@ -152,7 +154,7 @@ export class World {
 
   private async loadKits() {
     const [nature, towers, hall] = await Promise.all([loadPack('nature'), loadPack('towers'), loadPack('hall')]);
-    const mesh = new THREE.Mesh(mergeParts(nature, sceneryParts()), nature.material); mesh.castShadow = true; mesh.receiveShadow = true; this.scene.add(mesh);
+    const mesh = new THREE.Mesh(mergeParts(nature, sceneryParts(THEME === 'beach' ? 8.9 : 7.25)), nature.material); mesh.castShadow = true; mesh.receiveShadow = true; this.scene.add(mesh);
     const tm = towers.material.clone(); if (towers.material.map) tm.map = tintedMap(towers.material.map, 'bl-tower', TOWER_TINT);
     this.towerKit = {
       geo: mergeParts(towers, [{ piece: 'tower-bottom', x: 0, y: 0, z: 0 }, { piece: 'tower-roof', x: 0, y: 0.6, z: 0 }], 3.4 * SCALE),
@@ -212,35 +214,43 @@ export class World {
 
   private makeCrowds() {
     const geo = dudeGeometry();
-    const { body, line } = dudeMaterials(this.matcap, this.time);
-    const mk = (n: number) => {
-      const m = new THREE.InstancedMesh(geo, body, n); m.frustumCulled = false; m.count = 0; m.setColorAt(0, COL.white); this.scene.add(m);
-      const o = new THREE.InstancedMesh(geo, line, n); o.instanceMatrix = m.instanceMatrix; o.frustumCulled = false; o.count = 0; if (!location.search.includes('noline')) this.scene.add(o);
-      this.lines.push(o);
+    const dm = dynamicMatcap();
+    const mk = (n: number, look: keyof typeof TEAM_LOOK) => {
+      const m = new THREE.InstancedMesh(geo, dudeMaterial(dm, this.time, TEAM_LOOK[look]), n); m.frustumCulled = false; m.count = 0; m.setColorAt(0, COL.white); this.scene.add(m);
       return m;
     };
-    this.blue = mk(CAP); this.red = mk(CAP); this.champ = mk(64);
+    this.blue = mk(CAP, 'blue'); this.red = mk(CAP, 'red'); this.champ = mk(64, 'gold');
     const sh = new THREE.PlaneGeometry(1, 1); sh.rotateX(-Math.PI / 2);
     this.shadows = new THREE.InstancedMesh(sh, new THREE.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false }), CAP * 2 + 64);
     this.shadows.frustumCulled = false; this.shadows.renderOrder = 1; this.scene.add(this.shadows);
   }
 
   private makeCannon() {
-    const c = this.cannon;
-    const mc = (color: string) => new THREE.MeshMatcapMaterial({ matcap: this.matcap, color });
-    const body = mc('#3d8cff'), trim = mc('#ffd23f'), dark = mc('#283462'), hub = mc('#e6eefc');
-    const chassis = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.6, 1.7, 3, 0.24), body); chassis.position.y = 0.6; c.add(chassis);
-    const stripe = new THREE.Mesh(new RoundedBoxGeometry(1.54, 0.14, 1.74, 2, 0.06), trim); stripe.position.y = 0.52; c.add(stripe);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), body); dome.position.set(0, 0.88, 0.15); c.add(dome);
-    for (const [x, z] of [[-0.82, 0.55], [0.82, 0.55], [-0.82, -0.55], [0.82, -0.55]] as const) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.4, 18), dark); w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); c.add(w);
-      const h = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.42, 12), hub); h.rotation.z = Math.PI / 2; h.position.set(x * 1.02, 0.42, z); c.add(h);
+    const glass = new THREE.MeshStandardMaterial({ color: '#3fa8ff', roughness: 0.1, emissive: '#1d6dff', emissiveIntensity: 0.9, transparent: true, opacity: 0.92 });
+    const mech = cannonMech(this.mk, glass);
+    this.cannon = mech.root; this.barrel = mech.barrel; this.cannon.scale.setScalar(1.15); this.scene.add(this.cannon);
+  }
+  private mk = (color: string) => new THREE.MeshMatcapMaterial({ matcap: this.matcap, color });
+
+  private beachGround() {
+    const r = rng2(5);
+    const sand = sandTexture();
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(15, 64), std('#ffffff', { map: sand, roughness: 0.95 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -16); ground.receiveShadow = true; this.scene.add(ground);
+    const water = waterMaterial(this.time);
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 64), water); w.rotation.x = -Math.PI / 2; w.position.set(sx * 8.6, -0.15, -16); w.receiveShadow = true; this.scene.add(w);
+      const foam = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 64), new THREE.MeshBasicMaterial({ color: '#f2feff' })); foam.rotation.x = -Math.PI / 2; foam.position.set(sx * 7.5, -0.1, -16); this.scene.add(foam);
+      const lip = new THREE.Mesh(new RoundedBoxGeometry(0.5, 0.4, 64, 2, 0.18), std('#efc27e', { roughness: 0.9 })); lip.position.set(sx * 7.25, -0.1, -16); lip.receiveShadow = true; this.scene.add(lip);
+      const bank = new THREE.Mesh(new THREE.PlaneGeometry(16, 64), std('#5cbf52', { roughness: 0.95 })); bank.rotation.x = -Math.PI / 2; bank.position.set(sx * 17.6, 0.05, -16); bank.receiveShadow = true; this.scene.add(bank);
+      const sandBank = new THREE.Mesh(new RoundedBoxGeometry(1.4, 0.5, 64, 2, 0.25), std('#e9bd78', { roughness: 0.9 })); sandBank.position.set(sx * 10.2, -0.05, -16); sandBank.receiveShadow = true; this.scene.add(sandBank);
+      for (let z = -8; z < 44; z += 2.4 + r() * 2.2) { // palms leaning over the lane edge
+        const p = palm(r, this.mk); p.position.set(sx * (8.7 + r() * 1.6), 0, -z); p.rotation.y = sx > 0 ? Math.PI + (r() - 0.5) : (r() - 0.5); p.scale.setScalar(0.9 + r() * 0.35); this.scene.add(p);
+        if (r() > 0.45) { const k = rockProp(r, this.mk, 0.7 + r() * 0.7); k.position.set(sx * (8.2 + r() * 1.2), -0.1, -z - 1.1); this.scene.add(k); }
+      }
     }
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 1.35, 18), body); tube.rotation.x = Math.PI / 2; tube.position.z = -0.65;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.1, 10, 20), trim); ring.position.z = -1.32;
-    const bolt = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshStandardMaterial({ color: '#ffe066', emissive: '#ffb000', emissiveIntensity: 1.6 })); bolt.position.set(0, 0.28, -0.3);
-    this.barrel.add(tube, ring, bolt); this.barrel.position.set(0, 1.05, 0.05); c.add(this.barrel);
-    c.scale.setScalar(1.25); shadowed(c); this.scene.add(c);
+    const track = new THREE.Mesh(new RoundedBoxGeometry(13, 0.05, 0.14, 2, 0.02), std('#ffffff', { emissive: '#bfe8ff', emissiveIntensity: 0.6, transparent: true, opacity: 0.85 }));
+    track.position.set(0, 0.03, -LANE.cannonZ); this.scene.add(track);
   }
 
   /** Rebuild the static pieces of a level (gates, walls, blocks, towers, base). */
@@ -270,10 +280,13 @@ export class World {
       glow.rotation.x = -Math.PI / 2; glow.position.set(0, 0.02, 0.25);
       root.add(shadowed(frame), glass, sheen, ...caps, label, glow);
       root.position.set(g.x, 0, -g.z);
+      if (THEME === 'beach') { root.position.y = 0.2; }
       this.dyn.add(root); this.gateObjs.push({ root, label, glow, punch: 0 });
     });
+    if (THEME === 'beach') for (const z of [...new Set(sim.gates.map((g) => g.z))]) { const r = gateRail(this.mk); r.position.set(0, 0, -z); this.dyn.add(r); }
     const wallM = std('#ffd9a0', { roughness: 0.6 }), wallTop = std('#ff7a59', { roughness: 0.45 });
-    sim.walls.forEach((w) => {
+    sim.walls.forEach((w, wi) => {
+      if (sim.layout.walls[wi]?.kind === 'spike') { const b = spikeBlock(this.mk, w.x1 - w.x0); b.position.set((w.x0 + w.x1) / 2, 0, -(w.z0 + w.z1) / 2); this.dyn.add(b); return; }
       const W = w.x1 - w.x0, D = w.z1 - w.z0;
       const m = new THREE.Mesh(new RoundedBoxGeometry(W, 1.3, D, 3, 0.2), wallM); m.position.set((w.x0 + w.x1) / 2, 0.65, -(w.z0 + w.z1) / 2);
       const t = new THREE.Mesh(new RoundedBoxGeometry(W + 0.08, 0.22, D + 0.08, 2, 0.1), wallTop); t.position.set(m.position.x, 1.32, m.position.z);
@@ -282,8 +295,8 @@ export class World {
     sim.blocks.forEach((b) => {
       const root = new THREE.Group();
       const h = b.size * 1.15;
-      const m = new THREE.Mesh(new RoundedBoxGeometry(b.size, h, b.size, 4, 0.24), std('#62b4ff', { roughness: 0.35, emissive: '#1d5fb8', emissiveIntensity: 0.25 })); m.position.y = h / 2;
-      const rim = new THREE.Mesh(new RoundedBoxGeometry(b.size + 0.1, 0.18, b.size + 0.1, 2, 0.08), mc('#ffffff')); rim.position.y = h - 0.05;
+      const m = new THREE.Mesh(new RoundedBoxGeometry(b.size, h, b.size, 4, 0.24), mc('#3d8cff')); m.position.y = h / 2;
+      const rim = new THREE.Mesh(new RoundedBoxGeometry(b.size + 0.1, 0.18, b.size + 0.1, 2, 0.08), mc('#86cbff')); rim.position.y = h - 0.05;
       const iconP = new THREE.Mesh(new THREE.PlaneGeometry(b.size * 0.55, b.size * 0.42), new THREE.MeshBasicMaterial({ map: dudeIconTex(), transparent: true }));
       iconP.position.set(0, h * 0.72, b.size / 2 + 0.02);
       const { tex, draw } = labelTex(String(b.hp), { fg: '#ffffff', stroke: COL.navy, size: 100 });
@@ -295,7 +308,8 @@ export class World {
     sim.towers.forEach((t) => {
       const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
       let mat: THREE.MeshStandardMaterial | null = null;
-      if (this.towerKit) {
+      if (THEME === 'beach') body.add(robotTower(this.mk));
+      else if (this.towerKit) {
         mat = this.towerKit.mat.clone(); mat.emissive.set('#ffffff'); mat.emissiveIntensity = 0;
         const m = new THREE.Mesh(this.towerKit.geo, mat); m.castShadow = true; m.receiveShadow = true; body.add(m);
       }
@@ -304,7 +318,8 @@ export class World {
       this.dyn.add(root); this.towerObjs.push({ root, body, mat, bar, shown: t.hp, flash: 0, sink: 0 });
     });
     const base = new THREE.Group();
-    if (this.hallKit) {
+    if (THEME === 'beach') { const f = mechFortress(this.mk); f.position.set(0, 0, -LANE.baseZ - 1.6); base.add(f); }
+    else if (this.hallKit) {
       const wall = new THREE.Mesh(this.hallKit.wall, this.hallKit.mat); wall.scale.set(1, 1.2, 0.9); wall.position.set(0, 0, -LANE.baseZ - 0.4);
       const hall = new THREE.Mesh(this.hallKit.hall, this.hallKit.mat); hall.position.set(0, 0, -LANE.baseZ - 3.2);
       base.add(shadowed(wall, true), shadowed(hall, true));
@@ -341,21 +356,17 @@ export class World {
       this.e.set(0, -yaw, Math.sin(run) * 0.08); this.q.setFromEuler(this.e);
       this.v.set(sim.x[i], hop, -sim.z[i]); this.sc.setScalar(sc);
       this.m4.compose(this.v, this.q, this.sc);
-      if (big) { this.champ.setMatrixAt(nc, this.m4); this.champ.setColorAt(nc, COL.gold); nc++; }
-      else if (blue) {
-        this.blue.setMatrixAt(nb, this.m4);
-        if (f > 0) this.tc.copy(COL.blue).lerp(COL.blueFresh, Math.min(1, f / 0.18));
-        else if (f < 0) this.tc.copy(COL.blue).lerp(COL.muzzle, Math.min(1, -f / 0.06));
-        else this.tc.copy(COL.blue);
-        this.blue.setColorAt(nb, this.tc); nb++;
-      } else { this.red.setMatrixAt(nr, this.m4); this.red.setColorAt(nr, COL.red); nr++; }
+      const flash = f > 0 ? 0.55 * Math.min(1, f / 0.18) : f < 0 ? Math.min(1, -f / 0.06) * 0.8 : 0;
+      this.tc.setRGB(1, 1 - flash, 1);
+      if (big) { this.champ.setMatrixAt(nc, this.m4); this.champ.setColorAt(nc, this.tc); nc++; }
+      else if (blue) { this.blue.setMatrixAt(nb, this.m4); this.blue.setColorAt(nb, this.tc); nb++; }
+      else { this.red.setMatrixAt(nr, this.m4); this.red.setColorAt(nr, this.tc); nr++; }
       this.v.set(sim.x[i], 0.012, -sim.z[i]); this.sc.setScalar(0.7 * sc * (1 - pop * 0.5)); this.m4.compose(this.v, this.q.identity(), this.sc);
       this.shadows.setMatrixAt(ns++, this.m4);
     }
     const counts = [nb, nr, nc];
     [this.blue, this.red, this.champ].forEach((m, k) => {
       m.count = counts[k]!; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
-      this.lines[k]!.count = counts[k]!;
     });
     this.shadows.count = ns; this.shadows.instanceMatrix.needsUpdate = true;
     const c = sim.cannon;
@@ -422,7 +433,7 @@ export class World {
   }
 }
 
-function sceneryParts(): Part[] {
+function sceneryParts(edgeIn = 7.25): Part[] {
   const r = rng(0x1d6e5);
   const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)]!;
   const TREES = ['tree_default', 'tree_oak', 'tree_fat', 'tree_detailed', 'tree_cone', 'tree_pineRoundA', 'tree_blocks'];
@@ -434,7 +445,7 @@ function sceneryParts(): Part[] {
     if (!taken.every(([tx, tz, tr]) => (tx - x) ** 2 + (tz - z) ** 2 > (tr + rad) ** 2)) return;
     taken.push([x, z, rad]); P.push({ piece, x, y: -0.55, z, q: Math.floor(r() * 4) + r() * 0.2, s });
   };
-  const edge = 7.25;
+  const edge = edgeIn;
   for (let i = 0; i < 220; i++) {
     const side = r() < 0.5 ? -1 : 1, out = edge + 1.4 + Math.pow(r(), 1.5) * 24, z = -12 - r() * 60;
     const s = 2.4 + r() * 1.9; put(pick(TREES), side * out, z, s, s * 0.3);
