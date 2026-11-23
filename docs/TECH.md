@@ -155,13 +155,12 @@ permission is public.
   after, **anyone ~5 min (30,000 slots) after READY**: publishes seed + history in the Match,
   refreshes both Peeks to each side's final stage, commit + undelegate all four, post-commit
   action `settle_action`). `advance` (the crank) does not touch the Peeks, so a Peek changes only
-  on its owner's own rig/peek and at `finish`.
-- ⚠️ Rules v3 port not yet built or run (no SBF toolchain where it was written): `anchor build`,
-  redeploy and the MagicSVM suite are pending (Kai). The same holds for the rules v4 port (two
-  stages, the raid in place, any-phase rig; Match still 1,792 B, state at data offset 318; Secrets
-  152 B): host `cargo test -p lil_dudes` passes and `tests-magicsvm` type-checks; the SBF build,
-  the IDL regeneration and the MagicSVM run are pending.
-- Tested in MagicSVM (17 tests, `tests-magicsvm/`, every instruction + refused cases, the M5
+  on its owner's own Scout and at `finish`.
+- ✅ Rules v5 port (23 Nov): `anchor build --ignore-keys` (467,800 B .so, fits the deployed
+  account), IDL regenerated (`champion` added, `plant_rig` gone), MagicSVM 18/18. Match 1,800 B
+  (state still at data offset 318), Secrets 136 B, Peek 48 B (rig bytes reserved). Not yet
+  deployed to devnet.
+- Tested in MagicSVM (18 tests on v5, `tests-magicsvm/`, every instruction + refused cases, the M5
   anyone-after-timeout refunds) and on devnet (live matches, the privacy re-check, the sweeper e2e).
 
 ### Time and the tick
@@ -200,11 +199,14 @@ permission is public.
 Caps: **8 ticks per `advance` (crank), 2 in player txs** (`plant_rig`, `peek_cell`). Rerun:
 `tests-magicsvm/tests/bench.rs` (program feature `bench`) and `tests/tee.rs`.
 
-⚠️ **Rules v3/v4: needs a re-bench.** The numbers above are the v2.1 state. v3 adds enemy cohorts
-(16 per lane), towers, crates, homing and a 1,470 B codec (v4: 1,474 B, the raid in place); `bench.rs` now measures full lanes
-(40 cohorts + 16 enemies per side) and a bot match's busiest tick, but nobody has run it yet, so
-the 8 / 2 caps are unconfirmed for v3. `finish` now also decodes the state once to refresh the
-Peeks (~6k CU at v2.1 codec cost).
+✅ **Rules v5 re-bench (23 Nov, MagicSVM, `bench.rs` + `tee.rs`):** codec 6,022 CU (1,484 B public +
+32 B secret); a full-lanes tick (40 cohorts + 16 enemies per side, Champions and giants) 4,202 CU with
+the bots, 3,746 without; a bot match's busiest tick 1,268 CU. So an 8-tick crank catch-up is ~46k CU
+(budget 400k: up to 92 ticks fit) and a player tx's 2-tick catch-up ~20k (budget 200k). Measured on
+the crank: `advance` 8-tick catch-up 12,347 CU, `set_aim` 3,319 CU, p50 3,147 / max 15,561 over a
+whole match. The 8 / 2 caps hold with a wide margin. SBF note: `MatchState::new` needed a 4,928 B
+frame (max 4,096), which broke the VRF callback; the program now builds the state in place
+(`MatchState::reset`).
 
 ### Randomness
 
