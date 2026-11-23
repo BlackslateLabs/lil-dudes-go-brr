@@ -6,9 +6,25 @@ use crate::layouts::{layout_for, stage, Slot};
 use crate::rng::{deal_rng, SplitMix64};
 use crate::types::GateOp;
 
-/// SPEC §6: normal slot multipliers with their odds in percent.
-pub const NORMAL_ODDS: [(u8, u64); 5] = [(2, 47), (3, 34), (4, 12), (5, 4), (6, 3)];
-/// SPEC §6: big slot multipliers with their odds in percent.
+/// SPEC_V5 §3: what a normal `?` slot holds, with its odds in percent. `Add(0)` / `Sub(0)` stand
+/// for ±N, with N set by the gate's row (`PM_BY_ROW`).
+pub const NORMAL_ODDS: [(GateOp, u64); 8] = [
+    (GateOp::Mul(2), 30),
+    (GateOp::Mul(3), 20),
+    (GateOp::Mul(4), 8),
+    (GateOp::Mul(5), 2),
+    (GateOp::Add(0), 12),
+    (GateOp::Div(2), 14),
+    (GateOp::Sub(0), 12),
+    (GateOp::Div(3), 2),
+];
+/// SPEC_V5 §3: N of a ±N gate by row index (row 1 = index 0 has none: there a ±N draw is
+/// re-drawn as × or ÷ from `NORMAL_ODDS` without the ± entries; rows past the table use its
+/// last N).
+pub const PM_BY_ROW: [u8; 4] = [0, 5, 15, 30];
+/// The odds mass of the × and ÷ entries (what a row-1 re-draw rolls over).
+pub const MUL_DIV_PCT: u64 = 76;
+/// SPEC_V5 §3: big slot multipliers with their odds in percent.
 pub const BIG_ODDS: [(u8, u64); 3] = [(6, 30), (8, 40), (10, 30)];
 /// The value of a slot the stage does not use.
 pub const NO_GATE: GateOp = GateOp::Mul(1);
@@ -40,30 +56,56 @@ impl Deal {
     }
 }
 
-/// One stage's values: one draw per gate slot, in slot order, from that stage's RNG.
+/// One stage's values, in slot order, from that stage's RNG: one draw per gate slot (two for a
+/// ±N drawn on row 1).
 pub fn deal_stage(seed: u64, layout: u8, stage_ix: u8) -> [GateOp; GATES_MAX] {
     let mut rng = deal_rng(seed, stage_ix);
     let mut out = [NO_GATE; GATES_MAX];
     for (v, g) in out.iter_mut().zip(stage(layout, stage_ix).gates.iter()) {
-        *v = draw(&mut rng, g.slot);
+        *v = draw(&mut rng, g.slot, g.row);
     }
     out
 }
 
-fn draw(rng: &mut SplitMix64, slot: Slot) -> GateOp {
-    let odds: &[(u8, u64)] = match slot {
-        Slot::Normal => &NORMAL_ODDS,
-        Slot::Big => &BIG_ODDS,
-    };
-    let mut roll = rng.below(100);
-    for &(k, pct) in odds {
+fn is_pm(op: GateOp) -> bool {
+    matches!(op, GateOp::Add(_) | GateOp::Sub(_))
+}
+
+/// The entry of `odds` that `roll` (0..sum of the odds) lands on, skipping ±N when `pm` is false.
+fn pick(roll: u64, pm: bool) -> GateOp {
+    let mut roll = roll;
+    for &(op, pct) in NORMAL_ODDS.iter().filter(|(op, _)| pm || !is_pm(*op)) {
         if roll < pct {
-            return GateOp::Mul(k);
+            return op;
         }
         roll = roll.saturating_sub(pct);
     }
-    // Unreachable while the odds sum to 100 (tested); the last value is the safe fallback.
-    GateOp::Mul(odds.last().map_or(2, |&(k, _)| k))
+    // Unreachable while the odds sum to 100 / MUL_DIV_PCT (tested): the safe fallback.
+    GateOp::Mul(2)
+}
+
+fn draw(rng: &mut SplitMix64, slot: Slot, row: u8) -> GateOp {
+    if slot == Slot::Big {
+        let mut roll = rng.below(100);
+        for &(k, pct) in &BIG_ODDS {
+            if roll < pct {
+                return GateOp::Mul(k);
+            }
+            roll = roll.saturating_sub(pct);
+        }
+        return GateOp::Mul(BIG_ODDS.last().map_or(8, |&(k, _)| k));
+    }
+    let n = PM_BY_ROW
+        .get(usize::from(row))
+        .or(PM_BY_ROW.last())
+        .copied()
+        .unwrap_or(0);
+    match pick(rng.below(100), true) {
+        GateOp::Add(_) if n > 0 => GateOp::Add(n),
+        GateOp::Sub(_) if n > 0 => GateOp::Sub(n),
+        op if is_pm(op) => pick(rng.below(MUL_DIV_PCT), false),
+        op => op,
+    }
 }
 
 #[cfg(test)]
@@ -74,50 +116,72 @@ mod tests {
     #[test]
     fn odds_sum_to_100() {
         assert_eq!(NORMAL_ODDS.iter().map(|o| o.1).sum::<u64>(), 100);
+        let mul_div: u64 = NORMAL_ODDS
+            .iter()
+            .filter(|o| !is_pm(o.0))
+            .map(|o| o.1)
+            .sum();
+        assert_eq!(mul_div, MUL_DIV_PCT);
         assert_eq!(BIG_ODDS.iter().map(|o| o.1).sum::<u64>(), 100);
+        assert_eq!(pick(99, true), GateOp::Div(3));
+        assert_eq!(pick(MUL_DIV_PCT - 1, false), GateOp::Div(3));
     }
 
     #[test]
     fn values_follow_the_slot_distributions() {
-        let mut normal = [0u32; 11];
-        let mut bigs = [0u32; 11];
-        let (mut n_normal, mut n_big) = (0u32, 0u32);
-        for seed in 0..6_000u64 {
+        // SPEC_V5 §3: rows 2+ follow NORMAL_ODDS with N by row; row 1 has no ±N (re-drawn as ×
+        // or ÷, so its × and ÷ odds scale by 100 / 76); big slots ×6 / ×8 / ×10.
+        let mut first = std::collections::HashMap::<GateOp, u32>::new();
+        let mut later = std::collections::HashMap::<GateOp, u32>::new();
+        let mut bigs = std::collections::HashMap::<GateOp, u32>::new();
+        for seed in 0..12_000u64 {
             let d = Deal::new(seed);
             assert_eq!(usize::from(d.layout), seed as usize % LAYOUTS.len());
             for (s, st) in LAYOUTS[usize::from(d.layout)].stages.iter().enumerate() {
-                for (slot, v) in d.values[s].iter().enumerate() {
+                for (slot, &v) in d.values[s].iter().enumerate() {
                     let Some(g) = st.gates.get(slot) else {
-                        assert_eq!(*v, NO_GATE);
+                        assert_eq!(v, NO_GATE);
                         continue;
                     };
-                    let GateOp::Mul(k) = *v else {
-                        panic!("v4 deal holds only ×k")
+                    let map = match (g.slot, g.row) {
+                        (Slot::Big, _) => &mut bigs,
+                        (_, 0) => &mut first,
+                        _ => {
+                            // ±N is sized to the row; count it as ±0 below.
+                            let n = PM_BY_ROW[usize::from(g.row)];
+                            assert!(!matches!(v, GateOp::Add(k) | GateOp::Sub(k) if k != n));
+                            &mut later
+                        }
                     };
-                    match g.slot {
-                        Slot::Normal => {
-                            normal[usize::from(k)] += 1;
-                            n_normal += 1;
-                        }
-                        Slot::Big => {
-                            bigs[usize::from(k)] += 1;
-                            n_big += 1;
-                        }
-                    }
+                    let key = match v {
+                        GateOp::Add(_) => GateOp::Add(0),
+                        GateOp::Sub(_) => GateOp::Sub(0),
+                        op => op,
+                    };
+                    *map.entry(key).or_default() += 1;
                 }
             }
         }
-        let pct = |n: u32, of: u32| n * 1000 / of;
-        for (k, want) in NORMAL_ODDS {
-            let got = pct(normal[usize::from(k)], n_normal);
-            assert!(got.abs_diff(want as u32 * 10) <= 15, "×{k}: {got}‰");
-        }
-        for (k, want) in BIG_ODDS {
-            let got = pct(bigs[usize::from(k)], n_big);
-            assert!(got.abs_diff(want as u32 * 10) <= 30, "big ×{k}: {got}‰");
-        }
-        assert_eq!(normal.iter().sum::<u32>(), n_normal);
-        assert_eq!(bigs.iter().sum::<u32>(), n_big);
+        let check =
+            |map: &std::collections::HashMap<GateOp, u32>, want: &[(GateOp, u64)], of: u64| {
+                let n: u32 = map.values().sum();
+                assert!(n > 2_000, "{n}");
+                assert_eq!(map.len(), want.len(), "{map:?}");
+                for &(op, pct) in want {
+                    let got = u64::from(map[&op]) * 10_000 / u64::from(n);
+                    let want = pct * 10_000 / of;
+                    assert!(got.abs_diff(want) <= 150, "{op:?}: {got} vs {want}");
+                }
+            };
+        check(&later, &NORMAL_ODDS, 100);
+        let no_pm: Vec<_> = NORMAL_ODDS
+            .iter()
+            .copied()
+            .filter(|o| !is_pm(o.0))
+            .collect();
+        check(&first, &no_pm, MUL_DIV_PCT);
+        let big: Vec<_> = BIG_ODDS.iter().map(|&(k, p)| (GateOp::Mul(k), p)).collect();
+        check(&bigs, &big, 100);
     }
 
     #[test]

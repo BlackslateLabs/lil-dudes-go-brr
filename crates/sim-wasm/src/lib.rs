@@ -12,15 +12,15 @@
 //!           fight's), dead, cannon x, aim, gold, 0 (reserved, was rig used), peek used, is bot,
 //!           raid ticks,
 //!           2 tower hp, 2 crate hp,
-//!           8 gates × [x, op] (op 0 = face-down, +k = ×k, -k = ÷k; slots past the stage's
-//!           gate count are [0, 0]),
+//!           8 gates × [x, op byte] (0 = face-down; see OP BYTE below; slots past the
+//!           stage's gate count are [0, 0]),
 //!           n cohorts, n × [id, count, x, y, age],
 //!           n enemies, n × [id, count, x, y, tower]
 //!   Tower, crate and gate slots index the current stage's lists in `constants_json().LAYOUTS`.
 //!
 //! EVENT LAYOUT (`events()`), EVENT_STRIDE numbers per event: type, then up to 7 fields:
 //!    0 volley [side, id, x, count]
-//!    1 gate [side, slot, cohort id, op (+k / -k), before, after, reveal (0/1)]
+//!    1 gate [side, slot, cohort id, op byte, before, after, reveal (0/1)]
 //!    2 (unused since rules v5)
 //!    3 crate hit [side, crate, cohort id, absorbed, hp left]
 //!    4 crate broken [side, crate]
@@ -34,7 +34,10 @@
 //!   12 end [winner (-1 draw), ko, moved, fee]
 //!
 //! PRIVATE LAYOUT (`private_view(side)`), for that side's current stage:
-//!   stage, peek slot (-1 none), peek op (+k / -k)
+//!   stage, peek slot (-1 none), peek op byte (0 none)
+//!
+//! OP BYTE (as in the codec and `deals_for`): the kind in the top two bits, the value below:
+//!   `k` = ×k, `0x40 | n` = +n, `0x80 | k` = ÷k, `0xC0 | n` = −n; 0 = none / face-down.
 
 use lil_dudes_sim::layouts::{GateDef, Slot, StageDef};
 use lil_dudes_sim::*;
@@ -255,9 +258,9 @@ fn flag(b: bool) -> f64 {
     }
 }
 
-/// +k for ×k, -k for ÷k, 0 for none.
+/// The op byte (OP BYTE above), 0 for none.
 fn op_num(op: Option<GateOp>) -> f64 {
-    op.map_or(0.0, |o| f64::from(o.signed()))
+    op.map_or(0.0, |o| f64::from(o.to_byte()))
 }
 
 fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
@@ -357,8 +360,8 @@ pub fn layout_version() -> u32 {
     LAYOUT_VERSION
 }
 
-/// DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × value k (×k)];
-/// slots past a stage's gate count hold 1. Every stage's true values of a finished match, from
+/// DEALS LAYOUT (`deals_for(seed)`): [layout id, then 2 stages × 8 slots × op byte]; slots past
+/// a stage's gate count hold 1 (×1). Every stage's true values of a finished match, from
 /// its published seed (Verify and the result screen); peeks come from `history()`.
 #[wasm_bindgen]
 pub fn deals_for(seed: u64) -> Vec<u8> {
@@ -387,7 +390,8 @@ pub fn codec_version() -> u8 {
 }
 
 /// Every constant packages/client mirrors, plus the level pool, as JSON (the TS parity test
-/// compares them). `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
+/// compares them). `NORMAL_ODDS` = [[op byte, percent]] with ±N written as +0 / −0 (N =
+/// `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]]. `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
 /// gates: [{row, x, width, big, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
 /// tower and crate indices are the slots used everywhere else.
 #[wasm_bindgen]
@@ -400,7 +404,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 45] = [
+    let pairs: [(&str, String); 46] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -443,7 +447,11 @@ pub fn constants_json() -> String {
         ("GATES_MAX", GATES_MAX.to_string()),
         ("TOWERS_MAX", TOWERS_MAX.to_string()),
         ("CRATES_MAX", CRATES_MAX.to_string()),
-        ("NORMAL_ODDS", odds(&deal::NORMAL_ODDS)),
+        (
+            "NORMAL_ODDS",
+            odds(&deal::NORMAL_ODDS.map(|(op, p)| (op.to_byte(), p))),
+        ),
+        ("PM_BY_ROW", list(&deal::PM_BY_ROW.map(i64::from))),
         ("BIG_ODDS", odds(&deal::BIG_ODDS)),
         ("LAYOUTS", layouts_json()),
     ];
@@ -511,7 +519,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 17_730_922_410_161_454_090;
+const PARITY_DIGEST: u64 = 7_802_420_624_183_953_081;
 
 #[cfg(test)]
 mod tests {
@@ -536,8 +544,7 @@ mod tests {
         // Bots on both sides, so the match runs long enough to see every kind of unit.
         let mut m = SimMatch::new(1, 2, 0, 0b11, false);
         let mut saw_enemies = false;
-        for _ in 0..400 {
-            assert!(m.step());
+        while m.tick() < 400 && m.step() {
             let v = m.view();
             assert_eq!(walk(&v), v.len());
             saw_enemies |= m.state.public.sides.iter().any(|s| s.enemy_len > 0);
@@ -546,7 +553,7 @@ mod tests {
         assert!(saw_enemies);
         let v = m.view();
         assert_eq!(v[0], f64::from(LAYOUT_VERSION));
-        assert_eq!(v[1], 400.0);
+        assert_eq!(v[1], f64::from(m.tick()));
         assert_eq!(v[3], f64::from(m.state.public.layout));
         // Side 0's first gate: x and face-down / revealed op.
         let g = m.state.public.sides[0].gates[0];
@@ -682,7 +689,11 @@ mod tests {
         assert!(j.contains("\"GATE_GRACE\":100"));
         assert!(j.contains("\"HALL_X\":1500"));
         assert!(j.contains("\"name\":\"Twin Lanes\""));
-        assert!(j.contains("\"NORMAL_ODDS\":[[2,47],[3,34],[4,12],[5,4],[6,3]]"));
+        // ±N as +0 (0x40) / −0 (0xC0): N comes from PM_BY_ROW.
+        assert!(j.contains(
+            "\"NORMAL_ODDS\":[[2,30],[3,20],[4,8],[5,2],[64,12],[130,14],[192,12],[131,2]]"
+        ));
+        assert!(j.contains("\"PM_BY_ROW\":[0,5,15,30]"));
         // Balanced braces and brackets (no JSON parser in this crate).
         let depth = j.chars().fold(0i32, |d, c| match c {
             '{' | '[' => d + 1,

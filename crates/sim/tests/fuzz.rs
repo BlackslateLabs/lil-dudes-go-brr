@@ -9,8 +9,18 @@ use lil_dudes_sim::rng::SplitMix64;
 use lil_dudes_sim::*;
 
 const SEEDS: u64 = 1_200;
-/// The biggest cohort any layout allows: ×10 per row at most.
-const MAX_COUNT: u32 = VOLLEY_SIZE * 10u32.pow(ROWS_MAX as u32);
+/// The biggest cohort any layout allows: at most ×10 or +30 per row.
+const MAX_COUNT: u32 = max_count(VOLLEY_SIZE);
+
+const fn max_count(start: u32) -> u32 {
+    let mut c = start;
+    let mut row = 0;
+    while row < ROWS_MAX {
+        c = if c * 10 > c + 30 { c * 10 } else { c + 30 };
+        row += 1;
+    }
+    c
+}
 
 fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
     let p = &m.public;

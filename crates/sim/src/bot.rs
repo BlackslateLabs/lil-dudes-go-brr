@@ -21,7 +21,8 @@ pub const SWITCH_MAX: u32 = 60;
 /// Candidate aim points: every AIM_STEP across the lane.
 pub const AIM_STEP: i32 = 100;
 const CANDIDATES: usize = (LANE_WIDTH / AIM_STEP) as usize - 1;
-/// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10), big ×8.
+/// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10; the v5
+/// table's mean factor, counting ±N as ×1, is ~×1.94), big ×8.
 pub const GUESS_NORMAL_PM: u64 = 2_000;
 pub const GUESS_BIG_PM: u64 = 8_000;
 
@@ -195,6 +196,8 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
         score = match me.gates.get(slot).and_then(|g| g.revealed) {
             Some(GateOp::Mul(k)) => score.saturating_mul(u64::from(k)),
             Some(GateOp::Div(k)) => score.checked_div(u64::from(k)).unwrap_or(0),
+            Some(GateOp::Add(n)) => score.saturating_add(u64::from(n).saturating_mul(1_000)),
+            Some(GateOp::Sub(n)) => score.saturating_sub(u64::from(n).saturating_mul(1_000)),
             None => {
                 let guess = match def.slot {
                     Slot::Normal => GUESS_NORMAL_PM,
