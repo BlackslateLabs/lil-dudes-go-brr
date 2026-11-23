@@ -41,9 +41,7 @@ export function Home() {
       </div>
       <div className="home-ui flow-home">
         <h1 className="logo">
-          Lil Dudes
-          <br />
-          <span>Go Brr</span>
+          <img src="/brand/logo.webp" alt="Lil Dudes Go Brr" width={1200} height={720} draggable={false} />
         </h1>
 
         <div className="home-bottom">

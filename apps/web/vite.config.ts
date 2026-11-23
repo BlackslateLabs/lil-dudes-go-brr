@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       // Precache everything the game needs offline: code, WASM, fonts, models, effects and sounds.
       workbox: { globPatterns: ['**/*.{js,css,html,wasm,svg,png,webp,woff2,ttf,glb,mp3}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
       manifest: {
@@ -18,7 +18,13 @@ export default defineConfig({
         orientation: 'portrait',
         background_color: '#1b1530',
         theme_color: '#1b1530',
-        icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        // The Face-Off icon. The maskable one keeps both heads inside the 80% safe circle.
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
       },
     }),
   ],

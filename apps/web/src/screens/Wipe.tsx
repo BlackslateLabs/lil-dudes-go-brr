@@ -18,8 +18,7 @@ export function Wipe() {
         <i />
       </div>
       <div className="wipe-logo">
-        <span className="l1">Lil Dudes</span>
-        <span className="l2">Go Brr</span>
+        <img src="/brand/logo.webp" alt="" draggable={false} />
       </div>
     </div>
   );

@@ -5,7 +5,9 @@ Nothing copied from any existing game.
 
 | Asset | Used for | Source (URL) | Author | Licence |
 |---|---|---|---|---|
-| Lilita One (`public/fonts/LilitaOne-Regular.ttf`) | Display font: logo, numbers, gate labels | https://github.com/google/fonts/tree/main/ofl/lilitaone | Juan Montoreano | SIL OFL 1.1 (`public/fonts/LilitaOne-OFL.txt`) |
+| Logo, mascot and app icons (`public/brand/logo.webp`, `public/icon*.png`, `public/icon.svg`, `public/apple-touch-icon.png`) | Home logo, screen wipe, PWA and favicon | drawn in code by us | ours | — |
+| Luckiest Guy (glyph outlines baked into the logo image; no font file shipped) | "LIL DUDES GO BRR!" wordmark in the logo | https://github.com/google/fonts/tree/main/apache/luckiestguy | Astigmatic | Apache 2.0 |
+| Lilita One (`public/fonts/LilitaOne-Regular.ttf`) | Display font: numbers, gate labels, buttons | https://github.com/google/fonts/tree/main/ofl/lilitaone | Juan Montoreano | SIL OFL 1.1 (`public/fonts/LilitaOne-OFL.txt`) |
 | Baloo 2 (`public/fonts/Baloo2-Latin-Variable.woff2`) | UI text | https://fonts.google.com/specimen/Baloo+2 (https://github.com/EkType/Baloo2) | The Baloo 2 Project Authors (Ek Type) | SIL OFL 1.1 (`public/fonts/Baloo2-OFL.txt`) |
 | Particle Pack (`public/assets/fx/particles.webp`: star_06, star_09, circle_05, smoke_04, dirt_01, circle_02, recoloured and resized) | Sparkles, glows, rings, smoke, debris | https://kenney.nl/assets/particle-pack | Kenney | CC0 1.0 |
 | Puff and coin cells in `public/assets/fx/particles.webp` | Cartoon puffs, coins | drawn in code by us | ours | — |
