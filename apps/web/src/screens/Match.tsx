@@ -11,7 +11,7 @@ import { Tutorial } from '../match/Tutorial';
 import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
 import { isBreach, useMatchHud } from '../match/useMatchHud';
-import { useApp } from '../store';
+import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
@@ -43,7 +43,9 @@ export function Match() {
       // `?speed=4` plays the match faster (testing, screenshots). Clamped to 1–16.
       const speedRaw = Number(params.get('speed'));
       const speed = Number.isFinite(speedRaw) && speedRaw >= 1 ? Math.min(16, speedRaw) : 1;
-      return new OfflineSource(seed === undefined ? { myName: 'You', selfBot, speed } : { myName: 'You', selfBot, speed, seed });
+      // A bot is always labelled "Bot"; in your first bot match its Fight 1 waves are gentler (SPEC v5 §8).
+      const base = { myName: 'You', opponentName: 'Bot', selfBot, speed, tutorial: !selfBot && isTutorialMatch() };
+      return new OfflineSource(seed === undefined ? base : { ...base, seed });
     },
     // Don't start the clock until the models are in and the arena has drawn (no first-frame stall).
     () =>
