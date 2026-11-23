@@ -112,32 +112,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: var(--display);
-  text-transform: uppercase;
-  line-height: 0.9;
-  text-align: center;
   pointer-events: none;
 }
 
-.wipe-logo span {
+.wipe-logo img {
   display: block;
-  -webkit-text-stroke: 9px var(--outline);
-  paint-order: stroke fill;
-  text-shadow:
-    0 6px 0 var(--outline),
-    0 14px 20px #1b153066;
-}
-
-.wipe-logo .l1 {
-  font-size: clamp(46px, 14vw, 66px);
-  color: #fff;
-  transform: rotate(-5deg);
-}
-
-.wipe-logo .l2 {
-  font-size: clamp(58px, 18vw, 84px);
-  color: var(--gold);
-  transform: rotate(-3deg) translateX(4%);
+  width: min(90vw, 420px);
+  height: auto;
+  user-select: none;
+  filter: drop-shadow(0 14px 20px #1b153066);
 }
 
 .wipe.in .wipe-logo {

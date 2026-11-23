@@ -96,7 +96,6 @@ button {
 }
 
 /* Text with a thick ink outline (paint-order keeps the stroke outside the fill). */
-.logo,
 .prompt span,
 .banner-pop,
 .banner,
@@ -236,33 +235,25 @@ button {
   pointer-events: auto;
 }
 
+/* The Face-Off logo (drawn by us; source in the art picks). The image carries its own outline and shadow. */
 .logo {
   margin: 0;
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: clamp(50px, 15vw, 76px);
-  line-height: 0.88;
-  color: var(--me);
-  -webkit-text-stroke: 9px var(--outline);
-  text-shadow:
-    0 5px 0 var(--outline),
-    0 12px 18px #1b153055;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  transform: rotate(-4deg);
+  width: min(94vw, 440px);
+  line-height: 0;
   animation: logo-bob 3.2s ease-in-out infinite;
 }
 
-.logo span {
-  display: inline-block;
-  color: var(--gold);
-  font-size: 1.18em;
-  transform: rotate(3deg);
+.logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  filter: drop-shadow(0 10px 16px #1b153055);
 }
 
 @keyframes logo-bob {
   50% {
-    transform: rotate(-2deg) translateY(-4px) scale(1.02);
+    transform: rotate(1.5deg) translateY(-4px) scale(1.02);
   }
 }
 
