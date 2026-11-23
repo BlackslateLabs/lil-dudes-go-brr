@@ -37,7 +37,7 @@ table is the copy of record. Change a pick here and in the log together.
 | Display font | Lilita One (current) | Google Fonts | OFL |
 | UI text font | Baloo 2 | Google Fonts | OFL |
 | Sound effects | Kenney recordings: Impact, Interface, Digital and Casino packs (26 short mono MP3s, ~117 KB) | Kenney | CC0 |
-| Music | **Undecided.** Rejected: widely used stock tracks (too recognisable). Shortlist: lesser-known CC0 loops and stings from OpenGameArt (e.g. Fupi's Wacky Wobblings / Wacky Idlings / Win Jingle) | | CC0 |
+| Music | Match: "Pixel Sprinter" (loop) and menu: "Flowerbed Fields" (loop), both by Zane Little Music; win: "Victory" by celestialghost8; lose: "Game over short jingle" by Kosmo The Cat and the comic "Game Over Trumpet" by 0new4y | OpenGameArt | CC0 |
 
 ## Where to find assets
 
