@@ -37,6 +37,8 @@ export function EndSequence() {
 
   const rushing = breachAt !== null && overrunAt === null && ended?.died !== 'them';
   const showCount = rushing && (isBreach(phase) || timeAt !== null);
+  // v4 dudes keep walking in after the clock (the travel tail): the counter stays until I'm done.
+  const settled = timeAt !== null && !isBreach(phase);
   const theyFell = ended?.died === 'them';
 
   return (
@@ -51,7 +53,7 @@ export function EndSequence() {
       )}
 
       {showCount && (
-        <div className={`rush-row ${timeAt !== null ? 'over' : ''}`}>
+        <div className={`rush-row ${settled ? 'over' : ''}`}>
           {timeAt === null ? (
             countdown > 0 && (
               <GradText key={countdown} text={countdown} className="count-num" />
