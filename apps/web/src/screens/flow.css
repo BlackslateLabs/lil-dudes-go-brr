@@ -1,0 +1,561 @@
+/* Screens and flow (v5): logo wipe, Home, stake sheet, VS, result ceremony, tutorial bubbles.
+   Same chunky candy language as styles.css: thick ink outlines, a hard ledge, Lilita One numerals. */
+
+/* ---------- Gradient numerals: orange→yellow fill over a thick ink outline ----------
+   The element's own text is the outline layer; ::after lays the gradient fill on top
+   (background-clip text can't sit under a stroke on the same layer). Needs data-t = the text. */
+.gnum {
+  position: relative;
+  display: inline-block;
+  font-family: var(--display);
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--outline);
+  -webkit-text-stroke: 0.2em var(--outline);
+  paint-order: stroke fill;
+  text-shadow: 0 0.1em 0 var(--outline);
+}
+
+.gnum::after {
+  content: attr(data-t);
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+  color: transparent;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  background: linear-gradient(180deg, #fff6a0 8%, #ffd21f 42%, #ff9a1f 72%, #ff6a1a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* ---------- Logo wipe ---------- */
+.wipe {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.wipe-half {
+  position: absolute;
+  inset: 0;
+}
+
+.wipe-half.top {
+  filter: drop-shadow(0 7px 0 var(--outline));
+}
+
+.wipe-half.bottom {
+  filter: drop-shadow(0 -7px 0 var(--outline));
+}
+
+.wipe-half i {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.wipe-half.top i {
+  clip-path: polygon(0 0, 100% 0, 100% 45%, 0 55%);
+  background:
+    repeating-linear-gradient(-30deg, #ffffff22 0 22px, transparent 22px 44px),
+    linear-gradient(#56b8ff, var(--me) 45%, var(--me-dark) 55%);
+}
+
+.wipe-half.bottom i {
+  clip-path: polygon(0 55%, 100% 45%, 100% 100%, 0 100%);
+  background:
+    repeating-linear-gradient(30deg, #ffffff22 0 22px, transparent 22px 44px),
+    linear-gradient(var(--them-dark) 45%, var(--them) 55%, #ff7a86);
+}
+
+.wipe.in .wipe-half.top {
+  animation: wipe-top-in 0.42s cubic-bezier(0.3, 1.25, 0.5, 1) both;
+}
+
+.wipe.in .wipe-half.bottom {
+  animation: wipe-bottom-in 0.42s cubic-bezier(0.3, 1.25, 0.5, 1) both;
+}
+
+.wipe.out .wipe-half.top {
+  animation: wipe-top-in 0.35s cubic-bezier(0.55, 0, 0.8, 0.4) reverse both;
+}
+
+.wipe.out .wipe-half.bottom {
+  animation: wipe-bottom-in 0.35s cubic-bezier(0.55, 0, 0.8, 0.4) reverse both;
+}
+
+@keyframes wipe-top-in {
+  from {
+    transform: translateY(-62%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes wipe-bottom-in {
+  from {
+    transform: translateY(62%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.wipe-logo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--display);
+  text-transform: uppercase;
+  line-height: 0.9;
+  text-align: center;
+  pointer-events: none;
+}
+
+.wipe-logo span {
+  display: block;
+  -webkit-text-stroke: 9px var(--outline);
+  paint-order: stroke fill;
+  text-shadow:
+    0 6px 0 var(--outline),
+    0 14px 20px #1b153066;
+}
+
+.wipe-logo .l1 {
+  font-size: clamp(46px, 14vw, 66px);
+  color: #fff;
+  transform: rotate(-5deg);
+}
+
+.wipe-logo .l2 {
+  font-size: clamp(58px, 18vw, 84px);
+  color: var(--gold);
+  transform: rotate(-3deg) translateX(4%);
+}
+
+.wipe.in .wipe-logo {
+  animation: wipe-logo-in 0.42s 0.26s var(--bounce) both;
+}
+
+.wipe.out .wipe-logo {
+  animation: wipe-logo-out 0.2s ease-in both;
+}
+
+@keyframes wipe-logo-in {
+  from {
+    transform: scale(0.2) rotate(-14deg);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes wipe-logo-out {
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+/* ---------- VS ---------- */
+.vs {
+  justify-content: center;
+  gap: 18px;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  overflow: hidden;
+  background: var(--outline);
+}
+
+.vs-sky {
+  position: absolute;
+  inset: 0;
+}
+
+.vs-sky .half {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.vs-sky .half.me {
+  clip-path: polygon(0 0, 100% 0, 100% 42%, 0 58%);
+  background:
+    repeating-linear-gradient(-30deg, #ffffff1a 0 24px, transparent 24px 48px),
+    linear-gradient(160deg, #56b8ff, var(--me) 50%, var(--me-dark));
+  animation: vs-from-left 0.35s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+.vs-sky .half.them {
+  clip-path: polygon(0 58%, 100% 42%, 100% 100%, 0 100%);
+  background:
+    repeating-linear-gradient(30deg, #ffffff1a 0 24px, transparent 24px 48px),
+    linear-gradient(160deg, #ff7a86, var(--them) 50%, var(--them-dark));
+  animation: vs-from-right 0.35s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+@keyframes vs-from-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes vs-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+.vs-steps {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 14px 18px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+  border-radius: 20px;
+  border: var(--edge);
+  background: linear-gradient(#ffffff, var(--cream));
+  box-shadow: var(--gloss), var(--ledge), var(--soft);
+  font-weight: 800;
+  font-size: 16px;
+  animation: card-in 0.35s var(--bounce) both;
+}
+
+.vs-steps.gone {
+  display: none;
+}
+
+.vs-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #1b153066;
+}
+
+.vs-steps li.now,
+.vs-steps li.ok {
+  color: var(--ink);
+}
+
+.vs-steps li i {
+  flex: none;
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid #1b153044;
+}
+
+.vs-steps li.now i {
+  border-color: var(--grape) var(--grape) #1b153022 #1b153022;
+  animation: spin 0.7s linear infinite;
+}
+
+.vs-steps li.ok i {
+  border-color: var(--outline);
+  background: var(--mint);
+}
+
+.vs-steps li.ok i::after,
+.tut-bubble.ticked .tut-check::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 6px;
+  height: 11px;
+  border: solid var(--outline);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+.vs-cards {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 360px;
+  gap: 4px;
+}
+
+.vs-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 62%;
+  padding: 14px 10px 12px;
+  border-radius: 24px;
+  border: var(--edge);
+  background: linear-gradient(#ffffff, var(--cream));
+  box-shadow: var(--gloss), var(--ledge), var(--soft);
+}
+
+.vs-card.me {
+  align-self: flex-start;
+  transform: rotate(-3deg);
+  animation: vs-card-left 0.42s cubic-bezier(0.25, 1.4, 0.5, 1) both;
+}
+
+.vs-card.them {
+  align-self: flex-end;
+  transform: rotate(3deg);
+  animation: vs-card-right 0.42s 0.06s cubic-bezier(0.25, 1.4, 0.5, 1) both;
+}
+
+@keyframes vs-card-left {
+  from {
+    transform: translateX(-140%) rotate(-12deg);
+  }
+  to {
+    transform: rotate(-3deg);
+  }
+}
+
+@keyframes vs-card-right {
+  from {
+    transform: translateX(140%) rotate(12deg);
+  }
+  to {
+    transform: rotate(3deg);
+  }
+}
+
+.vs-avatar {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: var(--edge);
+  background: radial-gradient(circle at 35% 30%, #9fd6ff, var(--me) 60%, var(--me-dark));
+  box-shadow: inset 0 4px 0 #ffffff70, 0 4px 0 var(--outline);
+}
+
+.vs-card.them .vs-avatar {
+  background: radial-gradient(circle at 35% 30%, #ffa3ab, var(--them) 60%, var(--them-dark));
+}
+
+.vs-avatar .eye {
+  position: absolute;
+  top: 30px;
+  width: 20px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--outline);
+  background: radial-gradient(circle at 55% 60%, var(--outline) 0 32%, #fff 36%);
+}
+
+.vs-avatar .eye.l {
+  left: 22px;
+}
+
+.vs-avatar .eye.r {
+  right: 22px;
+}
+
+.vs-avatar .mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  width: 26px;
+  height: 13px;
+  margin-left: -13px;
+  border-radius: 0 0 14px 14px;
+  border: 3px solid var(--outline);
+  background: #7a1530;
+}
+
+.vs-avatar.bot .eye {
+  border-radius: 6px;
+  background: radial-gradient(circle, #ffe27a 0 35%, var(--outline) 40%);
+}
+
+.vs-avatar.bot .mouth {
+  height: 8px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(90deg, #fff 0 4px, var(--outline) 4px 6px);
+}
+
+.vs-avatar .antenna {
+  position: absolute;
+  left: 50%;
+  top: -20px;
+  width: 4px;
+  height: 18px;
+  margin-left: -2px;
+  background: var(--outline);
+}
+
+.vs-avatar .antenna::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: -10px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2.5px solid var(--outline);
+  background: var(--gold);
+}
+
+.vs-name {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: 6px var(--outline);
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 var(--outline);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vs-stake {
+  font-family: var(--display);
+  font-size: 16px;
+  padding: 2px 12px 4px;
+  border-radius: 999px;
+  border: 2.5px solid var(--outline);
+  background: linear-gradient(var(--gold-light), var(--gold));
+  box-shadow: inset 0 2px 0 #ffffff90, 0 2px 0 var(--outline);
+}
+
+.vs-stamp {
+  height: 96px;
+  margin: -10px 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  font-size: 104px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.vs-stamp.on {
+  opacity: 1;
+  animation: vs-stamp 0.5s var(--bounce) both;
+}
+
+@keyframes vs-stamp {
+  0% {
+    transform: scale(3.2) rotate(-12deg);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(0.9) rotate(4deg);
+    opacity: 1;
+  }
+  75% {
+    transform: scale(1.06) rotate(-2deg) translateX(-4px);
+  }
+  100% {
+    transform: rotate(-4deg);
+  }
+}
+
+.vs.beat-vs .vs-cards,
+.vs.beat-live .vs-cards {
+  animation: vs-shake 0.3s ease-out;
+}
+
+@keyframes vs-shake {
+  25% {
+    transform: translate(-6px, 3px);
+  }
+  50% {
+    transform: translate(5px, -4px);
+  }
+  75% {
+    transform: translate(-3px, 2px);
+  }
+}
+
+.vs-live {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 18px 6px;
+  border-radius: 999px;
+  border: var(--edge);
+  background: var(--bad);
+  color: #fff;
+  font-family: var(--display);
+  font-size: 40px;
+  line-height: 1.1;
+  -webkit-text-stroke: 7px var(--outline);
+  paint-order: stroke fill;
+  box-shadow: var(--gloss), var(--ledge), var(--soft);
+  animation: pop-in 0.35s var(--bounce) both;
+}
+
+.vs-live::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2.5px solid var(--outline);
+  background: #fff;
+  animation: pip-pulse 0.6s ease-in-out infinite;
+}
+
+.vs-note {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 0 var(--outline);
+}
+
+@media (max-width: 380px) {
+  .vs-avatar {
+    width: 80px;
+    height: 80px;
+  }
+
+  .vs-avatar .eye {
+    top: 24px;
+  }
+
+  .vs-stamp {
+    font-size: 88px;
+  }
+}
+
+@media (max-height: 700px) {
+  .vs-card {
+    padding: 10px 10px 8px;
+  }
+
+  .vs-stamp {
+    height: 76px;
+    font-size: 80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-steps li.now i {
+    animation: none;
+    border-color: var(--grape);
+  }
+}
