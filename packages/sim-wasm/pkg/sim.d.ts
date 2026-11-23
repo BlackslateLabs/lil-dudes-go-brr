@@ -10,8 +10,9 @@ export class Bot {
     [Symbol.dispose](): void;
     /**
      * The bot's input for the tick the given public state is about to process:
-     * `[aim, peek slot, champion]`: aim and slot -1 for none, champion 0/1. Garbage or short
-     * input gives `[-1, -1, 0]`.
+     * `[aim, peek slot, champion, trigger]`: aim and slot -1 for none, champion 0/1, trigger
+     * -1 unchanged / 0 let go / 1 hold (rules v6). Garbage or short input gives
+     * `[-1, -1, 0, -1]`.
      */
     decide(public_bytes: Uint8Array | number[]): Int32Array;
     /**
@@ -51,6 +52,13 @@ export class SimMatch {
      * bytes the Match account holds; packages/client/src/codec.ts decodes it.
      */
     public_bytes(): Uint8Array;
+    /**
+     * Press (`true`) or let go of (`false`) `side`'s trigger (rules v6: the cannon fires only
+     * while it is held; letting go with a full meter in a Fight releases the Champion). Applied
+     * at once, between ticks, exactly like the program's player instruction, so a quick
+     * release-and-press inside one tick still releases the Champion. Ignored for bot sides.
+     */
+    set_fire(side: number, on: boolean): void;
     /**
      * Queue `side`'s inputs for the next step (ignored for bot sides). `undefined` = unchanged.
      * `peek` (Scout) is a gate slot of `side`'s own current stage; `champion` calls the
@@ -130,6 +138,7 @@ export interface InitOutput {
     readonly simmatch_new: (a: bigint, b: bigint, c: bigint, d: number, e: number) => number;
     readonly simmatch_private_view: (a: number, b: number) => [number, number];
     readonly simmatch_public_bytes: (a: number) => [number, number];
+    readonly simmatch_set_fire: (a: number, b: number, c: number) => void;
     readonly simmatch_set_input: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly simmatch_step: (a: number) => number;
     readonly simmatch_tick: (a: number) => number;

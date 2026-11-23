@@ -1,6 +1,7 @@
 //! One tick of the match (SPEC v4 + SPEC_V5). For tick `t = public.tick`:
 //!
-//! 1. inputs: aim (always), Scout (my Fight/Rush), Champion (my Fight)    SPEC §2, §6, V5 §4
+//! 1. inputs: aim and trigger (always), Scout (my Fight/Rush), Champion
+//!    (my Fight; also on letting go of the trigger with a full meter)      SPEC §2, §6, V5 §4
 //! 2. per lane (side 0, then side 1), each at its own stage and phase:    SPEC §3
 //!    - the cannon steps toward its aim                                   SPEC §2
 //!    - moving gates slide (timed from the Fight start; the Rush keeps
@@ -10,7 +11,8 @@
 //!      slower) home in and walk down; clash; tower hits, gold, Rush
 //!      loot, losses at the base edge; death; all towers down (the
 //!      breach, its tick recorded) → Transit (Fight 1) or the Rush in
-//!      place (Fight 2); waves; the Champion meter; a volley              SPEC §4–§7, V5 §2–§5
+//!      place (Fight 2); waves; a volley while the trigger is held
+//!      (it charges the Champion meter) or a called Champion              SPEC §4–§7, V5 §2–§5
 //!    - the phase timer: Plant → Fight, Transit → Plant, Rush over →
 //!      Done (whatever is left on the lane is cleared, uncounted)         SPEC §3, V5 §2
 //! 3. FIRST for a fight first cleared this tick                           V5 §6
@@ -81,6 +83,16 @@ fn apply_side(m: &mut MatchState, s: u8, input: &SideInput) {
     }
     if let Some(slot) = input.peek {
         try_peek(m, s, slot);
+    }
+    if let Some(on) = input.fire {
+        let was = m.public.side(s).is_some_and(|me| me.firing);
+        if let Some(me) = m.public.sides.get_mut(usize::from(s)) {
+            me.firing = on;
+        }
+        // SPEC_V5 §4: letting go of the trigger releases a charged Champion.
+        if was && !on {
+            try_champion(m, s);
+        }
     }
     if input.champion {
         try_champion(m, s);
@@ -189,10 +201,6 @@ fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
             start_rush(side, s, ev);
         }
         if side.phase == Phase::Fight {
-            // SPEC_V5 §4: the Champion meter fills while I am alive in a Fight.
-            if u32::from(side.champ_meter) < CHAMP_TICKS {
-                side.champ_meter = side.champ_meter.saturating_add(1);
-            }
             let pct = if options.tutorial && s == 0 && side.stage == 0 {
                 TUTORIAL_WAVE_PCT
             } else {
@@ -200,8 +208,11 @@ fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
             };
             release_waves(side, st, t, pct, next_cohort_id, s, ev);
         }
-        let firing = side.phase == Phase::Fight || u32::from(side.rush_ticks) < RUSH_TICKS;
-        if firing && t.checked_rem(FIRE_TICKS) == Some(0) {
+        // SPEC_V5 §2: the cannon fires on the volley beat while the trigger is held; a called
+        // Champion goes out on the very next tick, held or not.
+        let open = side.phase == Phase::Fight || u32::from(side.rush_ticks) < RUSH_TICKS;
+        let beat = side.firing && t.checked_rem(FIRE_TICKS) == Some(0);
+        if open && (beat || side.champ_pending) {
             fire(side, next_cohort_id, s, ev);
         }
     }
@@ -753,6 +764,14 @@ fn fire(side: &mut PublicSide, ids: &mut u32, s: u8, ev: &mut impl EventSink) {
     };
     side.champ_pending = false;
     side.cohort_len = side.cohort_len.saturating_add(1);
+    // SPEC_V5 §4: every ordinary volley in a Fight charges the Champion meter.
+    if !champion && side.phase == Phase::Fight {
+        let full = u8::try_from(CHAMP_TICKS).unwrap_or(u8::MAX);
+        side.champ_meter = side
+            .champ_meter
+            .saturating_add(u8::try_from(FIRE_TICKS).unwrap_or(u8::MAX))
+            .min(full);
+    }
     ev.push(Event::Volley {
         side: s,
         cohort_id: id,

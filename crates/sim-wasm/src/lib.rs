@@ -101,6 +101,27 @@ impl SimMatch {
         p.champion |= champion;
     }
 
+    /// Press (`true`) or let go of (`false`) `side`'s trigger (rules v6: the cannon fires only
+    /// while it is held; letting go with a full meter in a Fight releases the Champion). Applied
+    /// at once, between ticks, exactly like the program's player instruction, so a quick
+    /// release-and-press inside one tick still releases the Champion. Ignored for bot sides.
+    pub fn set_fire(&mut self, side: u8, on: bool) {
+        if self
+            .bots
+            .get(usize::from(side))
+            .is_some_and(|b| b.is_none())
+        {
+            apply_input(
+                &mut self.state,
+                side,
+                &SideInput {
+                    fire: Some(on),
+                    ..SideInput::default()
+                },
+            );
+        }
+    }
+
     /// Advance one tick: bots decide on the public state, then the rules run. Returns `false`
     /// (and does nothing) once the match has ended.
     pub fn step(&mut self) -> bool {
@@ -254,11 +275,12 @@ impl Bot {
     }
 
     /// The bot's input for the tick the given public state is about to process:
-    /// `[aim, peek slot, champion]`: aim and slot -1 for none, champion 0/1. Garbage or short
-    /// input gives `[-1, -1, 0]`.
+    /// `[aim, peek slot, champion, trigger]`: aim and slot -1 for none, champion 0/1, trigger
+    /// -1 unchanged / 0 let go / 1 hold (rules v6). Garbage or short input gives
+    /// `[-1, -1, 0, -1]`.
     pub fn decide(&mut self, public_bytes: &[u8]) -> Vec<i32> {
         let Ok(bytes) = <&[u8; PUBLIC_LEN]>::try_from(public_bytes) else {
-            return vec![-1, -1, 0];
+            return vec![-1, -1, 0, -1];
         };
         codec::decode_public(bytes, &mut self.view);
         let i = self.inner.decide(&self.view);
@@ -266,6 +288,7 @@ impl Bot {
             i.aim.unwrap_or(-1),
             i.peek.map_or(-1, i32::from),
             i32::from(i.champion),
+            i.fire.map_or(-1, i32::from),
         ]
     }
 }
@@ -558,7 +581,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 10_144_432_015_304_223_342;
+const PARITY_DIGEST: u64 = 11_513_745_549_247_634_464;
 
 #[cfg(test)]
 mod tests {
@@ -628,6 +651,36 @@ mod tests {
     }
 
     #[test]
+    fn the_trigger_fires_and_letting_go_releases_the_champion() {
+        let mut h = SimMatch::new(1, 2, 0, 0b10, false);
+        let volleys = |h: &SimMatch| {
+            h.events()
+                .chunks(EVENT_STRIDE)
+                .filter(|e| e.first() == Some(&0.0) && e.get(1) == Some(&0.0))
+                .count()
+        };
+        let mut n = 0;
+        for _ in 0..PLANT_TICKS + 40 {
+            h.step();
+            n += volleys(&h);
+        }
+        assert_eq!(n, 0, "no volleys without the trigger");
+        h.set_fire(0, true);
+        for _ in 0..40 {
+            h.step();
+            n += volleys(&h);
+        }
+        assert!(n >= 4, "fires while held");
+        h.state.public.sides[0].champ_meter = CHAMP_TICKS as u8;
+        h.set_fire(0, false);
+        h.set_fire(0, true); // a quick re-press inside the same tick
+        h.step();
+        assert!(h.state.public.sides[0].cohorts().iter().any(|c| c.champion));
+        h.set_fire(1, false); // bot side: ignored
+        assert!(h.state.public.sides[1].firing || h.state.public.sides[1].phase != Phase::Fight);
+    }
+
+    #[test]
     fn inputs_reach_the_sim_and_bots_override() {
         let mut h = SimMatch::new(1, 2, 0, 0b10, false);
         for _ in 0..PLANT_TICKS {
@@ -655,7 +708,8 @@ mod tests {
     /// expects this digest, so a stale packages/sim-wasm/pkg fails the TS tests.
     #[test]
     fn parity_match_digest() {
-        let mut h = SimMatch::new(42, 7, 100_000_000, 0b10, false);
+        // Bot vs bot: since rules v6 an idle player never fires, so a full match needs both.
+        let mut h = SimMatch::new(42, 7, 100_000_000, 0b11, false);
         while h.step() {}
         println!("PARITY_DIGEST = {}", h.digest());
         assert_eq!(h.digest(), PARITY_DIGEST);
@@ -687,10 +741,11 @@ mod tests {
             vec![
                 i.aim.unwrap_or(-1),
                 i.peek.map_or(-1, i32::from),
-                i32::from(i.champion)
+                i32::from(i.champion),
+                i.fire.map_or(-1, i32::from),
             ]
         );
-        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1, 0]);
+        assert_eq!(handle.decide(&bytes[..10]), vec![-1, -1, 0, -1]);
     }
 
     #[test]

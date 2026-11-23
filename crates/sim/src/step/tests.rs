@@ -11,8 +11,11 @@ use crate::layouts::LAYOUTS;
 use crate::state::{MatchOptions, SideInput};
 use crate::types::GateOp;
 
+/// Both triggers held, as if both players keep a finger down (the cannon fires only then).
 fn new_match(layout: u8) -> MatchState {
-    MatchState::new(u64::from(layout), MatchOptions::default())
+    let mut m = MatchState::new(u64::from(layout), MatchOptions::default());
+    m.public.sides.iter_mut().for_each(|s| s.firing = true);
+    m
 }
 
 fn tick(m: &mut MatchState, inputs: Inputs) -> Vec<Event> {
@@ -1086,13 +1089,21 @@ fn champ() -> SideInput {
     }
 }
 
+fn trigger(on: bool) -> SideInput {
+    SideInput {
+        fire: Some(on),
+        ..SideInput::default()
+    }
+}
+
 #[test]
-fn the_champion_meter_fills_in_fights_and_carries_over() {
+fn the_champion_meter_fills_per_volley_in_fights_and_carries_over() {
     let mut m = new_match(0);
     run_to(&mut m, PLANT_TICKS);
     assert_eq!(m.public.sides[0].champ_meter, 0, "no charge while planting");
+    // Volleys on fight ticks 0, 8, …, 96: 13 of them.
     run_safe(&mut m, PLANT_TICKS + 100, Inputs::default());
-    assert_eq!(m.public.sides[0].champ_meter, 100);
+    assert_eq!(u32::from(m.public.sides[0].champ_meter), 13 * FIRE_TICKS);
     // Too early: refused, nothing spent.
     tick(&mut m, input(0, champ()));
     assert!(!m.public.sides[0].champ_pending);
@@ -1117,7 +1128,11 @@ fn a_called_champion_rides_the_next_volley_and_multiplies_through_gates() {
     // Inputs apply before the lane ticks, so fight tick 0's volley is already the Champion.
     let ev = tick(&mut m, input(0, champ()));
     let s = &m.public.sides[0];
-    assert_eq!((s.champ_meter, s.champ_pending), (1, false));
+    assert_eq!(
+        (s.champ_meter, s.champ_pending),
+        (0, false),
+        "a Champion doesn't charge"
+    );
     let v = ev
         .iter()
         .find_map(|e| match e {
@@ -1185,6 +1200,69 @@ fn champion_refusals() {
         u32::from(f.public.sides[0].champ_meter),
         CHAMP_TICKS,
         "not twice"
+    );
+}
+
+// --- the trigger (SPEC_V5 §2, §4) --------------------------------------------------------------
+
+#[test]
+fn no_trigger_no_volleys_and_no_charge() {
+    let mut m = new_match(0);
+    m.public.sides[0].firing = false;
+    let ev = run_safe(&mut m, PLANT_TICKS + 100, Inputs::default());
+    assert!(!ev
+        .iter()
+        .any(|(_, e)| matches!(e, Event::Volley { side: 0, .. })));
+    assert!(ev
+        .iter()
+        .any(|(_, e)| matches!(e, Event::Volley { side: 1, .. })));
+    assert_eq!(m.public.sides[0].champ_meter, 0);
+    // Pressing it fires on the next volley beat.
+    let mut fired = None;
+    for _ in 0..FIRE_TICKS {
+        let ev = tick(&mut m, input(0, trigger(true)));
+        if ev
+            .iter()
+            .any(|e| matches!(e, Event::Volley { side: 0, .. }))
+        {
+            fired = Some(m.public.tick);
+        }
+    }
+    assert!(fired.is_some(), "fires within one beat of pressing");
+    assert!(m.public.sides[0].firing);
+}
+
+#[test]
+fn letting_go_with_a_full_meter_releases_the_champion_at_once() {
+    let mut m = fight(0);
+    sturdy(&mut m);
+    m.public.sides[0].phase_ticks = 3; // not a volley beat
+                                       // Not charged: letting go just stops the cannon.
+    m.public.sides[0].champ_meter = CHAMP_TICKS as u8 - 1;
+    let ev = tick(&mut m, input(0, trigger(false)));
+    assert!(!m.public.sides[0].firing);
+    assert!(!m.public.sides[0].champ_pending);
+    assert!(!ev
+        .iter()
+        .any(|e| matches!(e, Event::Volley { side: 0, .. })));
+    // Charged: press, let go → the Champion goes out on that tick, held or not.
+    m.public.sides[0].champ_meter = CHAMP_TICKS as u8;
+    tick(&mut m, input(0, trigger(true)));
+    m.public.sides[0].phase_ticks = 3;
+    let ev = tick(&mut m, input(0, trigger(false)));
+    assert!(ev.iter().any(|e| matches!(
+        e,
+        Event::Volley {
+            side: 0,
+            champion: true,
+            count: CHAMP_COUNT,
+            ..
+        }
+    )));
+    let s = &m.public.sides[0];
+    assert_eq!(
+        (s.champ_meter, s.champ_pending, s.firing),
+        (0, false, false)
     );
 }
 
@@ -1358,6 +1436,7 @@ fn apply_input_between_ticks_equals_passing_it_to_step() {
         aim: Some(400),
         peek: Some(1),
         champion: true,
+        fire: Some(false),
     };
     run_to(&mut a, PLANT_TICKS);
     a.public.sides[1].champ_meter = CHAMP_TICKS as u8;

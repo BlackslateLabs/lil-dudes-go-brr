@@ -18,6 +18,7 @@ export const simmatch_history: (a: number) => [number, number];
 export const simmatch_new: (a: bigint, b: bigint, c: bigint, d: number, e: number) => number;
 export const simmatch_private_view: (a: number, b: number) => [number, number];
 export const simmatch_public_bytes: (a: number) => [number, number];
+export const simmatch_set_fire: (a: number, b: number, c: number) => void;
 export const simmatch_set_input: (a: number, b: number, c: number, d: number, e: number) => void;
 export const simmatch_step: (a: number) => number;
 export const simmatch_tick: (a: number) => number;

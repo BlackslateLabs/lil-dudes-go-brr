@@ -51,5 +51,8 @@ pub fn random_input(r: &mut SplitMix64) -> SideInput {
         i.peek = Some(r.below(12) as u8);
     }
     i.champion = r.below(100) < 5;
+    if r.below(100) < 10 {
+        i.fire = Some(r.below(100) < 70);
+    }
     i
 }

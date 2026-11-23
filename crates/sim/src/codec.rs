@@ -21,6 +21,7 @@
 //!  32  u16  next_cohort_id
 //!  34  side 0, then side 1 at 34 + SIDE_LEN, SIDE_LEN = 725 each:
 //!        0 u8 stage | 1 u8 flags: phase (bits 0-2) | 8 dead | 16 champion pending | 32 peek used
+//!                | 64 trigger held
 //!        2 i16 cannon_x | 4 i16 aim | 6 u16 phase_ticks | 8 u32 gold
 //!       12 u8 cohort_len | 13 u8 enemy_len
 //!       14 towers 2 × u16 hp | 18 crates 2 × u16 hp
@@ -83,6 +84,7 @@ const F_PHASE: u8 = 7;
 const F_DEAD: u8 = 8;
 const F_CHAMP: u8 = 16;
 const F_PEEK: u8 = 32;
+const F_FIRE: u8 = 64;
 /// Cohort `last_row` byte: the Champion flag above the row count.
 const C_CHAMP: u8 = 128;
 
@@ -192,7 +194,8 @@ fn encode_side(s: &PublicSide, buf: &mut [u8]) {
     let flags = (s.phase.code() & F_PHASE)
         | (if s.dead { F_DEAD } else { 0 })
         | (if s.champ_pending { F_CHAMP } else { 0 })
-        | (if s.peek_used { F_PEEK } else { 0 });
+        | (if s.peek_used { F_PEEK } else { 0 })
+        | (if s.firing { F_FIRE } else { 0 });
     let live = s.cohorts();
     let foes = s.enemies();
     put(buf, 0, [s.stage, flags]);
@@ -274,6 +277,7 @@ fn decode_side(buf: &[u8], s: &mut PublicSide) {
     s.dead = flags & F_DEAD != 0;
     s.peek_used = flags & F_PEEK != 0;
     s.champ_pending = flags & F_CHAMP != 0;
+    s.firing = flags & F_FIRE != 0;
     s.champ_meter = byte(buf, SIDE_CHAMP);
     for (t, at) in s.breach_tick.iter_mut().zip((SIDE_BREACH..).step_by(2)) {
         *t = u16_at(buf, at);
@@ -446,6 +450,7 @@ mod tests {
                         aim: Some(rng.below(LANE_WIDTH as u64) as i32),
                         peek: Some(rng.below(9) as u8),
                         champion: rng.below(3) == 0,
+                        fire: Some(rng.below(4) != 0),
                     };
                 }
                 step(&mut m, &inputs, &mut NoEvents);
