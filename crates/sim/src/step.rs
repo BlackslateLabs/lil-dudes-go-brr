@@ -1,6 +1,6 @@
 //! One tick of the match (SPEC v4). For tick `t = public.tick`:
 //!
-//! 1. inputs: aim (always), rig (alive, not done), peek (my Fight/Raid)   SPEC §2, §6
+//! 1. inputs: aim (always), peek / Scout (my Fight/Raid)                  SPEC §2, §6
 //! 2. per lane (side 0, then side 1), each at its own stage and phase:    SPEC §3
 //!    - the cannon steps toward its aim                                   SPEC §2
 //!    - moving gates slide (timed from the Fight start; the Raid keeps
@@ -25,8 +25,7 @@ use crate::events::{Event, EventSink};
 use crate::layouts::{self, covers, StageDef};
 use crate::payout::payout;
 use crate::state::{
-    other, Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, Rig, SecretState,
-    SideInput,
+    Inputs, MatchState, Peek, PublicGate, PublicSide, PublicState, SecretState, SideInput,
 };
 use crate::types::{Cohort, Enemy, Phase};
 
@@ -76,67 +75,14 @@ fn apply_side(m: &mut MatchState, s: u8, input: &SideInput) {
         // SPEC §2: the aim is any lane x; the cannon chases it.
         side.aim = aim.clamp(0, LANE_WIDTH.saturating_sub(1)) as i16;
     }
-    if let Some(slot) = input.rig {
-        try_rig(m, s, slot);
-    }
     if let Some(slot) = input.peek {
         try_peek(m, s, slot);
     }
 }
 
-/// SPEC §6 Rig: whether side `s` may rig gate `slot` right now. Any time I am alive and not
-/// done (Plant, Fight, Raid or Transit), once per stage of mine, I name a slot of MY current
-/// stage and it rigs the opponent's copy of that same stage and slot (both lanes are the same
-/// level). Refused when the opponent is dead or done, has already moved past that stage, is on
-/// it and has already revealed that gate in their copy, or the slot doesn't exist. A rig on a
-/// stage the opponent hasn't reached yet is fine: it springs when they get there.
-///
-/// Public state is enough: a rig on the opponent's stage `k` can only come from me during my
-/// own stage `k`, so "that stage already holds a rig" is exactly my `rig_used` (the UI and the
-/// bot can ask this without secrets).
-pub fn can_rig(p: &PublicState, s: u8, slot: u8) -> bool {
-    let (Some(me), Some(opp)) = (p.side(s), p.side(other(s))) else {
-        return false;
-    };
-    if p.ended() || me.finished() || me.rig_used || opp.finished() {
-        return false;
-    }
-    let stage = me.stage;
-    let exists = usize::from(slot) < layouts::stage(p.layout, stage).gates.len();
-    let behind = opp.stage < stage;
-    let open = opp.gate(slot).is_some_and(|g| g.revealed.is_none());
-    exists && (behind || (opp.stage == stage && open))
-}
-
-/// SPEC §6 Rig (see `can_rig`). Recorded under my own stage, naming the victim's stage (the
-/// same stage) and slot. Refused, and not used up, when `can_rig` says no or that opponent
-/// stage already holds a rig.
-fn try_rig(m: &mut MatchState, s: u8, slot: u8) {
-    if !can_rig(&m.public, s, slot) {
-        return;
-    }
-    let MatchState { public, secret } = m;
-    let Some(me) = public.sides.get_mut(usize::from(s)) else {
-        return;
-    };
-    let stage = me.stage;
-    if secret.stage_rigged(other(s), stage) {
-        return;
-    }
-    let Some(rig) = secret
-        .history
-        .get_mut(usize::from(stage))
-        .and_then(|log| log.rigs.get_mut(usize::from(s)))
-    else {
-        return;
-    };
-    *rig = Some(Rig { stage, slot });
-    me.rig_used = true;
-}
-
-/// SPEC §6 Peek: during my Fight or Raid, once per stage, one unrevealed gate of my current
-/// stage. The result is its true value now (a rigged gate peeks as ÷2). Refused, and not used
-/// up, on a revealed or missing gate.
+/// SPEC §6 Peek (SPEC_V5 §4 Scout): during my Fight or Raid, once per stage, one unrevealed gate
+/// of my current stage. The result is its true value. Refused, and not used up, on a revealed or
+/// missing gate.
 fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
     let MatchState { public, secret } = m;
     let layout = public.layout;
@@ -148,7 +94,7 @@ fn try_peek(m: &mut MatchState, s: u8, slot: u8) {
     if !me.phase.active() || me.peek_used || me.dead || !open || !exists {
         return;
     }
-    let op = secret.true_op(s, me.stage, slot);
+    let op = secret.true_op(me.stage, slot);
     let Some(peek) = secret
         .history
         .get_mut(usize::from(me.stage))
@@ -337,8 +283,7 @@ pub fn gate_at(st: &StageDef, gates: &[PublicGate], row: u8, x: i16) -> Option<u
     })
 }
 
-/// SPEC §6: the first cohort through reveals the gate (and springs a rig: GOTCHA); every cohort
-/// through gets the gate's op.
+/// SPEC §6: the first cohort through reveals the gate; every cohort through gets the gate's op.
 fn pass_gate(
     s: u8,
     stage: u8,
@@ -348,16 +293,9 @@ fn pass_gate(
     secret: &SecretState,
     ev: &mut impl EventSink,
 ) {
-    let op = secret.true_op(s, stage, slot);
+    let op = secret.true_op(stage, slot);
     let reveal = gate.revealed.is_none();
     if reveal {
-        if let Some(rigged_by) = secret.rigged_by(s, stage, slot) {
-            ev.push(Event::Gotcha {
-                side: s,
-                slot,
-                rigged_by,
-            });
-        }
         gate.revealed = Some(op);
     }
     let before = c.count;
@@ -752,7 +690,7 @@ fn fire(side: &mut PublicSide, ids: &mut u32, s: u8, ev: &mut impl EventSink) {
 // --- timeline ----------------------------------------------------------------------------------
 
 /// SPEC §3: every tower down → Transit. The field is wiped and the next stage is loaded (its
-/// gates face-down), so a rig placed now lands on the stage the player is driving to.
+/// gates face-down).
 fn start_transit(side: &mut PublicSide, layout: u8, s: u8, ev: &mut impl EventSink) {
     let next = side.stage.saturating_add(1).min(FINAL_STAGE);
     side.load_stage(layout, next);

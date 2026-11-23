@@ -5,7 +5,7 @@
 pub enum GateOp {
     /// c · k (saturating)
     Mul(u8),
-    /// floor(c / k): the trap
+    /// floor(c / k)
     Div(u8),
 }
 
@@ -82,7 +82,7 @@ pub struct Enemy {
 /// Where one player is inside the current stage (SPEC §3).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Phase {
-    /// 3 s: gates face-down, cannon holds fire (rig allowed, as in every phase but Done).
+    /// 3 s: gates face-down, cannon holds fire.
     #[default]
     Plant,
     /// Until every tower is down: firing, waves, peek allowed.

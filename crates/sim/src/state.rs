@@ -5,7 +5,7 @@
 use crate::constants::{
     COHORT_CAP, CRATES_MAX, ENEMY_CAP, GATES_MAX, LANE_WIDTH, STAGES, TOWERS_MAX,
 };
-use crate::deal::{Deal, NO_GATE, RIG_OP};
+use crate::deal::{Deal, NO_GATE};
 use crate::layouts::{self, layout_for, StageDef};
 use crate::payout::MatchResult;
 use crate::types::{Cohort, Enemy, GateOp, Phase};
@@ -49,8 +49,7 @@ pub struct PublicSide {
     pub aim: i16,
     /// SPEC §5.
     pub gold: u32,
-    /// Rig / peek spent in the current stage (SPEC §6).
-    pub rig_used: bool,
+    /// Scout (peek) spent in the current stage (SPEC §6, SPEC_V5 §4).
     pub peek_used: bool,
     /// Tower HP of the current stage (0 = down or no tower in that slot).
     pub towers: [u16; TOWERS_MAX],
@@ -76,7 +75,6 @@ impl PublicSide {
         cannon_x: 0,
         aim: 0,
         gold: 0,
-        rig_used: false,
         peek_used: false,
         towers: [0; TOWERS_MAX],
         crates: [0; CRATES_MAX],
@@ -131,13 +129,12 @@ impl PublicSide {
     }
 
     /// Sets up `stage` of `layout`: towers, crates, face-down gates at their start x, an empty
-    /// field and a fresh rig and peek.
+    /// field and a fresh peek.
     pub fn load_stage(&mut self, layout: u8, stage: u8) {
         let st = layouts::stage(layout, stage);
         self.stage = stage;
         self.phase_ticks = 0;
         self.raid_ticks = 0;
-        self.rig_used = false;
         self.peek_used = false;
         self.towers = [0; TOWERS_MAX];
         for (hp, t) in self.towers.iter_mut().zip(st.towers) {
@@ -196,14 +193,6 @@ pub const fn other(side: u8) -> u8 {
     }
 }
 
-/// A rig (SPEC §6): the victim's stage and gate slot. Since v4 the victim's stage is always the
-/// rigger's own stage at the time (the same level in the other copy).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Rig {
-    pub stage: u8,
-    pub slot: u8,
-}
-
 /// A peek result (SPEC §6): the true value of one of my own gates when I peeked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Peek {
@@ -211,13 +200,11 @@ pub struct Peek {
     pub op: GateOp,
 }
 
-/// What both players did in one of their own stages (index = the actor's stage, not the
-/// victim's). Published with the seed at the end (SPEC §11 Verify).
+/// What both players did in one of their stages. Published with the seed at the end (SPEC §11
+/// Verify).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StageLog {
-    /// `rigs[s]` = the opponent gate side `s` rigged during this stage of its own.
-    pub rigs: [Option<Rig>; 2],
-    /// `peeks[s]` = side `s`'s peek during this stage.
+    /// `peeks[s]` = side `s`'s Scout (peek) during this stage.
     pub peeks: [Option<Peek>; 2],
 }
 
@@ -225,46 +212,20 @@ pub struct StageLog {
 pub struct SecretState {
     /// The VRF seed. Public only after the match (Verify, SPEC §11).
     pub seed: u64,
-    /// True gate values per stage and slot, identical in both copies (rigs apply on top).
+    /// True gate values per stage and slot, identical in both copies.
     pub values: [[GateOp; GATES_MAX]; STAGES],
-    /// Every rig and peek so far, written as they happen.
+    /// Every Scout (peek) so far, written as they happen.
     pub history: [StageLog; STAGES],
 }
 
 impl SecretState {
-    /// Who rigged `side`'s gate `slot` of its stage `stage` (always the opponent), if anyone.
-    pub fn rigged_by(&self, side: u8, stage: u8, slot: u8) -> Option<u8> {
-        let opponent = other(side);
-        let target = Some(Rig { stage, slot });
-        self.history
-            .iter()
-            .any(|log| log.rigs.get(usize::from(opponent)).copied().flatten() == target)
-            .then_some(opponent)
-    }
-
-    /// Whether `side`'s stage `stage` already holds a rig (at most one per stage, SPEC §6).
-    pub fn stage_rigged(&self, side: u8, stage: u8) -> bool {
-        let opponent = usize::from(other(side));
-        self.history.iter().any(|log| {
-            log.rigs
-                .get(opponent)
-                .copied()
-                .flatten()
-                .is_some_and(|r| r.stage == stage)
-        })
-    }
-
-    /// What `side`'s gate `slot` in `stage` does right now: the dealt value, or the trap.
-    pub fn true_op(&self, side: u8, stage: u8, slot: u8) -> GateOp {
-        if self.rigged_by(side, stage, slot).is_some() {
-            RIG_OP
-        } else {
-            self.values
-                .get(usize::from(stage))
-                .and_then(|v| v.get(usize::from(slot)))
-                .copied()
-                .unwrap_or(NO_GATE)
-        }
+    /// What gate `slot` of `stage` does (the same in both copies).
+    pub fn true_op(&self, stage: u8, slot: u8) -> GateOp {
+        self.values
+            .get(usize::from(stage))
+            .and_then(|v| v.get(usize::from(slot)))
+            .copied()
+            .unwrap_or(NO_GATE)
     }
 
     pub fn log(&self, stage: u8) -> Option<&StageLog> {
@@ -276,9 +237,7 @@ impl SecretState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrivateView {
     pub stage: u8,
-    /// The opponent gate I rigged during this stage (same stage, their copy).
-    pub rig: Option<Rig>,
-    /// My peek this stage.
+    /// My Scout (peek) this stage.
     pub peek: Option<Peek>,
 }
 
@@ -318,10 +277,7 @@ impl MatchState {
     /// An all-zero state to decode into (`codec::decode_*` overwrite every field). Unlike `new`,
     /// it deals nothing, so it is nearly free on-chain.
     pub const fn zeroed() -> Self {
-        const LOG: StageLog = StageLog {
-            rigs: [None; 2],
-            peeks: [None; 2],
-        };
+        const LOG: StageLog = StageLog { peeks: [None; 2] };
         Self {
             public: PublicState {
                 tick: 0,
@@ -349,7 +305,6 @@ impl MatchState {
         let log = self.secret.log(stage);
         PrivateView {
             stage,
-            rig: log.and_then(|l| l.rigs.get(s).copied().flatten()),
             peek: log.and_then(|l| l.peeks.get(s).copied().flatten()),
         }
     }
@@ -384,7 +339,6 @@ impl MatchState {
             h.i16(s.cannon_x);
             h.i16(s.aim);
             h.u32(s.gold);
-            h.bool(s.rig_used);
             h.bool(s.peek_used);
             s.towers.iter().for_each(|&t| h.u32(u32::from(t)));
             s.crates.iter().for_each(|&c| h.u32(u32::from(c)));
@@ -414,15 +368,6 @@ impl MatchState {
         h.u64(x.seed);
         x.values.iter().flatten().for_each(|op| h.u8(op.to_byte()));
         for log in &x.history {
-            for r in &log.rigs {
-                match r {
-                    None => h.u8(255),
-                    Some(r) => {
-                        h.u8(r.stage);
-                        h.u8(r.slot);
-                    }
-                }
-            }
             for pk in &log.peeks {
                 match pk {
                     None => h.u8(255),
@@ -442,10 +387,7 @@ impl MatchState {
 pub struct SideInput {
     /// Target cannon x; clamped to the lane.
     pub aim: Option<i32>,
-    /// Rig this gate slot of my current stage in the opponent's copy. Any time I am alive and
-    /// not done, once per stage (SPEC §6, `step::can_rig`).
-    pub rig: Option<u8>,
-    /// Peek this gate slot of my current stage. During my Fight/Raid only, once per stage.
+    /// Scout (peek) this gate slot of my current stage. During my Fight/Raid only, once per stage.
     pub peek: Option<u8>,
 }
 
@@ -494,7 +436,7 @@ mod tests {
             let st = &LAYOUTS[usize::from(p.layout)].stages[0];
             for s in &p.sides {
                 assert_eq!((s.stage, s.phase, s.phase_ticks), (0, Phase::Plant, 0));
-                assert!(!s.dead && s.gold == 0 && !s.rig_used && !s.peek_used);
+                assert!(!s.dead && s.gold == 0 && !s.peek_used);
                 assert!(s.cohorts().is_empty() && s.enemies().is_empty());
                 assert_eq!(s.towers[0], st.towers[0].hp);
                 for (slot, g) in s.gates.iter().enumerate() {
@@ -507,17 +449,10 @@ mod tests {
     }
 
     #[test]
-    fn rig_targets_the_opponents_copy() {
-        let mut m = MatchState::new(5, MatchOptions::default());
-        // Side 0, during its stage 0, rigged side 1's stage 1 slot 2.
-        m.secret.history[0].rigs[0] = Some(Rig { stage: 1, slot: 2 });
-        assert_eq!(m.secret.rigged_by(1, 1, 2), Some(0));
-        assert_eq!(m.secret.rigged_by(1, 0, 2), None);
-        assert_eq!(m.secret.rigged_by(0, 1, 2), None);
-        assert!(m.secret.stage_rigged(1, 1) && !m.secret.stage_rigged(1, 0));
-        assert_eq!(m.secret.true_op(1, 1, 2), RIG_OP);
-        assert_eq!(m.secret.true_op(0, 1, 2), m.secret.values[1][2]);
-        assert_eq!(m.secret.true_op(0, 7, 200), NO_GATE);
+    fn true_op_is_the_deal() {
+        let m = MatchState::new(5, MatchOptions::default());
+        assert_eq!(m.secret.true_op(1, 2), m.secret.values[1][2]);
+        assert_eq!(m.secret.true_op(7, 200), NO_GATE);
     }
 
     #[test]

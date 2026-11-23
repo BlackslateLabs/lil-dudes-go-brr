@@ -10,8 +10,6 @@ use crate::types::GateOp;
 pub const NORMAL_ODDS: [(u8, u64); 5] = [(2, 47), (3, 34), (4, 12), (5, 4), (6, 3)];
 /// SPEC §6: big slot multipliers with their odds in percent.
 pub const BIG_ODDS: [(u8, u64); 3] = [(6, 30), (8, 40), (10, 30)];
-/// SPEC §6: the MVP trap.
-pub const RIG_OP: GateOp = GateOp::Div(2);
 /// The value of a slot the stage does not use.
 pub const NO_GATE: GateOp = GateOp::Mul(1);
 
@@ -94,7 +92,7 @@ mod tests {
                         continue;
                     };
                     let GateOp::Mul(k) = *v else {
-                        panic!("deal holds a trap")
+                        panic!("v4 deal holds only ×k")
                     };
                     match g.slot {
                         Slot::Normal => {

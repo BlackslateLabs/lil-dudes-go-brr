@@ -25,8 +25,6 @@ pub enum Event {
         after: u32,
         reveal: bool,
     },
-    /// `side`'s first cohort through gate `slot` hit the trap `rigged_by` planted (SPEC §6).
-    Gotcha { side: u8, slot: u8, rigged_by: u8 },
     /// A crate absorbed `absorbed` dudes and has `hp` left (SPEC §4).
     CrateHit {
         side: u8,

@@ -5,8 +5,8 @@ use crate::constants::{ENEMY_CAP, GATES_MAX, GATE_GRACE, PLANT_TICKS, STAGES};
 use crate::deal::NO_GATE;
 use crate::events::NoEvents;
 use crate::layouts::{self, LAYOUTS};
-use crate::state::{Inputs, MatchOptions, MatchState, PublicState, Rig};
-use crate::step::{can_rig, step};
+use crate::state::{Inputs, MatchOptions, MatchState, Peek};
+use crate::step::step;
 use crate::types::{Enemy, Phase};
 
 /// Layout `layout`, both players at the start of Fight 1.
@@ -18,12 +18,11 @@ fn fighting(layout: u8) -> MatchState {
     m
 }
 
-/// Ask a fresh bot (side 1) for its aim on a thinking tick, skipping rig/peek.
+/// Ask a fresh bot (side 1) for its aim on a thinking tick, skipping the peek.
 fn aim_of(m: &MatchState) -> i32 {
     let mut view = m.public;
     view.tick = 1_000;
     view.sides[1].peek_used = true;
-    view.sides[1].rig_used = true;
     Warlord::new(1, 5).decide(&view).aim.unwrap()
 }
 
@@ -35,7 +34,10 @@ fn decisions_depend_on_the_public_state_only() {
     let mut other_secrets = m;
     other_secrets.secret.seed ^= 0xFFFF;
     other_secrets.secret.values = [[GateOp::Div(2); GATES_MAX]; STAGES];
-    other_secrets.secret.history[0].rigs = [Some(Rig { stage: 0, slot: 1 }); 2];
+    other_secrets.secret.history[0].peeks = [Some(Peek {
+        slot: 1,
+        op: GateOp::Mul(5),
+    }); 2];
     let (mut a, mut b) = (Warlord::new(1, 9), Warlord::new(1, 9));
     for t in 0..200 {
         let mut pa = m.public;
@@ -185,10 +187,10 @@ fn peeks_at_the_fight_start() {
     let n = LAYOUTS[0].stages[0].gates.len() as u8;
     let mut bot = Warlord::new(1, 8);
     let i = bot.decide(&m.public);
-    assert!(i.rig.is_none() && i.peek.is_none());
+    assert!(i.peek.is_none());
     let f = fighting(0);
     let i = bot.decide(&f.public);
-    assert!(i.peek.is_some_and(|s| s < n) && i.rig.is_none());
+    assert!(i.peek.is_some_and(|s| s < n));
     let mut f2 = f;
     for g in f2.public.sides[1].gates.iter_mut().take(usize::from(n)) {
         g.revealed = Some(GateOp::Mul(2));
@@ -201,84 +203,6 @@ fn peeks_at_the_fight_start() {
     f2.public.sides[1].peek_used = true;
     assert_eq!(bot.decide(&f2.public).peek, None);
     assert_eq!(NO_GATE, GateOp::Mul(1));
-}
-
-/// The fight tick at which a fresh bot (side 1) first rigs, and the slot.
-fn first_rig(view: &PublicState, seed: u64) -> Option<(u16, u8)> {
-    let mut bot = Warlord::new(1, seed);
-    let mut v = *view;
-    v.sides[1].peek_used = true;
-    for t in 0..200u16 {
-        v.sides[1].phase_ticks = t;
-        if let Some(slot) = bot.decide(&v).rig {
-            return Some((t, slot));
-        }
-    }
-    None
-}
-
-#[test]
-fn rigs_once_per_stage_one_to_three_seconds_into_its_fight() {
-    // SPEC §10: at a random moment 1–3 s into its fight, a random gate of its own stage that
-    // is still face-down and that the rig rule accepts.
-    let f = fighting(0);
-    let n = LAYOUTS[0].stages[0].gates.len() as u8;
-    let mut moments = std::collections::BTreeSet::new();
-    for seed in 0..40 {
-        let (t, slot) = first_rig(&f.public, seed).expect("rigs");
-        assert!(
-            (RIG_AFTER_MIN..=RIG_AFTER_MAX).contains(&u32::from(t)),
-            "{t}"
-        );
-        assert!(slot < n && can_rig(&f.public, 1, slot));
-        moments.insert(t);
-    }
-    assert!(moments.len() > 5, "{moments:?}");
-    // Not a gate the opponent already revealed, nor one face-down only for the opponent.
-    let mut g = f;
-    for gate in g.public.sides[0].gates.iter_mut().take(usize::from(n)) {
-        gate.revealed = Some(GateOp::Mul(2));
-    }
-    g.public.sides[0].gates[2].revealed = None;
-    g.public.sides[0].gates[4].revealed = None;
-    g.public.sides[1].gates[4].revealed = Some(GateOp::Mul(3));
-    for seed in 0..20 {
-        assert_eq!(first_rig(&g.public, seed).map(|r| r.1), Some(2));
-    }
-    // Nothing the rule would accept: no rig (the opponent is past this stage, or done).
-    let mut h = f;
-    let layout = h.public.layout;
-    h.public.sides[0].load_stage(layout, 1);
-    h.public.sides[0].phase = Phase::Fight;
-    assert_eq!(first_rig(&h.public, 1), None);
-    let mut d = f;
-    d.public.sides[0].phase = Phase::Done;
-    assert_eq!(first_rig(&d.public, 1), None);
-    // Spent → nothing.
-    let mut u = f;
-    u.public.sides[1].rig_used = true;
-    assert_eq!(first_rig(&u.public, 1), None);
-}
-
-#[test]
-fn rigs_again_in_its_next_stage() {
-    // SPEC §10: a fresh plan per stage; a rig on a stage the opponent hasn't reached is fine.
-    let mut m = fighting(0);
-    let layout = m.public.layout;
-    let mut bot = Warlord::new(1, 4);
-    let mut v = m.public;
-    v.sides[1].peek_used = true;
-    v.sides[1].phase_ticks = 100;
-    assert!(bot.decide(&v).rig.is_some());
-    m.public.sides[1].load_stage(layout, 1);
-    m.public.sides[1].phase = Phase::Fight;
-    let mut v = m.public;
-    v.sides[1].peek_used = true;
-    v.sides[1].phase_ticks = 0;
-    assert!(bot.decide(&v).rig.is_none());
-    v.sides[1].phase_ticks = RIG_AFTER_MAX as u16;
-    let slot = bot.decide(&v).rig.expect("rigs in Fight 2");
-    assert!(usize::from(slot) < LAYOUTS[0].stages[1].gates.len());
 }
 
 #[test]

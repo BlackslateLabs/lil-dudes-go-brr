@@ -5,7 +5,6 @@
 
 use super::*;
 use crate::constants::GATE_GRACE;
-use crate::deal::RIG_OP;
 use crate::events::Events;
 use crate::layouts::LAYOUTS;
 use crate::state::{MatchOptions, SideInput};
@@ -54,13 +53,6 @@ fn input(side: usize, i: SideInput) -> Inputs {
     let mut inputs = Inputs::default();
     inputs.sides[side] = i;
     inputs
-}
-
-fn rig(slot: u8) -> SideInput {
-    SideInput {
-        rig: Some(slot),
-        ..SideInput::default()
-    }
 }
 
 fn peek(slot: u8) -> SideInput {
@@ -704,176 +696,6 @@ fn sliding_gates_move_from_the_fight_start() {
     )));
 }
 
-// --- rig ---------------------------------------------------------------------------------------
-
-#[test]
-fn rig_names_a_slot_of_my_stage_in_the_opponents_copy() {
-    // SPEC §6: once per stage; recorded under my stage, naming the victim's (same) stage.
-    let mut m = new_match(0);
-    tick(&mut m, input(0, rig(1)));
-    assert!(m.public.sides[0].rig_used && !m.public.sides[1].rig_used);
-    assert_eq!(m.secret.history[0].rigs[0], Some(Rig { stage: 0, slot: 1 }));
-    assert_eq!(m.secret.true_op(1, 0, 1), RIG_OP);
-    assert_eq!(m.secret.true_op(0, 0, 1), m.secret.values[0][1]);
-    assert_eq!(m.private_view(0).rig, Some(Rig { stage: 0, slot: 1 }));
-    // Once per stage.
-    assert!(!can_rig(&m.public, 0, 2));
-    tick(&mut m, input(0, rig(2)));
-    assert_eq!(m.secret.history[0].rigs[0], Some(Rig { stage: 0, slot: 1 }));
-}
-
-#[test]
-fn rig_works_in_every_phase_while_alive_and_not_done() {
-    // SPEC §6: Plant, Fight, Transit and Raid alike.
-    let mut m = fight(0);
-    assert!(can_rig(&m.public, 1, 3));
-    tick(&mut m, input(1, rig(3)));
-    assert_eq!(m.secret.history[0].rigs[1], Some(Rig { stage: 0, slot: 3 }));
-    // My Transit: my stage already names the next one; the opponent is behind, so any slot.
-    let mut m = new_match(0);
-    enter(&mut m, 0, 1, Phase::Transit);
-    m.public.sides[1].gates[4].revealed = Some(GateOp::Mul(2)); // their stage 0 copy: no matter
-    tick(&mut m, input(0, rig(4)));
-    assert_eq!(m.secret.history[1].rigs[0], Some(Rig { stage: 1, slot: 4 }));
-    // My raid, the opponent still fighting the same stage.
-    let mut m = raiding(0);
-    enter(&mut m, 1, FINAL_STAGE, Phase::Fight);
-    tick(&mut m, input(0, rig(0)));
-    assert_eq!(
-        m.secret.history[usize::from(FINAL_STAGE)].rigs[0],
-        Some(Rig {
-            stage: FINAL_STAGE,
-            slot: 0
-        })
-    );
-}
-
-#[test]
-fn rig_refusals_do_not_use_it_up() {
-    // SPEC §6: refused on a missing slot, a gate the opponent already revealed on that stage,
-    // a finished opponent, an opponent already past my stage, when I am dead or done, or when
-    // that opponent stage already holds a rig.
-    let fresh = new_match(0);
-    let refused = |m: &mut MatchState, slot: u8| {
-        assert!(!can_rig(&m.public, 0, slot));
-        apply_input(m, 0, &rig(slot));
-        assert!(!m.public.sides[0].rig_used);
-        assert_eq!(
-            m.secret.history[usize::from(m.public.sides[0].stage)].rigs[0],
-            None
-        );
-    };
-    // Missing slot (stage 0 of layout 0 has 5 gates).
-    refused(&mut fresh.clone(), 5);
-    refused(&mut fresh.clone(), 200);
-    // Revealed in the opponent's copy (same stage). Revealed in mine doesn't matter.
-    let mut m = fresh;
-    m.public.sides[1].gates[1].revealed = Some(GateOp::Mul(2));
-    refused(&mut m, 1);
-    let mut m = fresh;
-    m.public.sides[0].gates[1].revealed = Some(GateOp::Mul(2));
-    assert!(can_rig(&m.public, 0, 1));
-    // Opponent done / dead.
-    let mut m = fresh;
-    m.public.sides[1].phase = Phase::Done;
-    refused(&mut m, 1);
-    let mut m = fresh;
-    m.public.sides[1].dead = true;
-    refused(&mut m, 1);
-    // I am dead / done.
-    let mut m = fresh;
-    m.public.sides[0].dead = true;
-    refused(&mut m, 1);
-    let mut m = raiding(0);
-    m.public.sides[0].phase = Phase::Done;
-    enter(&mut m, 1, FINAL_STAGE, Phase::Fight);
-    refused(&mut m, 1);
-    // The opponent has already moved past my stage (even in their Transit).
-    let mut m = fresh;
-    enter(&mut m, 1, 1, Phase::Transit);
-    refused(&mut m, 1);
-    // That opponent stage already holds a rig (an inconsistent state, but still refused).
-    let mut m = fresh;
-    m.secret.history[0].rigs[0] = Some(Rig { stage: 1, slot: 0 });
-    enter(&mut m, 0, 1, Phase::Plant);
-    enter(&mut m, 1, 1, Phase::Fight);
-    assert!(can_rig(&m.public, 0, 3));
-    apply_input(&mut m, 0, &rig(3));
-    assert!(!m.public.sides[0].rig_used);
-    assert_eq!(m.secret.history[1].rigs[0], None);
-}
-
-#[test]
-fn a_rig_on_a_stage_the_opponent_has_not_reached_springs_when_they_get_there() {
-    // SPEC §6: rig ahead; GOTCHA on their first pass once they are there.
-    let mut m = new_match(0);
-    enter(&mut m, 0, 1, Phase::Fight);
-    tick(&mut m, input(0, rig(0)));
-    assert_eq!(m.secret.history[1].rigs[0], Some(Rig { stage: 1, slot: 0 }));
-    assert_eq!(m.secret.rigged_by(1, 1, 0), Some(0));
-    assert_eq!(m.secret.rigged_by(1, 0, 0), None);
-    // Their stage 0 is untouched.
-    assert_eq!(m.secret.true_op(1, 0, 0), m.secret.values[0][0]);
-    enter(&mut m, 1, 1, Phase::Fight);
-    sturdy(&mut m);
-    place(&mut m, 1, cohort(900, 9, 700, 1_330, 0));
-    let ev = idle(&mut m);
-    assert!(ev.contains(&Event::Gotcha {
-        side: 1,
-        slot: 0,
-        rigged_by: 0
-    }));
-    assert_eq!(find(&m, 1, 900).unwrap().count, 4);
-}
-
-#[test]
-fn an_unused_rig_does_not_carry_over_to_the_next_stage() {
-    // SPEC §6: once per stage of mine; the next stage brings exactly one fresh rig.
-    let mut m = new_match(0);
-    run_to(&mut m, PLANT_TICKS);
-    m.public.sides[0].towers[0] = 1;
-    place(&mut m, 0, cohort(900, 5, 1_500, (TOWER_Y - 10) as i16, 3));
-    idle(&mut m);
-    assert_eq!(m.public.sides[0].phase, Phase::Transit);
-    assert!(!m.public.sides[0].rig_used);
-    assert!(m.secret.history.iter().all(|l| l.rigs[0].is_none()));
-    tick(&mut m, input(0, rig(0)));
-    tick(&mut m, input(0, rig(1)));
-    assert_eq!(m.secret.history[0].rigs[0], None);
-    assert_eq!(m.secret.history[1].rigs[0], Some(Rig { stage: 1, slot: 0 }));
-}
-
-#[test]
-fn a_rigged_gate_springs_gotcha_and_halves_for_the_rest_of_the_stage() {
-    // SPEC §6: same `?` face; the first pass flashes GOTCHA, then ÷2 on every pass.
-    let mut m = new_match(0);
-    tick(&mut m, input(0, rig(0)));
-    run_to(&mut m, PLANT_TICKS);
-    place(&mut m, 1, cohort(900, 9, 700, 1_330, 0));
-    place(&mut m, 1, cohort(901, 5, 700, 1_300, 0));
-    place(&mut m, 0, cohort(902, 9, 700, 1_330, 0));
-    let ev = idle(&mut m);
-    assert!(ev.contains(&Event::Gotcha {
-        side: 1,
-        slot: 0,
-        rigged_by: 0
-    }));
-    assert_eq!(
-        ev.iter()
-            .filter(|e| matches!(e, Event::Gotcha { .. }))
-            .count(),
-        1
-    );
-    assert_eq!(m.public.sides[1].gates[0].revealed, Some(RIG_OP));
-    assert_eq!(find(&m, 1, 900).unwrap().count, 4);
-    // The rigger's own copy is untouched.
-    let v = m.secret.values[0][0];
-    assert_eq!(m.public.sides[0].gates[0].revealed, Some(v));
-    let ev = idle(&mut m);
-    assert_eq!(find(&m, 1, 901).unwrap().count, 2);
-    assert!(ev.iter().all(|e| !matches!(e, Event::Gotcha { .. })));
-}
-
 // --- peek --------------------------------------------------------------------------------------
 
 #[test]
@@ -896,20 +718,19 @@ fn peek_shows_my_true_value_once_per_stage() {
 }
 
 #[test]
-fn peek_refusals_and_rigged_gates() {
-    // SPEC §6: refused (and kept) on a revealed or missing gate; a rigged gate peeks as ÷2.
+fn peek_refusals() {
+    // SPEC §6: refused (and kept) on a revealed or missing gate.
     let mut m = fight(0);
     m.public.sides[0].gates[1].revealed = Some(GateOp::Mul(3));
     tick(&mut m, input(0, peek(1)));
     tick(&mut m, input(0, peek(7)));
     assert!(!m.public.sides[0].peek_used);
-    m.secret.history[0].rigs[1] = Some(Rig { stage: 0, slot: 3 });
     tick(&mut m, input(0, peek(3)));
     assert_eq!(
         m.private_view(0).peek,
         Some(Peek {
             slot: 3,
-            op: RIG_OP
+            op: m.secret.values[0][3]
         })
     );
 }
@@ -1268,12 +1089,12 @@ fn the_time_cap_ends_the_match_with_gold_so_far() {
 fn apply_input_between_ticks_equals_passing_it_to_step() {
     // The program applies player instructions between crank ticks.
     let mut a = new_match(3);
-    let mut b = a;
     let i = SideInput {
         aim: Some(400),
-        rig: Some(1),
-        peek: None,
+        peek: Some(1),
     };
+    run_to(&mut a, PLANT_TICKS);
+    let mut b = a;
     tick(&mut a, input(1, i));
     apply_input(&mut b, 1, &i);
     idle(&mut b);
