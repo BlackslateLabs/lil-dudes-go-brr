@@ -1246,13 +1246,12 @@
 .tut {
   position: absolute;
   z-index: 3;
-  left: 12px;
-  right: 12px;
-  top: 50%;
+  left: 10px;
+  right: 86px;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 38px);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -1261,19 +1260,21 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 18px 9px 10px;
-  border-radius: 18px;
+  padding: 4px 12px 5px 6px;
+  border-radius: 14px;
   border: var(--edge);
   background: linear-gradient(#ffffff, var(--cream));
-  box-shadow: var(--gloss), var(--ledge), var(--soft);
+  box-shadow: var(--gloss), var(--ledge);
   font-family: var(--display);
-  font-size: 21px;
+  font-size: 15px;
+  opacity: 0.94;
   line-height: 1.1;
   color: var(--ink);
   animation: tut-in 0.35s var(--bounce) both;
 }
 
 .tut-bubble::after {
+  display: none;
   content: '';
   position: absolute;
   left: 50%;
@@ -1302,8 +1303,8 @@
 .tut-check {
   position: relative;
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 3px solid var(--outline);
   background: #fff;
@@ -1334,8 +1335,7 @@
 
 .tut-dots {
   display: flex;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 4px;
 }
 
 .tut-dots i {
