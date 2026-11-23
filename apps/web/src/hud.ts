@@ -20,6 +20,8 @@ export interface HudState {
   peekUsed: boolean;
   /** Scout mode (v4 "peek"): the next tap on one of your `?` gates reveals it, privately. */
   peeking: boolean;
+  /** A finger is down on the lane: the cannon fires (rules v6). */
+  holding: boolean;
   /** A short centre banner ("FIGHT 2", "TOWER DOWN"). */
   banner: { text: string; tone: 'good' | 'bad' | 'gold'; at: number } | null;
   /** End sequence: when (performance.now()) my last Fight 2 tower fell (BREACH!). */
@@ -51,6 +53,7 @@ export const HUD_RESET: Omit<HudState, 'set'> = {
   theirTowers: 1,
   peekUsed: false,
   peeking: false,
+  holding: false,
   banner: null,
   breachAt: null,
   countdown: 0,

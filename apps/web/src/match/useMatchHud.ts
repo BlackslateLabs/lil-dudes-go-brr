@@ -121,7 +121,11 @@ export function useMatchHud(feed: MatchFeed) {
       switch (e.type) {
         case 'volley':
           if (mine) sfx.shot();
-          if (mine && e.champion) banner('CHAMPION!', 'gold');
+          if (mine && e.champion) {
+            banner('CHAMPION!', 'gold');
+            sfx.champLaunch();
+            haptic('big');
+          }
           break;
         case 'reveal':
           if (mine) sfx.gate(!opBad(e.op));

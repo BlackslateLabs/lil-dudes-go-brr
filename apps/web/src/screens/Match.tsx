@@ -1,10 +1,10 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
 import { setBattleDuck, setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
-import { ChampionButton } from '../match/ChampionButton';
+import { ChampionMeter } from '../match/ChampionMeter';
 import { EndSequence, GradText } from '../match/EndSequence';
 import { ProgressLine } from '../match/ProgressLine';
 import { Tutorial } from '../match/Tutorial';
@@ -55,21 +55,52 @@ export function Match() {
   );
   useMatchHud(feed);
 
-  const drag = useRef<{ x: number } | null>(null);
+  // Rules v6: a finger on the lane holds the trigger (the cannon fires) and drags the aim;
+  // lifting the last finger lets go (and launches a charged Champion).
+  const drag = useRef<{ x: number; id: number } | null>(null);
+  const fingers = useRef(new Set<number>());
+  const hold = (on: boolean) => {
+    feed.setFiring(on);
+    useHud.getState().set({ holding: on });
+  };
   const onDown = (e: PointerEvent) => {
-    drag.current = { x: e.clientX };
+    // A tap in Scout mode picks a gate; it doesn't pull the trigger.
+    if (useHud.getState().peeking) return;
+    fingers.current.add(e.pointerId);
+    drag.current = { x: e.clientX, id: e.pointerId };
+    hold(true);
   };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
+    if (!drag.current || drag.current.id !== e.pointerId) return;
     const dxPx = e.clientX - drag.current.x;
     drag.current.x = e.clientX;
     const width = e.currentTarget.getBoundingClientRect().width;
     feed.nudgeAim((dxPx / (width * DRAG_SPAN)) * LANE_WIDTH);
   };
-  const onUp = () => {
-    if (drag.current) feed.flushAim();
-    drag.current = null;
+  const onUp = (e: PointerEvent) => {
+    if (!fingers.current.delete(e.pointerId)) return;
+    if (drag.current?.id === e.pointerId) {
+      feed.flushAim();
+      drag.current = null;
+    }
+    if (fingers.current.size === 0) hold(false);
   };
+  // Losing the page (app switch, lock) lets go.
+  useEffect(() => {
+    const letGo = () => {
+      fingers.current.clear();
+      drag.current = null;
+      hold(false);
+    };
+    const onVis = () => document.hidden && letGo();
+    window.addEventListener('blur', letGo);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('blur', letGo);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed]);
 
   return (
     <div
@@ -140,6 +171,7 @@ function Prompts() {
   const phase = useHud((s) => s.phase);
   const myPhaseTick = useHud((s) => s.myPhaseTick);
   const peeking = useHud((s) => s.peeking);
+  const holding = useHud((s) => s.holding);
   const names = useHud((s) => s.names);
   const stage = useHud((s) => s.stage[0]);
   const timeAt = useHud((s) => s.timeAt);
@@ -153,6 +185,8 @@ function Prompts() {
   } else if (phase[0] === 'plant') {
     const secs = Math.max(1, Math.ceil((PLANT_TICKS - myPhaseTick) / TICKS_PER_SEC));
     text = `${STAGE_LABELS[stage]}: fire in ${secs}…`;
+  } else if (phase[0] === 'fight' && !holding) {
+    text = 'Hold to fire!';
   } else if (phase[0] === 'transit') {
     text = 'Stage cleared!';
   } else if (phase[0] === 'done' && (timeAt === null || performance.now() - timeAt > TIME_STAMP_MS)) {
@@ -178,7 +212,7 @@ function Banner() {
   );
 }
 
-/** Bottom-right, by the thumb: Scout (once per stage) and the Champion (v5 sources only). */
+/** Bottom-right, by the thumb: Scout (once per stage) and the Champion meter. */
 function ThumbControls({ feed }: { feed: MatchFeed }) {
   const peekUsed = useHud((s) => s.peekUsed);
   const peeking = useHud((s) => s.peeking);
@@ -195,7 +229,7 @@ function ThumbControls({ feed }: { feed: MatchFeed }) {
       >
         👁
       </button>
-      <ChampionButton feed={feed} />
+      <ChampionMeter feed={feed} />
     </div>
   );
 }
