@@ -257,15 +257,6 @@ button {
   }
 }
 
-.tagline,
-.muted {
-  color: var(--muted);
-  font-weight: 600;
-  max-width: 30ch;
-  margin: 0;
-  line-height: 1.35;
-}
-
 .big.play {
   width: 100%;
   max-width: 320px;
@@ -287,29 +278,6 @@ button {
 }
 
 /* PvP options sit on a chunky cream card. */
-.pvp {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  max-width: 340px;
-  padding: 14px 12px 16px;
-  border-radius: 22px;
-  border: var(--edge);
-  background: linear-gradient(#ffffffee, #fff6e8ee);
-  box-shadow: var(--gloss), var(--ledge), var(--soft);
-}
-
-.pvp::before {
-  content: 'PvP · devnet stakes';
-  font-family: var(--display);
-  font-size: 15px;
-  letter-spacing: 0.5px;
-  color: var(--muted);
-  text-transform: uppercase;
-}
 
 .stakes {
   display: flex;
@@ -457,7 +425,7 @@ button {
   transition: transform 0.12s var(--bounce);
 }
 
-.round:not(.rig):not(.small) {
+.round:not(.small) {
   background: linear-gradient(#9fd6ff, var(--good) 60%, var(--me-dark));
 }
 
@@ -496,13 +464,6 @@ button {
 .banner-pop {
   font-size: 68px;
   animation: pop-in 0.45s var(--bounce) both;
-}
-
-.banner-pop.surge {
-  color: var(--gold);
-  animation:
-    pop-in 0.45s var(--bounce) both,
-    fade-out 0.4s 1.4s forwards;
 }
 
 .banner-pop.flash {
@@ -629,22 +590,7 @@ button {
   text-shadow: 0 2px 0 var(--outline);
 }
 
-.sample-note {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--muted);
-}
-
 /* Rematch / Verify appear after the payout lands (~1.8 s, TECH §5). */
-.later {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  opacity: 0;
-  animation: fade-in 0.35s 1.8s forwards;
-}
 
 @keyframes fade-in {
   from {
@@ -691,137 +637,12 @@ button {
   border-top: 2px dashed #1b153018;
 }
 
-.big-num {
-  font-family: var(--display);
-  font-size: 24px;
-}
-
-.big-num span {
-  font-family: var(--display);
-}
-
-.big-num b {
-  font-weight: 400;
-  font-size: 30px;
-  color: var(--gold-dark);
-  -webkit-text-stroke: 1px var(--outline);
-}
-
 .plus {
   color: #12a35a !important;
 }
 
 .minus {
   color: var(--bad) !important;
-}
-
-.why {
-  margin: 4px 0 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.tabs button {
-  flex: 1;
-  font-family: var(--display);
-  font-size: 15px;
-  padding: 4px;
-  border-radius: 12px;
-  border: 2.5px solid var(--outline);
-  background: #eee;
-  box-shadow: 0 2px 0 var(--outline);
-  cursor: pointer;
-}
-
-.tabs button.on {
-  background: var(--gold);
-}
-
-.board {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-
-.cell {
-  position: relative;
-  font-family: var(--display);
-  font-size: 22px;
-  text-align: center;
-  padding: 6px 0;
-  border-radius: 12px;
-  border: var(--edge);
-  color: #fff;
-  -webkit-text-stroke: 3px var(--outline);
-  paint-order: stroke fill;
-  box-shadow: inset 0 2px 0 #ffffff70;
-}
-
-.cell.k-good,
-i.k-good {
-  background: var(--good);
-}
-
-.cell.k-bad,
-i.k-bad {
-  background: var(--bad);
-}
-
-.cell.k-gold,
-i.k-gold {
-  background: var(--gold);
-}
-
-.cell.k-trap,
-i.k-trap {
-  background: repeating-linear-gradient(45deg, var(--bad) 0 8px, #b8202f 8px 16px);
-}
-
-.cell.peeked::after,
-i.k-peek {
-  background: #fff;
-}
-
-.cell.peeked::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--outline);
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.legend i {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  border: 2px solid var(--outline);
-}
-
-.rig-line {
-  margin: 6px 0 0;
-  font-size: 13px;
-  font-weight: 800;
 }
 
 .proof {

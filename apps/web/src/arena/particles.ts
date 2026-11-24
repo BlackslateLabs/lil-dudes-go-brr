@@ -313,7 +313,6 @@ export class Particles {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
 const RED = new Color('#ff3b4e');
-const GOTCHA_RED = new Color('#ff2a3c');
 const GREY = new Color('#f4ede6');
 const DUST = new Color('#f6e2c4');
 const OVERRUN_RED = new Color('#ff5866');
@@ -386,17 +385,6 @@ export const burst = {
   /** Something got smaller (a ÷ gate): a red puff and a few dull sparks. */
   shrink(px: Particles, x: number, y: number, z: number) {
     for (let i = 0; i < 4; i++) px.add({ x: x + rand(-1, 1), y: y + rand(-0.3, 0.5), z, vx: rand(-1.5, 1.5), vy: rand(0.5, 1.8), drag: 2, life: rand(0.5, 0.8), size: rand(1.2, 1.8), grow: 1.6, frame: Frame.Puff, color: RED, alpha: 0.75 });
-  },
-  /** GOTCHA on my side: red shards, a red ring, a red cloud. */
-  gotcha(px: Particles, x: number, y: number, z: number) {
-    const red = GOTCHA_RED;
-    for (let i = 0; i < 14; i++) {
-      const a = rand(0, Math.PI * 2);
-      const sp = rand(4, 9);
-      px.add({ x, y, z, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 + 3, vz: rand(0, 3), gravity: 14, drag: 1, life: rand(0.5, 0.9), size: rand(0.5, 0.9), frame: Frame.Sparkle, color: red, bright: 2.4, spin: rand(-8, 8) });
-    }
-    px.add({ x, y, z: z + 0.3, life: 0.5, size: 2, grow: 3.2, frame: Frame.Ring, color: red, bright: 2 });
-    for (let i = 0; i < 5; i++) px.add({ x: x + rand(-1.5, 1.5), y: y + rand(-0.5, 0.5), z, vx: rand(-1, 1), vy: rand(0.3, 1.2), drag: 1.5, life: rand(0.7, 1.1), size: rand(1.6, 2.4), grow: 1.7, frame: Frame.Cloud, color: red, alpha: 0.7 });
   },
   /** Reveal: a ring and a few sparkles in the gate colour. */
   reveal(px: Particles, x: number, y: number, z: number, color: Color) {
