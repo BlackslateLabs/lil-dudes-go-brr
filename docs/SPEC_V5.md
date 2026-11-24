@@ -83,11 +83,12 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
   | **Bad:** ÷2 14%, −N 12%, ÷3 2% | ~28% |
 
   - **+N / −N only from row 2,** with N sized to the crowd expected there:
-    - row 2: ±5
-    - row 3: ±15
-    - row 4: ±30
+    - row 2: ±5 (rules v7: ±1)
+    - row 3: ±15 (v7: ±3)
+    - row 4: ±30 (v7: ±6)
 
-    On row 1, a single dude makes +5 act like ×6 and any −N wipe the shot.
+    On row 1, a single dude makes +5 act like ×6 and any −N wipe the shot. Rules v7 (§12): row 1
+    draws only ×2–×5, and N is resized to the column crowds.
   - Ops (integer, saturating): `×k: c·k` · `÷k: floor(c/k)` · `+N: c+N` · `−N: max(0, c−N)`
     (a cohort at 0 dies).
 - **A big slot,** usually behind a crate: ×6 30%, ×8 40%, ×10 30%. Always good; the crate is the
@@ -257,8 +258,110 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
    with **no cap** (the loser gets 0 only when the winner scores ≥ 3× as much).
 6. (Suparno, 23 Nov evening, rules v6) Hold to fire; the Champion charges by shooting and launches
    when you let go with a full meter; a Champion multiplies into more giants through gates.
+7. (Suparno, 24 Nov, rules v7) The lane feel (§12): a ~35% shorter lane (towers at 7,200) at
+   cruise 60; every stage is 2 or 3 columns of gates that fill their column edge to edge, with at
+   most one empty cell; divider walls in half the layouts; the first row is always good and ±N is
+   resized to the new column crowds (±1 / ±3 / ±6); no sliding gates (no room in a full column).
 
 ---
+
+## 12. v7 lane (rules v7, Suparno, 24 Nov)
+
+Playtests: the lane felt too long and too wide; crowds looked like thin streams in an empty lane.
+v7 makes the lane short and the choice a choice of **column**.
+
+**Geometry** (`crates/sim/src/constants.rs`)
+
+| | v6 | v7 |
+|---|---|---|
+| `LANE_WIDTH` | 3,000 | 3,000 |
+| `LANE_LENGTH` / `TOWER_Y` = `VAULT_Y` | 12,000 / 11,000 | **8,200 / 7,200** |
+| `CRUISE_SPEED` (launch 3×, giants 3/5) | 80 (240, 48) | **60 (180, 36)** |
+| Cannon → tower walk | ~6.3 s | ~5.4 s |
+| `DETECT_Y` | 4,000 | **5,000** (enemies notice crowds over most of the lane) |
+| `DEFEND_Y` (bot) | 3,000 | **2,000** |
+| `CLASH_REACH` / `CLASH_BAND` / `TOWER_HALF_W` / `STEER_STEP` | 400 / 400 / 300 / 40 | unchanged (x distances; the band still exceeds launch + cruise) |
+| `WALL_HALF` | | **60** (walls are 120 thick) |
+
+**Columns** (`crates/sim/src/layouts.rs`)
+
+- Every stage is **3 columns** (x 0–1,000 / 1,000–2,000 / 2,000–3,000, gate centres 500 / 1,500 /
+  2,500) or **2 columns** (0–1,500 / 1,500–3,000, centres 750 / 2,250). Never more than 3.
+- A gate **fills its column edge to edge**: width = the column minus a wall's thickness (**880**
+  for 3 columns, **1,380** for 2). Big and timing gates are the same width; a crate is as wide as
+  the big gate it locks. With the `GATE_GRACE` edges, a full row covers the whole lane: the choice
+  is which column, never threading a gap.
+- **Full rows:** every row has a gate in every column, except for at most **one empty cell per
+  stage** (open lane). With `GATES_MAX` 8, a 3-column stage is 3 rows (8 of 9 cells), a 2-column
+  stage 4 rows (7–8 gates) or 3 rows (6).
+- Rows are **front-loaded**: 3 rows at 1,000 / 2,000 / 3,000 or 4 at 900 / 1,800 / 2,700 / 3,600.
+  The back half of the lane (3,600–7,200) is the clash zone.
+- Kept: hidden `?` gates with bad outcomes, one timing gate per stage, big gates, at most one
+  crate-locked big gate per layout (an exposed one sits in row 1 or 2, off-centre).
+- **No sliding gates:** a gate that fills its column has no room to slide inside it, and a slider
+  may never straddle a column boundary. The mechanism stays in the sim (and the rule in the test:
+  only without walls, only inside its own column).
+- Towers sit on column centres; Fight 2's two towers are in different columns.
+- **Deck changes the columns forced** (balance runs showed fights stuck at 3:00):
+  - the **first row is always good** (×2–×5 only). A full first row can't be dodged, and `÷2` on a
+    lone dude is 0, so one bad first gate killed its column for the whole stage;
+  - **±N is resized to the column crowds:** `PM_BY_ROW` [0, 5, 15, 30] → **[0, 1, 3, 6]** (a lone
+    volley brings ~3 / ~5 / ~10 dudes to rows 2 / 3 / 4). −N now hurts a column instead of wiping
+    it. The odds table is unchanged.
+
+**Divider walls** (new mechanic; `StageDef.walls: &[WallDef { x, y0, y1 }]`, `WALL_HALF` = 60)
+
+- On column boundaries only, from `y0` = 500 (past the cannon: the cannon and fresh volleys
+  move freely across the lane) to `y1` = last row + 700. In **3 of 6 layouts**; the stages of one
+  layout may differ (Pillars' Fight 2 has a single wall).
+- Rules (deterministic, integer):
+  - **(a)** while a cohort (mine or an enemy) is inside an active wall's span, its x never crosses
+    it: any sideways move (homing, steering) is clamped to its column,
+    `[left wall + WALL_HALF + 1, right wall − WALL_HALF − 1]` or the lane edge;
+  - **(b)** a cohort entering a wall's span inside the wall's thickness is pushed to the nearer
+    side (ties go left);
+  - **(c)** no clash between a pair when a wall standing at the clash point's y lies strictly
+    between their x's;
+  - **(d)** a crowd that leaves the span (mine going up past `y1`, enemies coming down past `y0`)
+    is free again.
+- Order in a tick: my cohorts move up, then (b), then crates and gate rows, then homing with (a).
+  Enemies steer with (a), walk down, then (b). Clash checks (c).
+- The bot aims at column centres (every 100 across the lane only if a gate slides), so its
+  volleys are in a column before they reach the walls, and it scores the column a wall would push
+  an x into. It now floors `÷` to whole dudes when scoring (a lone dude through `÷2` scores 0).
+
+**Layouts**
+
+| # | Name | Fight 1 | Fight 2 | Walls |
+|---|---|---|---|---|
+| 0 | Twin Lanes | 2 columns × 4 rows, full | 3 × 3, locked big mid | no |
+| 1 | Three Ways | 3 × 3, exposed big left | 3 × 3 | no |
+| 2 | Long Shot | 3 × 3, locked big right | 2 × 4, full | both fights |
+| 3 | Funnel | 3 × 3, locked big mid | 2 × 3, full | no |
+| 4 | Zigzag | 2 × 4, exposed big left | 3 × 3, locked big mid | both fights |
+| 5 | Pillars | 3 × 3 | 3 × 3 (one wall at 2,000), exposed big right | both fights |
+
+**Tuning** (`tools/balance/tune_layouts.py` drives the balance runner; then a hand pick of
+`wave_base` around the death cliffs)
+
+| # | Layout | Fight 1 HP / wave_base | Fight 2 HP per tower / wave_base | Deaths (F1 / F2) | Length | F1 / F2 |
+|---|---|---|---|---|---|---|
+| 0 | Twin Lanes | 968 / 21 | 746 / 6 | 5.1% (177 / 103) | 66.7 s | 21.1 / 36.0 s |
+| 1 | Three Ways | 1,016 / 22 | 573 / 9 | 6.2% (165 / 131) | 65.7 s | 21.2 / 35.2 s |
+| 2 | Long Shot | 615 / 13 | 1,039 / 4 | 8.0% (384 / 57) | 65.9 s | 21.4 / 34.3 s |
+| 3 | Funnel | 1,745 / 32 | 670 / 10 | 6.7% (272 / 78) | 67.1 s | 20.6 / 37.6 s |
+| 4 | Zigzag | 1,634 / 16 | 405 / 3 | 9.3% (40 / 305) | 64.5 s | 21.0 / 34.1 s |
+| 5 | Pillars | 554 / 9 | 853 / 8 | 7.0% (226 / 33) | 64.1 s | 20.7 / 35.3 s |
+| | **All** (3,000 bot matches per layout) | | | **7.1%** | **65.7 s** | 21.0 / 35.4 s |
+
+- No match hits the 3:00 cap; draws 0.7%; the Rush brings 16% of the gold; biggest cohort 3,200.
+- v6 for comparison: 9.7% deaths, 67 s. The target stays the SPEC_V5 band (10–20% deaths, 60–90 s
+  average; Kai's v5 tune landed at 10%). Deaths are a cliff in the integer `wave_base` (Long Shot
+  Fight 1: 0.4% at 12, 11% at 13, 23% at 14), so each layout was hand-picked next to its cliff;
+  `python tools/balance/tune_layouts.py --deaths N` re-tunes to another target in a few minutes.
+- The bot needed two fixes the full rows exposed: it floors `÷` to whole dudes, and it weighs a
+  crate-locked path by `d / (d + hp)` instead of writing it off (before, it never broke a crate,
+  and a stage whose open columns were poor dragged to 3:00).
 
 ## Status (23 Nov, Kai): v5 built end to end
 
