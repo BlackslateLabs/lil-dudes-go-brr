@@ -18,13 +18,16 @@ use crate::types::{GateOp, Phase};
 
 /// SPEC §10: pick a target every 2 ticks.
 pub const THINK_TICKS: u32 = 2;
-/// SPEC §10: alternate between equal options every 20–60 ticks.
+/// SPEC §10: alternate between equal (rules v8: near-equal, NEAR_PCT) options every 20–60 ticks.
 pub const SWITCH_MIN: u32 = 20;
 pub const SWITCH_MAX: u32 = 60;
 /// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10; the v5
 /// table's mean factor, counting ±N as ×1, is ~×1.94), big ×8.
 pub const GUESS_NORMAL_PM: u64 = 2_000;
 pub const GUESS_BIG_PM: u64 = 8_000;
+/// (impl, rules v8) Aim points scoring at least this percent of the best count as ties, so the
+/// bot alternates between near-equal paths (two bots on one level no longer play identically).
+pub const NEAR_PCT: u64 = 75;
 /// (impl, rules v8) A traced volley that has not passed the stage's last gate row and crate
 /// after this many ticks is stuck in a sealed pocket: that aim scores 0.
 pub const TRACE_TICKS: u32 = 400;
@@ -122,11 +125,12 @@ impl Warlord {
         }
         let scores = scores.get(..n).unwrap_or(&[]);
         let best = scores.iter().copied().max().unwrap_or(0);
-        // The aim points that tie for the best score.
+        // The aim points that (nearly) tie for the best score: within NEAR_PCT of it.
         let mut tied = [0i32; GATES_MAX];
         let mut k = 0usize;
+        let near = |score: u64| score.saturating_mul(100) >= best.saturating_mul(NEAR_PCT);
         for (&score, &x) in scores.iter().zip(paths.xs.iter()) {
-            if let (true, Some(dst)) = (score == best, tied.get_mut(k)) {
+            if let (true, Some(dst)) = (near(score), tied.get_mut(k)) {
                 *dst = x;
                 k = k.saturating_add(1);
             }
