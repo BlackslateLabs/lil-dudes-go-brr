@@ -1,12 +1,13 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Euler, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import { CHAMP_COUNT, type CohortView } from '@lil-dudes/client';
+import { CHAMP_COUNT, LANE_WIDTH, type CohortView } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { PALETTE, wx, wz } from './layout';
 import { preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
 import { CrowdSim, POOL } from './crowdSim';
 import { pushOut, solidsOf } from './levelDefs';
+import { spanAt, wallsOf } from './columns';
 
 /**
  * Model scale. The characters are ~0.66 wide and ~0.81 tall at scale 1, so at 1.55 a dude is
@@ -22,7 +23,8 @@ const CHAMP_POOL = 48;
 /** Spacing of a Champion's giants (sim units): two abreast across the lane, rows along it. */
 const GIANT_DX = 290;
 const GIANT_DZ = 420;
-const GIANT_R = 150;
+const GIANT_R = 230;
+const span = { lo: 0, hi: 0 };
 
 /**
  * Team colours on the shared Mini Characters colormap (see models/assets.ts `tintedMap`): our
@@ -110,6 +112,7 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
     const champ = champRef.current;
     let nc = 0;
     const solids = solidsOf(view.layout, lane.stage);
+    const walls = wallsOf(view.layout, lane.stage);
     for (const c of list) {
       if (c.count <= 0 || (!c.champion && !c.giant)) continue;
       const p = prevById.get(c.id);
@@ -117,6 +120,10 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
       const y = p ? p.y + (c.y - p.y) * a : c.y;
       const big = c.champion ? CHAMP_SCALE : GIANT_SCALE;
       const k = c.champion ? giantsFor(c.count) : 1;
+      // Pairs squeeze to the room between the walls around them (lane edges otherwise).
+      spanAt(walls, 2 * LANE_WIDTH, x, y, span);
+      const dx = Math.max(0, Math.min(GIANT_DX, (span.hi - span.lo) / 2 - GIANT_R));
+      const mx = span.hi - span.lo > 2 * (GIANT_R + dx) ? Math.max(span.lo + GIANT_R + dx, Math.min(span.hi - GIANT_R - dx, x)) : (span.lo + span.hi) / 2;
       bigScl.set(big, big, big);
       for (let i = 0; i < k; i++) {
         const ph = time * 8 + c.id + i * 1.9;
@@ -124,7 +131,7 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
         const row = Math.floor(i / 2);
         const pair = k - row * 2 >= 2;
         const side = pair ? (i % 2 === 0 ? -1 : 1) : 0;
-        let gx = x + side * GIANT_DX * (k > 1 ? 1 : 0);
+        let gx = (k > 1 ? mx : x) + side * dx * (k > 1 ? 1 : 0);
         let gy = y - row * GIANT_DZ * (enemy ? -1 : 1);
         for (let s = 0; s < solids.n; s++) {
           if (pushOut(solids, s, gx, gy, GIANT_R, hit) > 0) {
@@ -132,7 +139,7 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
             gy = hit.y;
           }
         }
-        gx = Math.max(GIANT_R, Math.min(3000 - GIANT_R, gx));
+        gx = Math.max(GIANT_R, Math.min(LANE_WIDTH - GIANT_R, gx));
         e.set(0, yaw + Math.sin(ph * 0.5) * 0.08, Math.cos(ph) * 0.1);
         q.setFromEuler(e);
         pos.set(wx(gx), Math.abs(Math.sin(ph)) * 0.3, wz(gy));
