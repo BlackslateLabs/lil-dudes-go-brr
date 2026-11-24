@@ -4,7 +4,7 @@
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 9;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
@@ -58,8 +58,17 @@ export const TOWER_HALF_W = 300;
 export const GATE_GRACE = 100;
 export const CLASH_REACH = 400;
 export const CLASH_BAND = 400;
+/** Past the last gate row, a cohort steers at most STEER_STEP a tick toward an enemy it engages. */
 export const STEER_STEP = 40;
-export const DETECT_Y = 5_000;
+/** Rules v9: a cohort engages an enemy only when it is ahead by at most ENGAGE_Y and at most
+ *  ENGAGE_X sideways (`homing`); otherwise it walks straight. */
+export const ENGAGE_Y = 1_200;
+export const ENGAGE_X = 900;
+/** Rules v9 late turn (`turnDue`): toward a tower (the hall's centre in the Rush) a cohort walks
+ *  straight until `TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN`, then steers
+ *  TOWER_STEER a tick. */
+export const TOWER_STEER = 60;
+export const TURN_MARGIN = 250;
 /** The cannon chases the aim by at most this per tick. */
 export const CANNON_STEP = LANE_WIDTH / 5;
 /** Rules v7 divider walls (`StageDef.walls`): a wall's centre line is `x`, it is `2 · WALL_HALF`

@@ -207,3 +207,51 @@ export const pipeAt = (st: C.StageDef, x: number, y: number): number => st.pipes
 
 /** crates/sim `StageDef::rows_through`: rows at or below `y` (a pipe's exit skips them). */
 export const rowsThrough = (st: C.StageDef, y: number): number => st.rows.filter((r) => r <= y).length;
+
+// --- rules v9 homing (crates/sim/src/step.rs `cohort_target`, `turn_due`, `steer`) ---------------
+
+/** crates/sim step.rs `turn_due` (rules v9 late turn): a cohort at (x, y) heading for a tower (or
+ *  the hall) at `tx` walks straight until the distance left to the tower line is just enough to
+ *  close the gap at TOWER_STEER per cruise step, plus TURN_MARGIN. */
+export const turnDue = (x: number, y: number, tx: number): boolean =>
+  C.TOWER_Y - y <= Math.trunc((Math.abs(tx - x) * C.CRUISE_SPEED) / C.TOWER_STEER) + C.TURN_MARGIN;
+
+/** crates/sim step.rs `cohort_target` (rules v9): where a cohort of mine past the last row steers
+ *  this tick, as [target x, step], or null to walk straight. The nearest enemy ahead by at most
+ *  ENGAGE_Y and at most ENGAGE_X sideways (STEER_STEP); else, once `turnDue`, the nearest live
+ *  tower (HALL_X in the Rush) at TOWER_STEER. Ties go to the lower index. `towerHp` is the lane's
+ *  tower HP, in the stage's tower order. */
+export function homing(
+  st: C.StageDef,
+  x: number,
+  y: number,
+  enemies: readonly { x: number; y: number; count: number }[],
+  towerHp: readonly number[],
+  rush: boolean,
+): [number, number] | null {
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (const e of enemies) {
+    const ahead = e.y - y;
+    if (e.count === 0 || ahead <= 0 || ahead > C.ENGAGE_Y || Math.abs(e.x - x) > C.ENGAGE_X) continue;
+    const d = (x - e.x) ** 2 + (y - e.y) ** 2;
+    if (d < bestD) [best, bestD] = [e.x, d];
+  }
+  if (best !== null) return [best, C.STEER_STEP];
+  let tx: number | null = rush ? C.HALL_X : null;
+  if (!rush) {
+    st.towers.forEach((t, i) => {
+      const d = Math.abs(t.x - x);
+      if ((towerHp[i] ?? 0) > 0 && d < bestD) [tx, bestD] = [t.x, d];
+    });
+  }
+  return tx !== null && turnDue(x, y, tx) ? [tx, C.TOWER_STEER] : null;
+}
+
+/** crates/sim step.rs `steer`: `x` moved toward `target` by at most `step`, kept on the lane and,
+ *  while a wall stands at `y`, inside its column. */
+export function steerX(st: C.StageDef, x: number, target: number, step: number, y: number): number {
+  const to = Math.min(Math.max(stepToward(x, target, step), 0), C.LANE_WIDTH - 1);
+  const [lo, hi] = columnAt(st, x, y);
+  return Math.min(Math.max(to, lo), hi);
+}
