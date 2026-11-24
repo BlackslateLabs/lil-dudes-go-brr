@@ -14,16 +14,16 @@ import { spanAt, wallsOf } from './columns';
  * ~1 unit wide and ~1.26 tall: the genre's chunky look (crowd spacing in crowdSim.ts matches).
  */
 const UNIT_SCALE = 1.55;
-/** A Champion giant is ~2.8× a dude (purple and gold), an enemy giant ~1.8× (red). */
-const CHAMP_SCALE = 4.35;
+/** A Champion giant is ~2.2× a dude (purple and gold), an enemy giant ~1.8× (red). */
+const CHAMP_SCALE = 3.4;
 const GIANT_SCALE = 2.8;
 /** Most giants drawn for one Champion cohort (a ×8 gate on a fresh Champion makes 8). */
 const MAX_GIANTS = 16;
 const CHAMP_POOL = 48;
 /** Spacing of a Champion's giants (sim units): two abreast across the lane, rows along it. */
-const GIANT_DX = 290;
-const GIANT_DZ = 420;
-const GIANT_R = 230;
+const GIANT_DX = 240;
+const GIANT_DZ = 340;
+const GIANT_R = 180;
 const span = { lo: 0, hi: 0 };
 
 /**
