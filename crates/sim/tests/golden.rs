@@ -47,7 +47,7 @@ fn play(seed: u64) -> Golden {
 
 #[test]
 fn golden_bot_vs_bot_match_per_layout() {
-    assert_eq!(RULES_VERSION, 7);
+    assert_eq!(RULES_VERSION, 8);
     let got: Vec<Golden> = (0..LAYOUTS.len() as u64).map(play).collect();
     // Paste-ready for GOLDEN (tools/balance/regen_golden.py does it).
     for (seed, (tick, gold, dead, res, sum, digest)) in got.iter().enumerate() {
@@ -73,58 +73,58 @@ const fn r(winner: Option<u8>, ko: bool, moved: u64, fee: u64) -> Option<MatchRe
 
 /// (final tick, gold, dead, result, summary, state digest), seed = layout id.
 const GOLDEN: &[Golden] = &[
-    // Twin Lanes
+    // Three Lanes
     (
-        1735,
-        [2866, 2866],
+        1608,
+        [1677, 1449],
         [false, false],
-        r(None, false, 0, 0),
-        [414, 1264, 20, 0, 50, 54, 332, 18],
-        3643231261687311306,
-    ),
-    // Three Ways
-    (
-        1288,
-        [2442, 2442],
-        [false, false],
-        r(None, false, 0, 0),
-        [296, 714, 20, 0, 42, 51, 210, 16],
-        12746502540841813532,
-    ),
-    // Long Shot
-    (
-        1928,
-        [3067, 3067],
-        [false, false],
-        r(None, false, 0, 0),
-        [464, 1636, 22, 0, 52, 66, 378, 16],
-        12753941482395539916,
+        r(Some(0), false, 14580000, 729000),
+        [379, 692, 16, 25, 45, 67, 258, 15],
+        12313863550741304135,
     ),
     // Funnel
     (
-        1247,
-        [4039, 4039],
+        1126,
+        [1536, 1640],
+        [false, false],
+        r(Some(1), false, 6540000, 327000),
+        [234, 416, 11, 0, 24, 42, 135, 16],
+        8031232807358305823,
+    ),
+    // Speed Comb
+    (
+        1638,
+        [1351, 1351],
         [false, false],
         r(None, false, 0, 0),
-        [286, 814, 20, 8, 34, 50, 188, 18],
-        3228373999286563861,
+        [386, 730, 12, 16, 44, 102, 232, 18],
+        15283980639299031312,
     ),
-    // Zigzag
+    // Pipes
     (
-        848,
-        [1684, 1686],
-        [true, false],
-        r(Some(1), true, 100000000, 5000000),
-        [182, 593, 24, 3, 14, 22, 113, 0],
-        8621635406033375657,
+        983,
+        [1361, 1361],
+        [false, false],
+        r(None, false, 0, 0),
+        [216, 598, 8, 0, 32, 54, 118, 16],
+        1477646319563765616,
     ),
     // Pillars
     (
-        1288,
-        [3050, 3050],
+        1251,
+        [4159, 4159],
         [false, false],
         r(None, false, 0, 0),
-        [296, 638, 18, 0, 28, 34, 210, 16],
-        11728872140495645885,
+        [286, 530, 14, 0, 30, 40, 202, 18],
+        1336662446907657799,
+    ),
+    // Island
+    (
+        1123,
+        [1444, 1534],
+        [false, false],
+        r(Some(1), false, 6040000, 302000),
+        [251, 479, 10, 0, 30, 47, 167, 16],
+        10433311363562934059,
     ),
 ];
