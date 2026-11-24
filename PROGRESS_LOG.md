@@ -1180,3 +1180,30 @@ could replace them.
 **Blocked / risks:** none.
 
 **Next / handoff:** PR `web/logo` → `main` (includes `web/champion-giants` and `v5-hold-fire`).
+
+## 2026-11-24 07:01 IST · Suparno · web / art · [DECISION]
+**Did:** (branch `v7-lane-feel`, web only; arena look after the side-by-side playtest with the genre)
+- **World and camera:** the lane is drawn at true sim proportions (same scale on x and y, 15 units
+  wide; the old 1.5× x-stretch is gone). The static camera keeps FOV 30° and is solved per
+  viewport aspect (`solveCamera` in `arena/layout.ts`): cannon row at 77% of the height, lane at
+  94% of the width there, towers at ~13% (pitch 44°, up to 48° on tall phones; wide screens or a
+  long lane back off instead). Everything derives from `LANE_WIDTH` / `LANE_LENGTH` / `TOWER_Y`,
+  so v7's shorter lane frames itself.
+- **Crowds:** dudes ×1.3 (~21 across the lane); cohorts drawn 1:1 up to 250 as round sunflower
+  blobs that widen to the walls around them (or half a column), always inside the lane, and grow
+  along the lane when squeezed; 1,500 per mesh with stable random culling above it. Enemy waves
+  pour out of the tower as a stream and spread into a blob over 0.7 s.
+- **Gates:** bold, opaque panels (purple `?`, blue good, gold big, red bad), thick bright rim with
+  a dark outline, gloss, big chunky labels; sized to the sim width.
+- **Walls** (`arena/Walls.tsx`): rounded cream rails with a soft contact shadow from
+  `stageDef(...).walls`, read defensively (`arena/columns.ts`; `WALL_HALF` falls back to 60).
+  **Lane** warmer and more saturated; the **cannon** sits on a rail across the lane with end caps.
+
+**Decided:** (Suparno) genre framing as above; crowds are 1:1 up to 250 per cohort.
+
+**Blocked / risks:** checked against rules v6 constants only (the v7 client constants and walls
+had not landed yet). The walls and the v7 framing were previewed with local test data. Under v6's
+12,000 lane the solver zooms out to keep the towers in view, so the lane looks smaller there.
+
+**Next / handoff:** once Kai's v7 client lands (`LANE_LENGTH` 8200, `TOWER_Y` 7200, `walls`,
+`WALL_HALF`), rebuild and eyeball: no web code change should be needed.
