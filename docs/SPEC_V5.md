@@ -268,6 +268,9 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
    of 2–3 near-touching gates right in front of the cannon, the obstacles, then one or two gates
    beyond them. Enemies walk straight down to the cannon line and only fight what they meet (no
    homing on my crowds). ±N is now [0, 1, 1, 2].
+9. (Suparno, 24 Nov, rules v9) The late turn (§14): past the last row my crowds walk straight
+   and only turn toward the tower near the end, at a ~45° angle; they engage an enemy only when it
+   is close (within 1,200 ahead and 900 sideways). `DETECT_Y` is gone. `TUNE` is unchanged.
 
 ---
 
@@ -474,6 +477,59 @@ at 3:00).
 - Caps: 9 of 18,000 matches (all Speed Comb, one rare deal: ÷3 on one path and ÷2 on the other
   leave lone volleys at 0–1 dude). Draws 52% (identical bots on mirrored copies; 100% on Pipes,
   whose corridor is the only path the bot likes).
+
+## 14. v9 late turn (rules v9, Suparno, 24 Nov)
+
+Playtests: crowds fired up a side column swung to the middle almost at once and then walked
+straight up, so the lane read as "everything goes to the middle". Two rules did it: tower homing
+began right after the last gate row, and my crowds homed on any enemy within `DETECT_Y` (5,000,
+most of the lane), which now walk straight down from the tower's x. In the genre a crowd walks
+its lane and only bends in at the end.
+
+**Rules** (integer, deterministic; `crates/sim/src/step.rs` `cohort_target`, `turn_due`)
+
+- **Short-range engage.** Past the last row, my cohort homes on the nearest enemy (as before,
+  by `STEER_STEP` 40) only if it is ahead by at most **`ENGAGE_Y` 1,200** and at most
+  **`ENGAGE_X` 900** sideways. Otherwise it walks straight.
+- **Late turn.** With no enemy to engage, toward the nearest live tower (the hall's centre,
+  `HALL_X`, in the Rush) it keeps walking straight until
+  `TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN` (`dx` = the x gap to the
+  target), then steers by **`TOWER_STEER` 60** a tick: at cruise 60 that is a ~45° approach that
+  closes the gap **`TURN_MARGIN` 250** before the tower line. Once due it stays due (each step
+  shrinks both sides alike), so a turn never stops halfway. From a side column (x 500, tower at
+  1,500) a crowd walks straight to y 5,950 and reaches the tower line square on the tower.
+- **Past the tower line** (a crowd that reached `TOWER_Y` out of reach, e.g. boosted by a pad or
+  blocked while turning) the turn is always due, so it keeps closing in at 60 a tick and hits once
+  within `TOWER_HALF_W + CLASH_REACH`, or is lost at `LANE_LENGTH` as before (~16 ticks, ~1,000
+  of x). Today's reach (700) already forgives most of the gap, so misses stay rare.
+- Unchanged: homing only past the last row, never on a tick the cohort slid, never into an
+  obstacle, clamped to its column while a wall stands; walls, slides, pads and pipes; enemies
+  walk straight down. `DETECT_Y` is removed (the bot's defence uses `DEFEND_Y`). The bot's
+  volley trace stops at the last row, so it needs no change.
+
+**Client** (`packages/client`): `RULES_VERSION` 9; `DETECT_Y` removed; new `ENGAGE_Y`,
+`ENGAGE_X`, `TOWER_STEER`, `TURN_MARGIN`; pure helpers `turnDue(x, y, tx)`,
+`homing(st, x, y, enemies, towerHp, rush)` → `[targetX, step] | null` and
+`steerX(st, x, target, step, y)`, which the live feed's re-run uses.
+
+**Balance** (3,000 bot matches per layout, `TUNE` unchanged)
+
+| # | Layout | Deaths v8 → v9 (F1 / F2 / Rush) | Length v8 → v9 | F1 / F2 |
+|---|---|---|---|---|
+| 0 | Three Lanes | 7.3% → 7.7% (0 / 314 / 6) | 65.4 → 65.0 s | 21.1 / 32.9 s |
+| 1 | Funnel | 5.5% → 5.4% (88 / 84 / 5) | 66.5 → 65.9 s | 21.3 / 34.8 s |
+| 2 | Speed Comb | 0.7% → 1.1% (55 / 0 / 0) | 62.2 → 62.0 s | 21.3 / 29.2 s |
+| 3 | Pipes | 3.5% → 3.5% (70 / 140 / 0) | 67.6 → 67.4 s | 25.2 / 32.2 s |
+| 4 | Pillars | 6.3% → 6.3% (196 / 0 / 0) | 65.2 → 65.2 s | 21.5 / 35.7 s |
+| 5 | Island | 10.3% → **25.6%** (960 / 391 / 0) | 64.1 → 58.6 s | 22.1 / 36.0 s |
+| | **All** | **5.6% → 8.3%** | **65.2 → 64.0 s** | 22.1 / 33.3 s |
+
+- Inside the band (4–10% deaths, ~65 s), so `TUNE` stays. Caps unchanged (~9 of 18,000, all
+  Speed Comb); draws 52.8%.
+- Island is the outlier: waves from the tower at 1,500 hit the island block and slide down a
+  side path, and crowds no longer converge on them from far away. The engage constants barely
+  move it (~24% at `ENGAGE_Y` 1,500 or `ENGAGE_X` 1,200); its `wave_base` does: `(218, 11, 423,
+  5)` gives 11.1% and 63.5 s (the v8 numbers), 5.9% overall. Not applied.
 
 ## Status (23 Nov, Kai): v5 built end to end
 
