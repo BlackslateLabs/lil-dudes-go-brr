@@ -21,6 +21,7 @@ import { Cannon } from './Cannon';
 import { Crowds } from './Crowds';
 import { Fx } from './Fx';
 import { Gates } from './Gates';
+import { Level } from './Level';
 import { Post } from './Post';
 import { fxTier } from './quality';
 import { Scenery } from './Scenery';
@@ -65,6 +66,7 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       <Scenery />
       <Base feed={feed} />
       <Walls feed={feed} />
+      <Level feed={feed} />
       <Gates feed={feed} interactive={interactive} />
       <Cannon feed={feed} />
       <Crowds feed={feed} />
