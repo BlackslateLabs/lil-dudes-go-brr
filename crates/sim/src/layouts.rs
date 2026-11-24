@@ -1,20 +1,26 @@
-//! The level pool (SPEC §9, re-tuned for SPEC_V5 §3b). A layout is 2 stages: Fight 1 (one
-//! tower) and Fight 2 (two towers, the town hall behind them, rushed on the same gates once they
-//! fall). Each stage lists its towers, gate rows, gates and crates. Both players get identical
-//! copies; the seed picks the layout (`layout_for(seed)`, public once seeded).
+//! The level pool (SPEC §9, re-tuned for SPEC_V5 §3b and rebuilt on columns for SPEC_V5 §12,
+//! rules v7). A layout is 2 stages: Fight 1 (one tower) and Fight 2 (two towers, the town hall
+//! behind them, rushed on the same gates once they fall). Each stage lists its towers, gate
+//! rows, gates, crates and divider walls. Both players get identical copies; the seed picks the
+//! layout (`layout_for(seed)`, public once seeded).
 //!
 //! Gate slots: a stage's gates in list order (sorted by row, then x). Scout (peek) names a slot.
 //! A crate sits just below the big gate it locks and covers that gate's span; locked gates never
-//! move. Design rules (SPEC §9, SPEC_V5 §3b): 4 rows, the first ~1,400 from the cannon, rows
-//! ~1,300 apart, the last at 5,300–6,500 (gates in the first half); sparse rows with open lane
-//! between (at least `MIN_GAP` between gates of a row, more than the two GATE_GRACE edges, and
-//! at most two thirds of the lane covered, edges included); every gate inside the narrower
-//! `GATE_BAND`; 3–5 hidden gates and exactly one timing gate per stage; at least one sliding
-//! gate and at most one crate-locked big gate per layout; a big gate without a crate sits early
-//! (row 1 or 2) and off-centre; the towers of a fight in different columns.
+//! move. Design rules (SPEC_V5 §12): every stage is built on at most 3 columns, 3 (centres 500 /
+//! 1,500 / 2,500) or 2 (750 / 2,250); a gate sits on a column centre and fills its column edge
+//! to edge (`COL3_W` / `COL2_W`, the column minus a wall's thickness); every row has a gate in
+//! every column but for at most one empty cell per stage, so the lane reads as 2 or 3 clear
+//! tracks; 3 rows from ~1,000 or 4 from ~900, ~900-1,000 apart, all in the front half of the
+//! lane; exactly one timing gate per stage; at most one crate-locked big gate per layout, and an
+//! exposed big gate sits early (row 1 or 2) and off-centre; divider walls only on column
+//! boundaries, from `WALL_Y0` to `WALL_TAIL` past the last row, in half the layouts; a sliding
+//! gate (none today: a gate that fills its column has no room to slide) only without walls and
+//! inside its own column; towers on column centres, a fight's two towers in different columns.
 //! `tests::layouts_follow_the_design_rules` checks all of it, plus the limits the rules rely on.
 
-use crate::constants::{GATE_GRACE, LAYOUT_COUNT, STAGES, TIMING_MAX, TIMING_STEP_TICKS};
+use crate::constants::{
+    GATE_GRACE, LANE_WIDTH, LAYOUT_COUNT, STAGES, TIMING_MAX, TIMING_STEP_TICKS, WALL_HALF,
+};
 
 /// What a gate slot can hold (SPEC §6, SPEC_V5 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,6 +107,37 @@ pub struct TowerDef {
     pub wave_base: u16,
 }
 
+/// SPEC_V5 §12: a divider wall on a column boundary. Its centre line is `x`, it is
+/// `2 · WALL_HALF` thick and it stands for y in `[y0, y1]` (below `y0` the cannon and fresh
+/// volleys move freely across the whole lane).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WallDef {
+    pub x: i16,
+    pub y0: i16,
+    pub y1: i16,
+}
+
+impl WallDef {
+    /// The wall stands at `y` (edges included).
+    pub fn active(&self, y: i32) -> bool {
+        i32::from(self.y0) <= y && y <= i32::from(self.y1)
+    }
+
+    /// The nearest x just left of the wall's thickness.
+    pub fn left(&self) -> i32 {
+        i32::from(self.x)
+            .saturating_sub(WALL_HALF)
+            .saturating_sub(1)
+    }
+
+    /// The nearest x just right of the wall's thickness.
+    pub fn right(&self) -> i32 {
+        i32::from(self.x)
+            .saturating_add(WALL_HALF)
+            .saturating_add(1)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StageDef {
     pub towers: &'static [TowerDef],
@@ -109,6 +146,8 @@ pub struct StageDef {
     /// Gate slots, sorted by row then x.
     pub gates: &'static [GateDef],
     pub crates: &'static [CrateDef],
+    /// SPEC_V5 §12 divider walls (none in half the layouts).
+    pub walls: &'static [WallDef],
 }
 
 impl StageDef {
@@ -128,6 +167,52 @@ impl StageDef {
             }
         }
         best.map(|(_, slot)| slot)
+    }
+
+    /// SPEC_V5 §12 rule (b): a cohort at `x` inside the thickness of a wall standing at `y` is
+    /// pushed out to the nearer side (ties go left). Otherwise `x` is unchanged.
+    pub fn wall_push(&self, x: i32, y: i32) -> i32 {
+        let mut x = x;
+        for w in self.walls {
+            if w.active(y) && x.abs_diff(i32::from(w.x)) <= WALL_HALF.unsigned_abs() {
+                x = if x <= i32::from(w.x) {
+                    w.left()
+                } else {
+                    w.right()
+                };
+            }
+        }
+        x
+    }
+
+    /// SPEC_V5 §12 rule (a): the x range of the column a cohort at `x` is in at `y`: between
+    /// the nearest walls standing at `y` on either side (just outside their thickness), else the
+    /// lane edges.
+    pub fn column_at(&self, x: i32, y: i32) -> (i32, i32) {
+        let (mut lo, mut hi) = (0, LANE_WIDTH.saturating_sub(1));
+        for w in self.walls.iter().filter(|w| w.active(y)) {
+            if i32::from(w.x) < x {
+                lo = lo.max(w.right());
+            } else {
+                hi = hi.min(w.left());
+            }
+        }
+        (lo, hi)
+    }
+
+    /// SPEC_V5 §12 rule (a): a sideways move from `from` to `to` at `y`, kept inside the column
+    /// `from` is in (a standing wall is never crossed).
+    pub fn wall_clamp(&self, from: i32, to: i32, y: i32) -> i32 {
+        let (lo, hi) = self.column_at(from, y);
+        to.max(lo).min(hi)
+    }
+
+    /// SPEC_V5 §12 rule (c): a wall standing at `y` lies strictly between `a` and `b`.
+    pub fn wall_between(&self, a: i32, b: i32, y: i32) -> bool {
+        let (lo, hi) = (a.min(b), a.max(b));
+        self.walls
+            .iter()
+            .any(|w| w.active(y) && lo < i32::from(w.x) && i32::from(w.x) < hi)
     }
 }
 
@@ -164,23 +249,35 @@ pub fn stage(layout_id: u8, stage: u8) -> &'static StageDef {
 
 // --- authoring helpers ------------------------------------------------------------------------
 
-/// Normal and timing gates are 600 wide (some layouts use 500 or 700), big gates 1,000 (impl).
-const W: i16 = 600;
-const BIG_W: i16 = 1_000;
+/// SPEC_V5 §12 columns (at most 3): a 3-column stage has gate centres 500 / 1,500 / 2,500, a
+/// 2-column stage 750 / 2,250. A gate fills its column edge to edge: its width is the column's
+/// interior, the column minus a wall's thickness (so big gates are no wider, and a gate between
+/// two walls touches both).
+pub const COL3: [i16; 3] = [500, 1_500, 2_500];
+pub const COL2: [i16; 2] = [750, 2_250];
+pub const COL3_W: i16 = (LANE_WIDTH / 3 - 2 * WALL_HALF) as i16;
+pub const COL2_W: i16 = (LANE_WIDTH / 2 - 2 * WALL_HALF) as i16;
+/// Walls start past the cannon (so it moves freely across the lane) and end this far past the
+/// last gate row.
+pub const WALL_Y0: i16 = 500;
+pub const WALL_TAIL: i16 = 700;
 /// A crate sits this far below the row of the gate it locks.
 const CRATE_GAP: i16 = 300;
-/// The least open lane between two gates of a row (edge to edge, over their whole sweep): the
-/// GATE_GRACE of both edges plus 200 that no gate's edge reaches.
-pub const MIN_GAP: i32 = 2 * GATE_GRACE + 200;
-/// SPEC_V5 §3b PvP readability: every gate's span stays inside this band of the lane over its
-/// whole sweep.
-pub const GATE_BAND: (i32, i32) = (300, 2_700);
+
+/// The gate width of the column centred on `x` (2-column centres are 750 and 2,250).
+const fn col_w(x: i16) -> i16 {
+    if x == COL2[0] || x == COL2[1] {
+        COL2_W
+    } else {
+        COL3_W
+    }
+}
 
 const fn gate(row: u8, x: i16) -> GateDef {
     GateDef {
         row,
         x,
-        width: W,
+        width: col_w(x),
         slot: Slot::Normal,
         x_min: x,
         x_max: x,
@@ -188,16 +285,8 @@ const fn gate(row: u8, x: i16) -> GateDef {
     }
 }
 
-const fn narrow(row: u8, x: i16, width: i16) -> GateDef {
-    GateDef {
-        width,
-        ..gate(row, x)
-    }
-}
-
 const fn big(row: u8, x: i16) -> GateDef {
     GateDef {
-        width: BIG_W,
         slot: Slot::Big,
         ..gate(row, x)
     }
@@ -211,22 +300,22 @@ const fn timing(row: u8, x: i16) -> GateDef {
     }
 }
 
-const fn slide(row: u8, x: i16, x_min: i16, x_max: i16, speed: i16) -> GateDef {
-    GateDef {
-        x_min,
-        x_max,
-        speed,
-        ..gate(row, x)
-    }
-}
-
-/// The crate locking a big gate at `x` in the row at `row_y`.
+/// The crate locking a big gate at `x` in the row at `row_y` (as wide as the gate).
 const fn lock(x: i16, row_y: i16, hp: u16) -> CrateDef {
     CrateDef {
         x,
-        width: BIG_W,
+        width: col_w(x),
         y: row_y.saturating_sub(CRATE_GAP),
         hp,
+    }
+}
+
+/// A divider wall on the column boundary `x`, standing until WALL_TAIL past `last_row`.
+const fn wall(x: i16, last_row: i16) -> WallDef {
+    WallDef {
+        x,
+        y0: WALL_Y0,
+        y1: last_row.saturating_add(WALL_TAIL),
     }
 }
 
@@ -234,20 +323,25 @@ const fn tower(x: i16, hp: u16, wave_base: u16) -> TowerDef {
     TowerDef { x, hp, wave_base }
 }
 
-/// SPEC_V5 §3b: first row ~1,400, gaps ~1,300, the last row at ~5,500.
-const ROWS: [i16; 4] = [1_400, 2_750, 4_100, 5_500];
-const ROWS_LONG: [i16; 4] = [1_400, 2_800, 4_200, 5_600];
+/// SPEC_V5 §12 rows, front-loaded: 3 rows ~1,000 apart (3 columns: 8 of the 9 cells hold a
+/// gate) or 4 rows ~900 apart (2 columns); the back half of the lane is the clash zone.
+const R3: [i16; 3] = [1_000, 2_000, 3_000];
+const R4: [i16; 4] = [900, 1_800, 2_700, 3_600];
+/// Walls between all three columns, or down the middle of two.
+const WALLS3_R3: [WallDef; 2] = [wall(1_000, 3_000), wall(2_000, 3_000)];
+const WALL2_R4: [WallDef; 1] = [wall(1_500, 3_600)];
 
 /// Tower strength per layout: (Fight 1 HP, Fight 1 wave_base, Fight 2 HP per tower, Fight 2
 /// wave_base). Tuned per layout with `cargo run -p lil-dudes-sim --example balance --release`
-/// so every layout plays about as long and as dangerously as the others.
+/// (driven by `tools/balance/tune_layouts.py`) so every layout plays about as long and as
+/// dangerously as the others.
 const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
-    (716, 14, 354, 6),
-    (533, 26, 1798, 103),
-    (655, 27, 696, 13),
-    (304, 10, 819, 12),
-    (1811, 30, 59, 5),
-    (411, 19, 276, 6),
+    (968, 21, 746, 6),
+    (1016, 22, 573, 9),
+    (615, 13, 1039, 4),
+    (1745, 32, 670, 10),
+    (1634, 16, 405, 3),
+    (554, 9, 853, 8),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
@@ -262,187 +356,235 @@ const fn f2(layout: usize, x: i16) -> TowerDef {
 }
 
 pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
-    // 0. Two clean lanes left and right; in the middle the timing ring, then a slider (fight 1)
-    //    or a locked jackpot (fight 2).
+    // 0. Twin Lanes (open): Fight 1 is two full lanes of hidden gates, the timing ring on the
+    //    right; Fight 2 three columns with a locked jackpot in the middle.
     Layout {
         name: "Twin Lanes",
         stages: [
             StageDef {
-                towers: &[f1(0, 1_500)],
-                rows: &ROWS,
+                towers: &[f1(0, 2_250)],
+                rows: &R4,
                 gates: &[
-                    gate(0, 900),
-                    gate(0, 2_100),
-                    timing(1, 1_500),
-                    slide(2, 1_500, 900, 2_100, 25),
-                    gate(3, 900),
-                    gate(3, 2_100),
+                    gate(0, 750),
+                    gate(0, 2_250),
+                    gate(1, 750),
+                    timing(1, 2_250),
+                    gate(2, 750),
+                    gate(2, 2_250),
+                    gate(3, 750),
+                    gate(3, 2_250),
                 ],
                 crates: &[],
+                walls: &[],
             },
             StageDef {
-                towers: &[f2(0, 700), f2(0, 2_300)],
-                rows: &ROWS,
+                towers: &[f2(0, 500), f2(0, 2_500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 900),
-                    gate(0, 2_100),
-                    timing(1, 1_500),
-                    big(2, 1_500),
-                    gate(3, 900),
-                    gate(3, 2_100),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    gate(0, 2_500),
+                    gate(1, 500),
+                    big(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 500),
+                    timing(2, 1_500),
                 ],
-                crates: &[lock(1_500, 4_100, 25)],
+                crates: &[lock(1_500, 2_000, 30)],
+                walls: &[],
             },
         ],
     },
-    // 1. Almost everything slides: timing over aiming. Fight 2 opens with an exposed big gate.
+    // 1. Three Ways (open): three columns in both fights; Fight 1 opens with an exposed big gate
+    //    on the left, far from the tower; the timing ring moves column between the fights.
     Layout {
-        name: "Conveyor",
+        name: "Three Ways",
         stages: [
             StageDef {
-                towers: &[f1(1, 2_200)],
-                rows: &ROWS,
+                towers: &[f1(1, 2_500)],
+                rows: &R3,
                 gates: &[
-                    slide(0, 1_200, 600, 2_400, 30),
-                    gate(1, 900),
-                    timing(1, 2_100),
-                    slide(2, 1_500, 600, 2_400, -40),
-                    slide(3, 1_500, 700, 2_300, 35),
+                    big(0, 500),
+                    gate(0, 1_500),
+                    gate(0, 2_500),
+                    gate(1, 500),
+                    gate(1, 1_500),
+                    timing(1, 2_500),
+                    gate(2, 500),
+                    gate(2, 2_500),
                 ],
                 crates: &[],
+                walls: &[],
             },
             StageDef {
-                towers: &[f2(1, 600), f2(1, 2_400)],
-                rows: &ROWS,
+                towers: &[f2(1, 500), f2(1, 1_500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 900),
-                    big(0, 2_150),
-                    slide(1, 800, 600, 1_000, 30),
-                    slide(1, 2_200, 2_000, 2_400, -30),
-                    timing(2, 1_500),
-                    slide(3, 1_500, 700, 2_300, 50),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    gate(0, 2_500),
+                    timing(1, 500),
+                    gate(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 1_500),
+                    gate(2, 2_500),
                 ],
                 crates: &[],
+                walls: &[],
             },
         ],
     },
-    // 2. The gamble: a locked big gate off to the side, away from the safe path.
+    // 2. Long Shot (walled): Fight 1 has three walled columns, the right one opening on a locked
+    //    big gate (the gamble, away from the tower); Fight 2 is two walled lanes.
     Layout {
         name: "Long Shot",
         stages: [
             StageDef {
-                towers: &[f1(2, 1_000)],
-                rows: &ROWS_LONG,
+                towers: &[f1(2, 500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 900),
-                    big(0, 2_200),
-                    gate(1, 1_300),
-                    timing(2, 1_000),
-                    slide(3, 1_500, 700, 2_300, 30),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    big(0, 2_500),
+                    gate(1, 500),
+                    gate(1, 1_500),
+                    gate(1, 2_500),
+                    timing(2, 500),
+                    gate(2, 2_500),
                 ],
-                crates: &[lock(2_200, 1_400, 20)],
+                crates: &[lock(2_500, 1_000, 20)],
+                walls: &WALLS3_R3,
             },
             StageDef {
-                towers: &[f2(2, 500), f2(2, 2_000)],
-                rows: &ROWS_LONG,
+                towers: &[f2(2, 750), f2(2, 2_250)],
+                rows: &R4,
                 gates: &[
-                    gate(0, 1_500),
-                    gate(1, 900),
-                    gate(1, 2_100),
-                    timing(2, 2_000),
-                    slide(3, 1_000, 600, 1_800, 35),
+                    gate(0, 750),
+                    gate(0, 2_250),
+                    gate(1, 750),
+                    gate(1, 2_250),
+                    timing(2, 750),
+                    gate(2, 2_250),
+                    gate(3, 750),
+                    gate(3, 2_250),
                 ],
                 crates: &[],
+                walls: &WALL2_R4,
             },
         ],
     },
-    // 3. Everything funnels through the middle; the towers sit out on the flanks.
+    // 3. Funnel (open): Fight 1's middle column holds the timing ring and then a locked jackpot;
+    //    Fight 2 is two short open lanes, the towers on the flanks.
     Layout {
         name: "Funnel",
         stages: [
             StageDef {
                 towers: &[f1(3, 2_500)],
-                rows: &ROWS,
+                rows: &R3,
                 gates: &[
-                    narrow(0, 1_500, 700),
-                    narrow(1, 1_050, 500),
-                    narrow(1, 1_950, 500),
-                    timing(2, 1_500),
-                    big(3, 1_500),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    gate(0, 2_500),
+                    gate(1, 500),
+                    timing(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 500),
+                    big(2, 1_500),
                 ],
-                crates: &[lock(1_500, 5_500, 25)],
+                crates: &[lock(1_500, 3_000, 40)],
+                walls: &[],
             },
             StageDef {
-                towers: &[f2(3, 500), f2(3, 2_500)],
-                rows: &ROWS,
+                towers: &[f2(3, 750), f2(3, 2_250)],
+                rows: &R3,
                 gates: &[
-                    narrow(0, 1_050, 500),
-                    narrow(0, 1_950, 500),
-                    slide(1, 1_500, 900, 2_100, 20),
-                    narrow(2, 1_500, 700),
-                    timing(3, 1_500),
+                    gate(0, 750),
+                    gate(0, 2_250),
+                    timing(1, 750),
+                    gate(1, 2_250),
+                    gate(2, 750),
+                    gate(2, 2_250),
                 ],
                 crates: &[],
+                walls: &[],
             },
         ],
     },
-    // 4. Rows alternate sides: no straight line through, pick which rows to take.
+    // 4. Zigzag (walled): Fight 1 is two walled lanes, the left one opening on an exposed big
+    //    gate and then a gap; Fight 2 three walled columns, the middle one starting open and
+    //    then locked behind a crate.
     Layout {
         name: "Zigzag",
         stages: [
             StageDef {
-                towers: &[f1(4, 500)],
-                rows: &ROWS,
+                towers: &[f1(4, 750)],
+                rows: &R4,
                 gates: &[
-                    gate(0, 900),
-                    big(1, 900),
-                    gate(1, 2_100),
-                    timing(2, 900),
-                    slide(3, 1_500, 700, 2_300, 30),
+                    gate(0, 750),
+                    gate(0, 2_250),
+                    big(1, 750),
+                    gate(1, 2_250),
+                    gate(2, 2_250),
+                    gate(3, 750),
+                    timing(3, 2_250),
                 ],
                 crates: &[],
+                walls: &WALL2_R4,
             },
             StageDef {
-                towers: &[f2(4, 1_400), f2(4, 2_600)],
-                rows: &ROWS,
+                towers: &[f2(4, 500), f2(4, 2_500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 2_100),
-                    gate(1, 900),
-                    big(1, 2_100),
-                    timing(2, 2_100),
-                    gate(3, 900),
+                    gate(0, 500),
+                    gate(0, 2_500),
+                    gate(1, 500),
+                    big(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 500),
+                    timing(2, 1_500),
+                    gate(2, 2_500),
                 ],
-                crates: &[lock(2_100, 2_750, 30)],
+                crates: &[lock(1_500, 2_000, 30)],
+                walls: &WALLS3_R3,
             },
         ],
     },
-    // 5. A diagonal staircase of single gates (the timing ring beside it): chase it across.
+    // 5. Pillars (walled): Fight 1 has three walled columns, the tower in the middle; in Fight 2
+    //    a single wall splits off the right column, which opens on an exposed big gate.
     Layout {
-        name: "Stairway",
+        name: "Pillars",
         stages: [
             StageDef {
-                towers: &[f1(5, 2_400)],
-                rows: &ROWS_LONG,
+                towers: &[f1(5, 1_500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 800),
-                    gate(1, 1_100),
-                    timing(1, 2_200),
-                    gate(2, 1_800),
-                    slide(3, 2_100, 1_700, 2_400, 25),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    gate(0, 2_500),
+                    gate(1, 500),
+                    timing(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 500),
+                    gate(2, 2_500),
                 ],
                 crates: &[],
+                walls: &WALLS3_R3,
             },
             StageDef {
-                towers: &[f2(5, 600), f2(5, 1_900)],
-                rows: &ROWS_LONG,
+                towers: &[f2(5, 1_500), f2(5, 2_500)],
+                rows: &R3,
                 gates: &[
-                    gate(0, 2_200),
-                    timing(1, 700),
-                    gate(1, 1_700),
-                    big(2, 1_200),
-                    slide(3, 800, 600, 1_400, 25),
+                    gate(0, 500),
+                    gate(0, 1_500),
+                    big(0, 2_500),
+                    gate(1, 500),
+                    timing(1, 1_500),
+                    gate(1, 2_500),
+                    gate(2, 500),
+                    gate(2, 1_500),
                 ],
-                crates: &[lock(1_200, 4_200, 30)],
+                crates: &[],
+                walls: &[wall(2_000, 3_000)],
             },
         ],
     },
@@ -453,112 +595,172 @@ mod tests {
     use super::*;
     use crate::constants::*;
 
-    fn span(x: i16, w: i16) -> (i32, i32) {
-        (
-            i32::from(x) - i32::from(w) / 2,
-            i32::from(x) + i32::from(w) / 2,
-        )
+    /// A sliding gate (none of the layouts has one today: a gate that fills its column has no
+    /// room to slide inside it).
+    const fn slide(row: u8, x: i16, x_min: i16, x_max: i16, speed: i16) -> GateDef {
+        GateDef {
+            x_min,
+            x_max,
+            speed,
+            ..gate(row, x)
+        }
     }
 
-    /// Every x a gate's span can cover over its sweep.
-    fn sweep(g: &GateDef) -> (i32, i32) {
-        let (lo, _) = span(g.x_min.min(g.x), g.width);
-        let (_, hi) = span(g.x_max.max(g.x), g.width);
-        (lo, hi)
+    /// The stage's columns: (centres, gate width), from its gates' widths (all equal).
+    fn columns(st: &StageDef, ctx: &str) -> (&'static [i16], i16) {
+        let w = st.gates[0].width;
+        assert!(
+            st.gates.iter().all(|g| g.width == w),
+            "{ctx}: one column width per stage"
+        );
+        match w {
+            COL3_W => (&COL3, COL3_W),
+            COL2_W => (&COL2, COL2_W),
+            _ => panic!("{ctx}: gate width {w} is not a column width"),
+        }
     }
 
     #[test]
     fn layouts_follow_the_design_rules() {
         let mut names = std::collections::HashSet::new();
+        let mut walled_layouts = 0;
         for (id, l) in LAYOUTS.iter().enumerate() {
             assert!(names.insert(l.name), "duplicate name {}", l.name);
-            let (mut sliding, mut locked) = (0, 0);
+            let walled = l.stages.iter().any(|st| !st.walls.is_empty());
+            walled_layouts += usize::from(walled);
+            let mut locked = 0;
             for (s, st) in l.stages.iter().enumerate() {
                 let ctx = format!("layout {id} ({}) stage {s}", l.name);
-                // Towers: 1 in Fight 1, 2 in Fight 2; different columns.
+                let (centres, col_w) = columns(st, &ctx);
+                // At most 3 columns, each `pitch` wide with its centre in the middle; a gate
+                // fills its column edge to edge: at least the column's interior (the column
+                // minus a wall's thickness), and no wider than the column.
+                assert!((2..=3).contains(&centres.len()), "{ctx}: 2 or 3 columns");
+                let pitch = LANE_WIDTH / centres.len() as i32;
+                for (k, &c) in centres.iter().enumerate() {
+                    assert_eq!(i32::from(c), pitch * k as i32 + pitch / 2, "{ctx}");
+                }
+                let interior = pitch - 2 * WALL_HALF;
+                assert!(
+                    i32::from(col_w) >= interior && i32::from(col_w) <= pitch,
+                    "{ctx}: gates don't fill their column"
+                );
+                let on_centre = |x: i16| centres.contains(&x);
+                let column_of = |x: i32| (x / pitch).clamp(0, centres.len() as i32 - 1);
+
+                // Towers: 1 in Fight 1, 2 in Fight 2; on column centres, in different columns.
                 assert_eq!(st.towers.len(), [1, 2][s], "{ctx}");
                 for t in st.towers {
                     assert!(t.hp > 0 && t.wave_base > 0, "{ctx}");
-                    assert!((300..=2_700).contains(&i32::from(t.x)), "{ctx}");
+                    assert!(on_centre(t.x), "{ctx}: tower off a column centre");
                 }
                 if let [a, b] = st.towers {
-                    assert!((a.x - b.x).abs() >= 1_000, "{ctx}: towers too close");
+                    assert_ne!(a.x, b.x, "{ctx}: towers in one column");
                 }
-                // SPEC_V5 §3b rows: 4, the first ~1,400, ~1,300 apart, the last at 5,300–6,500
-                // (the gates in the first half of the lane).
-                assert_eq!(st.rows.len(), ROWS_MAX, "{ctx}");
-                assert_eq!(st.rows[0], 1_400, "{ctx}");
+
+                // Rows, front-loaded: 3 from ~1,000 or 4 from ~900, 800–1,100 apart, the last in
+                // the front half of the lane (the back half is the clash zone).
+                assert!((3..=ROWS_MAX).contains(&st.rows.len()), "{ctx}");
+                assert!((800..=1_100).contains(&st.rows[0]), "{ctx}");
                 for w in st.rows.windows(2) {
-                    assert!((1_250..=1_450).contains(&(w[1] - w[0])), "{ctx}");
+                    assert!((800..=1_100).contains(&(w[1] - w[0])), "{ctx}");
                 }
                 let last = i32::from(*st.rows.last().unwrap());
-                assert!((5_300..=6_500).contains(&last), "{ctx}");
-                assert!(last < LANE_LENGTH / 2 + 600, "{ctx}");
-                // Gates: ≤ GATES_MAX, sorted by row then x, 3–5 hidden and exactly one timing
-                // gate, 1–3 per row, inside GATE_BAND, MIN_GAP of open lane between any two of a
-                // row wherever they slide.
+                assert!(last <= TOWER_Y / 2, "{ctx}: rows not front-loaded");
+
+                // Gates: ≤ GATES_MAX, sorted by row then x, exactly one timing gate, the rest
+                // hidden.
                 assert!(st.gates.len() <= GATES_MAX, "{ctx}");
                 let timing = st.gates.iter().filter(|g| g.slot == Slot::Timing).count();
                 assert_eq!(timing, 1, "{ctx}: one timing gate per stage");
-                let hidden = st.gates.len() - timing;
-                assert!((3..=5).contains(&hidden), "{ctx}: {hidden} hidden gates");
+                assert!(st.gates.len() - timing >= 4, "{ctx}: too few hidden gates");
                 for w in st.gates.windows(2) {
                     assert!((w[0].row, w[0].x) < (w[1].row, w[1].x), "{ctx}: slot order");
                 }
-                for row in 0..st.rows.len() as u8 {
-                    let in_row: Vec<_> = st.gates.iter().filter(|g| g.row == row).collect();
-                    assert!((1..=3).contains(&in_row.len()), "{ctx} row {row}");
-                    for (i, a) in in_row.iter().enumerate() {
-                        for b in &in_row[i + 1..] {
-                            let (a, b) = (sweep(a), sweep(b));
-                            let gap = (b.0 - a.1).max(a.0 - b.1);
-                            assert!(gap >= MIN_GAP, "{ctx} row {row}: gap {gap}");
-                        }
-                    }
-                    // Open lane: the row leaves at least a third of the lane uncovered, counting
-                    // the GATE_GRACE edges.
-                    let covered: i32 = in_row
-                        .iter()
-                        .map(|g| i32::from(g.width) + 2 * GATE_GRACE)
-                        .sum();
-                    assert!(
-                        covered <= LANE_WIDTH * 2 / 3,
-                        "{ctx} row {row}: no open lane"
-                    );
-                }
                 for g in st.gates {
                     assert!(usize::from(g.row) < st.rows.len(), "{ctx}");
-                    let (lo, hi) = sweep(g);
                     assert!(
-                        lo >= GATE_BAND.0 && hi <= GATE_BAND.1,
-                        "{ctx}: gate outside the band ({lo}..{hi})"
+                        g.slot == Slot::Normal || !g.moving(),
+                        "{ctx}: only normal gates slide"
                     );
-                    assert!(g.width >= 400, "{ctx}");
-                    let want = match g.slot {
-                        Slot::Big => BIG_W,
-                        Slot::Timing => W,
-                        Slot::Normal => g.width,
-                    };
-                    assert_eq!(g.width, want, "{ctx}: big gates are BIG_W, timing gates W");
+                    // Every x the gate's span covers over its sweep stays inside one column (a
+                    // slider only slides inside its own column, never across a boundary).
+                    let half = i32::from(g.width) / 2;
+                    let (lo, hi) = (i32::from(g.x_min) - half, i32::from(g.x_max) + half);
+                    let col = column_of(i32::from(g.x));
+                    let (col_lo, col_hi) = (col * pitch, (col + 1) * pitch);
+                    assert!(
+                        col_lo <= lo && hi <= col_hi,
+                        "{ctx}: gate at {} leaves its column ({lo}..{hi})",
+                        g.x
+                    );
                     if g.moving() {
-                        sliding += 1;
-                        assert!(g.slot == Slot::Normal, "{ctx}: only normal gates slide");
+                        // Sliders: only without walls.
+                        assert!(!walled, "{ctx}: a sliding gate in a walled layout");
                         assert!(g.x_min <= g.x && g.x <= g.x_max, "{ctx}");
                         for t in 0..2_000 {
                             let x = g.x_at(t);
                             assert!(g.x_min <= x && x <= g.x_max, "{ctx}: t {t} x {x}");
                         }
                     } else {
+                        // A static gate sits on its column's centre.
                         assert_eq!((g.x_min, g.x_max), (g.x, g.x), "{ctx}");
+                        assert!(on_centre(g.x), "{ctx}: gate at {} off its column", g.x);
                     }
                     // SPEC_V5 §3b: an exposed big gate sits early and off-centre.
                     let crated = st.crates.iter().any(|c| c.x == g.x);
                     if g.slot == Slot::Big && !crated {
                         assert!(g.row <= 1, "{ctx}: exposed big gate past row 2");
-                        let off = (i32::from(g.x) - LANE_WIDTH / 2).abs();
-                        assert!(off >= 500, "{ctx}: exposed big gate centred");
+                        assert_ne!(i32::from(g.x), LANE_WIDTH / 2, "{ctx}: exposed big centred");
                     }
                 }
+                // Full rows: at most one gate per column per row, and at most one empty cell
+                // (row × column) in the whole stage, so it reads as 2 or 3 clear tracks.
+                let mut empty = 0;
+                for row in 0..st.rows.len() as u8 {
+                    let mut cols: Vec<i32> = st
+                        .gates
+                        .iter()
+                        .filter(|g| g.row == row)
+                        .map(|g| column_of(i32::from(g.x)))
+                        .collect();
+                    let n = cols.len();
+                    cols.dedup();
+                    assert_eq!(cols.len(), n, "{ctx} row {row}: two gates in one column");
+                    assert!(n >= 1, "{ctx} row {row}: empty row");
+                    empty += centres.len() - n;
+                }
+                assert!(
+                    empty <= 1,
+                    "{ctx}: {empty} empty cells (at most one per stage)"
+                );
+
+                // Walls: on column boundaries, from WALL_Y0 (past the cannon and a fresh
+                // volley's first tick) to WALL_TAIL past the last row; sorted, no two alike.
+                for w in st.walls {
+                    let x = i32::from(w.x);
+                    assert!(
+                        x % pitch == 0 && 0 < x && x < LANE_WIDTH,
+                        "{ctx}: wall at {x} off a column boundary"
+                    );
+                    assert_eq!(w.y0, WALL_Y0, "{ctx}");
+                    assert!(i32::from(w.y0) > LAUNCH_SPEED, "{ctx}");
+                    assert_eq!(i32::from(w.y1), last + i32::from(WALL_TAIL), "{ctx}");
+                    assert!(i32::from(w.y1) < TOWER_Y - CLASH_BAND, "{ctx}");
+                }
+                for w in st.walls.windows(2) {
+                    assert!(w[0].x < w[1].x, "{ctx}: walls not sorted");
+                }
+                // A gate's span never reaches past the wall next to it (with the grace edges,
+                // it may reach into the wall's thickness, never through it).
+                for g in st.gates.iter().filter(|g| !g.moving()) {
+                    let reach = i32::from(g.width) / 2 + GATE_GRACE;
+                    for w in st.walls {
+                        let d = (i32::from(g.x) - i32::from(w.x)).abs();
+                        assert!(d >= reach - WALL_HALF, "{ctx}: gate through a wall");
+                    }
+                }
+
                 // Crates: each locks one static big gate, just below its row, and covers its
                 // whole span (both get the same GATE_GRACE edges).
                 assert!(st.crates.len() <= CRATES_MAX, "{ctx}");
@@ -581,12 +783,53 @@ mod tests {
                     assert!(w[1] - w[0] > LAUNCH_SPEED, "{ctx}: lines too close");
                 }
             }
-            assert!(sliding >= 1, "layout {id}: no sliding gate");
             assert!(
                 locked <= 1,
                 "layout {id}: more than one crate-locked big gate"
             );
         }
+        // SPEC_V5 §12: about half the layouts have walls.
+        assert_eq!(walled_layouts, LAYOUT_COUNT / 2, "walled layouts");
+    }
+
+    #[test]
+    fn walls_push_clamp_and_separate() {
+        const WALLS: [WallDef; 2] = [wall(1_000, 3_000), wall(2_000, 3_000)];
+        let st = StageDef {
+            towers: &[],
+            rows: &R3,
+            gates: &[],
+            crates: &[],
+            walls: &WALLS,
+        };
+        let (y0, y1) = (i32::from(WALL_Y0), 3_000 + i32::from(WALL_TAIL));
+        assert_eq!((WALLS[0].left(), WALLS[0].right()), (939, 1_061));
+        // (b) inside the thickness → the nearer side, ties left; only while the wall stands.
+        assert_eq!(st.wall_push(940, y0), 939);
+        assert_eq!(st.wall_push(999, 1_500), 939);
+        assert_eq!(st.wall_push(1_000, 1_500), 939);
+        assert_eq!(st.wall_push(1_001, 1_500), 1_061);
+        assert_eq!(st.wall_push(1_060, y1), 1_061);
+        assert_eq!(st.wall_push(939, 1_500), 939);
+        assert_eq!(st.wall_push(1_061, 1_500), 1_061);
+        assert_eq!(st.wall_push(2_030, 1_500), 2_061);
+        assert_eq!(st.wall_push(1_000, y0 - 1), 1_000);
+        assert_eq!(st.wall_push(1_000, y1 + 1), 1_000);
+        // (a) a sideways move stays in its column while the walls stand, free outside them.
+        assert_eq!(st.column_at(500, 1_500), (0, 939));
+        assert_eq!(st.column_at(1_500, 1_500), (1_061, 1_939));
+        assert_eq!(st.column_at(2_900, 1_500), (2_061, LANE_WIDTH - 1));
+        assert_eq!(st.column_at(1_500, y1 + 1), (0, LANE_WIDTH - 1));
+        assert_eq!(st.wall_clamp(900, 1_400, 1_500), 939);
+        assert_eq!(st.wall_clamp(1_100, 600, 1_500), 1_061);
+        assert_eq!(st.wall_clamp(1_100, 1_300, 1_500), 1_300);
+        assert_eq!(st.wall_clamp(900, 1_400, y1 + 1), 1_400);
+        // (c) a standing wall strictly between two x's.
+        assert!(st.wall_between(939, 1_061, 1_500));
+        assert!(st.wall_between(2_100, 500, 1_500));
+        assert!(!st.wall_between(1_061, 1_939, 1_500));
+        assert!(!st.wall_between(939, 1_061, y1 + 1));
+        assert!(!st.wall_between(1_000, 1_000, 1_500));
     }
 
     #[test]
@@ -607,12 +850,22 @@ mod tests {
     fn overlapping_gates_go_to_the_nearest_centre() {
         // SPEC §6: edges count (GATE_GRACE); where two gates cover x the nearest centre wins,
         // the lower slot on ties. Spans with the grace: 600..=1,400 and 1,300..=2,100.
-        const GATES: [GateDef; 2] = [gate(0, 1_000), gate(0, 1_700)];
+        const GATES: [GateDef; 2] = [
+            GateDef {
+                width: 600,
+                ..gate(0, 1_000)
+            },
+            GateDef {
+                width: 600,
+                ..gate(0, 1_700)
+            },
+        ];
         let st = StageDef {
             towers: &[],
             rows: &[1_400],
             gates: &GATES,
             crates: &[],
+            walls: &[],
         };
         let at = |x| st.gate_at(0, x, |_, g| i32::from(g.x));
         assert_eq!(GATE_GRACE, 100);
@@ -630,6 +883,34 @@ mod tests {
             Some(1)
         );
         assert!(covers(1_000, 700, 400) && !covers(1_001, 700, 400));
+    }
+
+    #[test]
+    fn a_full_row_of_column_gates_covers_the_lane() {
+        // SPEC_V5 §12: with a gate in every column there is no gap; the choice is which column.
+        for (centres, w) in [(&COL3[..], COL3_W), (&COL2[..], COL2_W)] {
+            let gates: Vec<GateDef> = centres
+                .iter()
+                .map(|&x| GateDef {
+                    width: w,
+                    ..gate(0, x)
+                })
+                .collect();
+            let gates: &'static [GateDef] = Box::leak(gates.into_boxed_slice());
+            let st = StageDef {
+                towers: &[],
+                rows: &[1_000],
+                gates,
+                crates: &[],
+                walls: &[],
+            };
+            for x in 0..LANE_WIDTH {
+                assert!(
+                    st.gate_at(0, x, |_, g| i32::from(g.x)).is_some(),
+                    "gap at {x}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -8,7 +8,9 @@
 //!      the Fight's clock, as does the timing gate)                       SPEC §6, V5 §3
 //!    - Fight/Rush only: cohorts move (launch boost), hit crates, cross
 //!      gate rows and home in past the last row; enemy cohorts (giants
-//!      slower) home in and walk down; clash; tower hits, gold, Rush
+//!      slower) home in and walk down; divider walls keep both in their
+//!      column while they stand; clash (never through a wall); tower
+//!      hits, gold, Rush
 //!      loot, losses at the base edge; death; all towers down (the
 //!      breach, its tick recorded) → Transit (Fight 1) or the Rush in
 //!      place (Fight 2); waves; a volley while the trigger is held
@@ -178,8 +180,8 @@ fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
     }
     if active {
         move_cohorts(side, st, secret, gate_t, s, ev);
-        move_enemies(side);
-        clash(side, s, ev);
+        move_enemies(side, st);
+        clash(side, st, s, ev);
         hits(side, st, s, ev);
         compact(side);
         if side.enemies().iter().any(|e| e.y <= 0) {
@@ -272,6 +274,8 @@ fn move_cohorts(
         let y = prev_y.saturating_add(speed);
         c.y = y.min(i32::from(i16::MAX)) as i16;
         c.age = c.age.saturating_add(1);
+        // SPEC_V5 §12 (b): entering a wall's span inside its thickness pushes it out.
+        c.x = st.wall_push(i32::from(c.x), y) as i16;
 
         // SPEC §4: a crate absorbs what crosses its row inside its span (edges count, as for
         // gates), until it breaks.
@@ -327,10 +331,17 @@ fn move_cohorts(
         // (in the Rush: the town hall's centre).
         if usize::from(c.last_row) >= st.rows.len() && c.count > 0 {
             if let Some(tx) = cohort_target(c, enemies, towers, st, rush) {
-                c.x = toward(c.x, tx, STEER_STEP);
+                c.x = steer(st, c.x, tx, y);
             }
         }
     }
+}
+
+/// SPEC §4 homing by at most STEER_STEP toward `target`, kept inside the column (SPEC_V5 §12
+/// (a)) while a wall stands at `y`.
+fn steer(st: &StageDef, x: i16, target: i16, y: i32) -> i16 {
+    let to = toward(x, target, STEER_STEP);
+    st.wall_clamp(i32::from(x), i32::from(to), y) as i16
 }
 
 /// The gate of `row` a cohort at `x` goes through right now, or `None` in a gap (SPEC §6: edges
@@ -414,9 +425,10 @@ fn cohort_target(
 // --- enemies -----------------------------------------------------------------------------------
 
 /// SPEC §4: an enemy cohort steers toward the nearest of my cohorts ahead of it (below it)
-/// within DETECT_Y, else walks straight; then walks down at cruise speed (a giant at
-/// GIANT_SPEED, SPEC_V5 §5).
-fn move_enemies(side: &mut PublicSide) {
+/// within DETECT_Y (never across a standing wall, SPEC_V5 §12 (a)), else walks straight; then
+/// walks down at cruise speed (a giant at GIANT_SPEED, SPEC_V5 §5), pushed out of a wall's
+/// thickness as it enters the wall's span (SPEC_V5 §12 (b)).
+fn move_enemies(side: &mut PublicSide, st: &StageDef) {
     let PublicSide {
         cohorts,
         cohort_len,
@@ -441,19 +453,21 @@ fn move_enemies(side: &mut PublicSide) {
             }
         }
         if let Some((_, x)) = best {
-            e.x = toward(e.x, x, STEER_STEP);
+            e.x = steer(st, e.x, x, i32::from(e.y));
         }
         let speed = if e.giant { GIANT_SPEED } else { CRUISE_SPEED };
         e.y = i32::from(e.y).saturating_sub(speed) as i16;
+        e.x = st.wall_push(i32::from(e.x), i32::from(e.y)) as i16;
     }
 }
 
 // --- clash -------------------------------------------------------------------------------------
 
 /// SPEC §4: a cohort of mine and an enemy cohort meet once they have crossed in y (mine at or
-/// above theirs, by at most CLASH_BAND) with x at most CLASH_REACH apart; they cancel 1:1.
+/// above theirs, by at most CLASH_BAND) with x at most CLASH_REACH apart, and no wall standing
+/// between them at the clash point's y (SPEC_V5 §12 (c)); they cancel 1:1.
 /// Front-most pairs first: both lists are stored oldest (front-most) first.
-fn clash(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
+fn clash(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
     let PublicSide {
         cohorts,
         cohort_len,
@@ -478,6 +492,7 @@ fn clash(side: &mut PublicSide, s: u8, ev: &mut impl EventSink) {
             let crossed = i32::from(a.y).saturating_sub(i32::from(b.y));
             if !(0..=CLASH_BAND).contains(&crossed)
                 || i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32
+                || st.wall_between(i32::from(a.x), i32::from(b.x), i32::from(mid(a.y, b.y)))
             {
                 continue;
             }

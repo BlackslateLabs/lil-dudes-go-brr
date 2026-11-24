@@ -18,12 +18,14 @@ pub const NORMAL_ODDS: [(GateOp, u64); 8] = [
     (GateOp::Sub(0), 12),
     (GateOp::Div(3), 2),
 ];
-/// SPEC_V5 §3: N of a ±N gate by row index (row 1 = index 0 has none: there a ±N draw is
-/// re-drawn as × or ÷ from `NORMAL_ODDS` without the ± entries; rows past the table use its
-/// last N).
-pub const PM_BY_ROW: [u8; 4] = [0, 5, 15, 30];
-/// The odds mass of the × and ÷ entries (what a row-1 re-draw rolls over).
-pub const MUL_DIV_PCT: u64 = 76;
+/// SPEC_V5 §3: N of a ±N gate by row index (row 1 = index 0 has none; rows past the table use
+/// its last N), sized to the crowd a lone volley brings to that row (SPEC_V5 §12, rules v7:
+/// ~3, ~5, ~10 dudes), so a −N hurts a column without wiping it.
+pub const PM_BY_ROW: [u8; 4] = [0, 1, 3, 6];
+/// SPEC_V5 §12 (rules v7): the first row is always good. Its gates fill every column, so there
+/// is no gap to dodge it, and a ÷ or −N there would wipe every 1-dude volley of that column; a
+/// row-1 slot draws from the × entries of `NORMAL_ODDS` only (their odds mass).
+pub const MUL_PCT: u64 = 60;
 /// SPEC_V5 §3: big slot multipliers with their odds in percent.
 pub const BIG_ODDS: [(u8, u64); 3] = [(6, 30), (8, 40), (10, 30)];
 /// The value of a slot the stage does not use.
@@ -56,8 +58,8 @@ impl Deal {
     }
 }
 
-/// One stage's values, in slot order, from that stage's RNG: one draw per hidden gate slot (two
-/// for a ±N drawn on row 1); the timing gate draws nothing and holds NO_GATE.
+/// One stage's values, in slot order, from that stage's RNG: one draw per hidden gate slot (a
+/// row-1 slot draws from the × entries only); the timing gate draws nothing and holds NO_GATE.
 pub fn deal_stage(seed: u64, layout: u8, stage_ix: u8) -> [GateOp; GATES_MAX] {
     let mut rng = deal_rng(seed, stage_ix);
     let mut out = [NO_GATE; GATES_MAX];
@@ -70,20 +72,20 @@ pub fn deal_stage(seed: u64, layout: u8, stage_ix: u8) -> [GateOp; GATES_MAX] {
     out
 }
 
-fn is_pm(op: GateOp) -> bool {
-    matches!(op, GateOp::Add(_) | GateOp::Sub(_))
-}
-
-/// The entry of `odds` that `roll` (0..sum of the odds) lands on, skipping ±N when `pm` is false.
-fn pick(roll: u64, pm: bool) -> GateOp {
+/// The entry of `NORMAL_ODDS` that `roll` (0..sum of the odds) lands on; `first_row`: only the
+/// × entries (0..MUL_PCT).
+fn pick(roll: u64, first_row: bool) -> GateOp {
     let mut roll = roll;
-    for &(op, pct) in NORMAL_ODDS.iter().filter(|(op, _)| pm || !is_pm(*op)) {
+    for &(op, pct) in NORMAL_ODDS
+        .iter()
+        .filter(|(op, _)| !first_row || matches!(op, GateOp::Mul(_)))
+    {
         if roll < pct {
             return op;
         }
         roll = roll.saturating_sub(pct);
     }
-    // Unreachable while the odds sum to 100 / MUL_DIV_PCT (tested): the safe fallback.
+    // Unreachable while the odds sum to 100 / MUL_PCT (tested): the safe fallback.
     GateOp::Mul(2)
 }
 
@@ -103,10 +105,12 @@ fn draw(rng: &mut SplitMix64, slot: Slot, row: u8) -> GateOp {
         .or(PM_BY_ROW.last())
         .copied()
         .unwrap_or(0);
-    match pick(rng.below(100), true) {
-        GateOp::Add(_) if n > 0 => GateOp::Add(n),
-        GateOp::Sub(_) if n > 0 => GateOp::Sub(n),
-        op if is_pm(op) => pick(rng.below(MUL_DIV_PCT), false),
+    if row == 0 {
+        return pick(rng.below(MUL_PCT), true);
+    }
+    match pick(rng.below(100), false) {
+        GateOp::Add(_) => GateOp::Add(n),
+        GateOp::Sub(_) => GateOp::Sub(n),
         op => op,
     }
 }
@@ -119,21 +123,21 @@ mod tests {
     #[test]
     fn odds_sum_to_100() {
         assert_eq!(NORMAL_ODDS.iter().map(|o| o.1).sum::<u64>(), 100);
-        let mul_div: u64 = NORMAL_ODDS
+        let mul: u64 = NORMAL_ODDS
             .iter()
-            .filter(|o| !is_pm(o.0))
+            .filter(|o| matches!(o.0, GateOp::Mul(_)))
             .map(|o| o.1)
             .sum();
-        assert_eq!(mul_div, MUL_DIV_PCT);
+        assert_eq!(mul, MUL_PCT);
         assert_eq!(BIG_ODDS.iter().map(|o| o.1).sum::<u64>(), 100);
-        assert_eq!(pick(99, true), GateOp::Div(3));
-        assert_eq!(pick(MUL_DIV_PCT - 1, false), GateOp::Div(3));
+        assert_eq!(pick(99, false), GateOp::Div(3));
+        assert_eq!(pick(MUL_PCT - 1, true), GateOp::Mul(5));
     }
 
     #[test]
     fn values_follow_the_slot_distributions() {
-        // SPEC_V5 §3: rows 2+ follow NORMAL_ODDS with N by row; row 1 has no ±N (re-drawn as ×
-        // or ÷, so its × and ÷ odds scale by 100 / 76); big slots ×6 / ×8 / ×10.
+        // SPEC_V5 §3: rows 2+ follow NORMAL_ODDS with N by row; row 1 is always good (SPEC_V5
+        // §12: its × odds scale by 100 / 60); big slots ×6 / ×8 / ×10.
         let mut first = std::collections::HashMap::<GateOp, u32>::new();
         let mut later = std::collections::HashMap::<GateOp, u32>::new();
         let mut bigs = std::collections::HashMap::<GateOp, u32>::new();
@@ -181,12 +185,12 @@ mod tests {
                 }
             };
         check(&later, &NORMAL_ODDS, 100);
-        let no_pm: Vec<_> = NORMAL_ODDS
+        let mul: Vec<_> = NORMAL_ODDS
             .iter()
             .copied()
-            .filter(|o| !is_pm(o.0))
+            .filter(|o| matches!(o.0, GateOp::Mul(_)))
             .collect();
-        check(&first, &no_pm, MUL_DIV_PCT);
+        check(&first, &mul, MUL_PCT);
         let big: Vec<_> = BIG_ODDS.iter().map(|&(k, p)| (GateOp::Mul(k), p)).collect();
         check(&bigs, &big, 100);
     }

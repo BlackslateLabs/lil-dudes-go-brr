@@ -7,10 +7,10 @@
 //! seed. It also ignores its own peek results (they are private state it is not given).
 
 use crate::constants::{
-    CHAMP_TICKS, CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS,
-    VOLLEY_SIZE,
+    CHAMP_TICKS, CRATES_MAX, CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED,
+    LAUNCH_TICKS, VOLLEY_SIZE,
 };
-use crate::layouts::{covers, timing_value, Slot, StageDef};
+use crate::layouts::{covers, timing_value, GateDef, Slot, StageDef};
 use crate::rng::SplitMix64;
 use crate::state::{PublicSide, PublicState, SideInput};
 use crate::types::{GateOp, Phase};
@@ -20,9 +20,11 @@ pub const THINK_TICKS: u32 = 2;
 /// SPEC §10: alternate between equal options every 20–60 ticks.
 pub const SWITCH_MIN: u32 = 20;
 pub const SWITCH_MAX: u32 = 60;
-/// Candidate aim points: every AIM_STEP across the lane.
+/// Candidate aim points (SPEC_V5 §12): the stage's column centres (where its static gates
+/// sit), or every AIM_STEP across the lane when a gate slides (to catch it on the move).
 pub const AIM_STEP: i32 = 100;
 const CANDIDATES: usize = (LANE_WIDTH / AIM_STEP) as usize - 1;
+const _: () = assert!(GATES_MAX <= CANDIDATES);
 /// (impl) Expected value of an unrevealed gate, in per mille: normal ≈ ×2 (SPEC §10; the v5
 /// table's mean factor, counting ±N as ×1, is ~×1.94), big ×8.
 pub const GUESS_NORMAL_PM: u64 = 2_000;
@@ -104,26 +106,37 @@ impl Warlord {
     }
 
     fn pick(&mut self, tick: u32, me: &PublicSide, st: &StageDef) -> i32 {
+        let (xs, len) = candidates(st);
+        let xs = xs.get(..len).unwrap_or(&[]);
         let mut scores = [0u64; CANDIDATES];
-        for (i, score) in scores.iter_mut().enumerate() {
-            *score = path_score(me, st, candidate(i));
+        for (score, &x) in scores.iter_mut().zip(xs) {
+            *score = path_score(me, st, x);
         }
+        let scores = scores.get(..xs.len()).unwrap_or(&[]);
         let best = scores.iter().copied().max().unwrap_or(0);
-        // Runs of equally good candidates: aim somewhere inside one.
+        // Runs of equally good candidates AIM_STEP apart (a lone column centre is a run of
+        // one): aim somewhere inside one.
         let mut runs = [(0i32, 0i32); CANDIDATES];
         let mut n = 0usize;
         let mut i = 0usize;
-        while i < CANDIDATES {
+        while i < xs.len() {
             if scores.get(i) != Some(&best) {
                 i = i.saturating_add(1);
                 continue;
             }
             let start = i;
-            while scores.get(i) == Some(&best) {
+            i = i.saturating_add(1);
+            while scores.get(i) == Some(&best)
+                && xs.get(i).copied()
+                    == xs
+                        .get(i.saturating_sub(1))
+                        .map(|x| x.saturating_add(AIM_STEP))
+            {
                 i = i.saturating_add(1);
             }
-            if let Some(r) = runs.get_mut(n) {
-                *r = (candidate(start), candidate(i.saturating_sub(1)));
+            let (lo, hi) = (xs.get(start), xs.get(i.saturating_sub(1)));
+            if let (Some(r), Some(&lo), Some(&hi)) = (runs.get_mut(n), lo, hi) {
+                *r = (lo, hi);
                 n = n.saturating_add(1);
             }
         }
@@ -153,8 +166,36 @@ impl Warlord {
     }
 }
 
-fn candidate(i: usize) -> i32 {
-    (i as i32).saturating_add(1).saturating_mul(AIM_STEP)
+/// The aim points the bot weighs, ascending, and how many: the distinct centres of the stage's
+/// static gates (its columns), or every AIM_STEP across the lane if any gate slides.
+fn candidates(st: &StageDef) -> ([i32; CANDIDATES], usize) {
+    let mut xs = [0i32; CANDIDATES];
+    if st.gates.iter().any(GateDef::moving) {
+        for (i, x) in (1i32..).zip(xs.iter_mut()) {
+            *x = i.saturating_mul(AIM_STEP);
+        }
+        return (xs, CANDIDATES);
+    }
+    let mut n = 0usize;
+    for g in st.gates {
+        let x = i32::from(g.x);
+        let seen = xs.get(..n).unwrap_or(&[]).contains(&x);
+        if let (false, Some(dst)) = (seen, xs.get_mut(n)) {
+            *dst = x;
+            n = n.saturating_add(1);
+        }
+    }
+    if let Some(found) = xs.get_mut(..n) {
+        found.sort_unstable();
+    }
+    if n == 0 {
+        // No gates at all: the middle of the lane.
+        if let Some(x) = xs.first_mut() {
+            *x = LANE_WIDTH / 2;
+        }
+        n = 1;
+    }
+    (xs, n)
 }
 
 /// SPEC §10.1: the lowest enemy cohort within DEFEND_Y of the cannon line. Returns its x.
@@ -179,8 +220,12 @@ pub fn travel_ticks(y: i32) -> u32 {
 
 /// SPEC §10.2: the expected size (in thousandths of a dude) of a volley fired now at `x` once
 /// it has passed every row: revealed values, else the slot's guess; moving gates predicted at
-/// arrival, edges counted as in the rules (`covers`, nearest centre). An unbroken crate in the way absorbs its HP first, so a locked gate only pays once
-/// its crate is broken.
+/// arrival, edges counted as in the rules (`covers`, nearest centre). An unbroken crate in the
+/// way is an investment (rules v7: a full row can't be dodged, so the bot must be willing to
+/// break crates): the path past it counts scaled by `d / (d + hp)`, `d` being the dudes that
+/// reach the crate, so a crate that takes many volleys to break weighs its jackpot down. A divider
+/// wall's span pushes an `x` inside its thickness to the nearer side, as the rules do (SPEC_V5
+/// §12), so the column the volley will be in is the one scored.
 pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
     let now = if me.phase.active() {
         u32::from(me.phase_ticks)
@@ -189,12 +234,20 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
     };
     let mut score: u64 = u64::from(VOLLEY_SIZE).saturating_mul(1_000);
     let mut below = i32::MIN;
+    let mut x = x;
+    // (dudes reaching the crate, its HP), both in thousandths.
+    let mut locks = [(0u64, 0u64); CRATES_MAX];
+    let mut n_locks = 0usize;
     for (row, &row_y) in (0u8..).zip(st.rows) {
         let row_y = i32::from(row_y);
+        x = st.wall_push(x, row_y);
         for (c, &hp) in st.crates.iter().zip(me.crates.iter()) {
             let cy = i32::from(c.y);
             if hp > 0 && below < cy && cy < row_y && covers(x, i32::from(c.x), c.width) {
-                score = score.saturating_sub(u64::from(hp).saturating_mul(1_000));
+                if let Some(l) = locks.get_mut(n_locks) {
+                    *l = (score, u64::from(hp).saturating_mul(1_000));
+                    n_locks = n_locks.saturating_add(1);
+                }
             }
         }
         below = row_y;
@@ -207,7 +260,14 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
         };
         score = match me.gates.get(slot).and_then(|g| g.revealed) {
             Some(GateOp::Mul(k)) => score.saturating_mul(u64::from(k)),
-            Some(GateOp::Div(k)) => score.checked_div(u64::from(k)).unwrap_or(0),
+            // Whole dudes: floor(c / k) wipes a lone dude (`÷2` on 1 is 0).
+            Some(GateOp::Div(k)) => {
+                let dudes = score.checked_div(1_000).unwrap_or(0);
+                dudes
+                    .checked_div(u64::from(k))
+                    .unwrap_or(0)
+                    .saturating_mul(1_000)
+            }
             Some(GateOp::Add(n)) => score.saturating_add(u64::from(n).saturating_mul(1_000)),
             Some(GateOp::Sub(n)) => score.saturating_sub(u64::from(n).saturating_mul(1_000)),
             None => {
@@ -220,6 +280,12 @@ pub fn path_score(me: &PublicSide, st: &StageDef, x: i32) -> u64 {
                 score.saturating_mul(guess) / 1_000
             }
         };
+    }
+    for &(d, hp) in locks.get(..n_locks).unwrap_or(&[]) {
+        score = score
+            .saturating_mul(d)
+            .checked_div(d.saturating_add(hp))
+            .unwrap_or(0);
     }
     score
 }

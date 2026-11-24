@@ -4,7 +4,7 @@ use super::*;
 use crate::constants::{CHAMP_TICKS, ENEMY_CAP, GATES_MAX, PLANT_TICKS, STAGES};
 use crate::deal::NO_GATE;
 use crate::events::NoEvents;
-use crate::layouts::{self, LAYOUTS};
+use crate::layouts::{self, GateDef, StageDef, LAYOUTS};
 use crate::state::{Inputs, MatchOptions, MatchState, Peek};
 use crate::step::step;
 use crate::types::{Enemy, Phase};
@@ -94,21 +94,20 @@ fn goes_for_the_best_revealed_path() {
     // SPEC §10.2: the product of the gates it would pass, revealed values first.
     let mut m = fighting(0);
     let st = layouts::stage(0, 0);
-    // Layout 0, Fight 1: gates 0/4 at x 900 (rows 0/3), 1/5 at x 2,100 (rows 0/3), the timing
-    // gate 2 mid-lane on row 1 and the slider 3 on row 2 (revealed as ×1 here).
+    // Layout 0, Fight 1: the left column (x 750) has gates 0 / 2 / 4 / 6, the right one
+    // (x 2,250) 1 / the timing gate 3 / 5 / 7. The timing gate shows ×1 on this volley's arrival
+    // (fight tick 0 + 18).
     let g = &mut m.public.sides[1].gates;
-    g[0].revealed = Some(GateOp::Mul(2));
-    g[4].revealed = Some(GateOp::Mul(3));
-    g[1].revealed = Some(GateOp::Mul(6));
-    g[5].revealed = Some(GateOp::Mul(2));
-    g[3].revealed = Some(GateOp::Mul(1));
-    let x = aim_of(&m);
-    assert!((1_700..=2_500).contains(&x), "{x}");
-    assert!(path_score(&m.public.sides[1], st, x) >= 12_000);
-    // A revealed trap up that path makes the other side better.
-    m.public.sides[1].gates[5].revealed = Some(GateOp::Div(2));
-    let x = aim_of(&m);
-    assert!((500..=1_300).contains(&x), "{x}");
+    for (slot, k) in [(0, 2), (2, 3), (4, 2), (6, 2), (1, 2), (5, 2), (7, 2)] {
+        g[slot].revealed = Some(GateOp::Mul(k));
+    }
+    assert_eq!(aim_of(&m), 750);
+    assert_eq!(path_score(&m.public.sides[1], st, 750), 24_000);
+    assert_eq!(path_score(&m.public.sides[1], st, 2_250), 8_000);
+    // A revealed trap up that path makes the other column better (1 → 2 → 6 → ÷3 = 2 → 4).
+    m.public.sides[1].gates[4].revealed = Some(GateOp::Div(3));
+    assert_eq!(path_score(&m.public.sides[1], st, 750), 4_000);
+    assert_eq!(aim_of(&m), 2_250);
 }
 
 #[test]
@@ -117,13 +116,19 @@ fn unrevealed_gates_count_as_their_slot_guess() {
     let m = fighting(0);
     let me = &m.public.sides[1];
     let st = layouts::stage(0, 0);
-    assert_eq!(path_score(me, st, 700), 4_000);
-    assert_eq!(path_score(me, st, 100), 1_000);
+    // x 700: the four `?` of the left column.
+    assert_eq!(path_score(me, st, 700), 16_000);
+    // Three Ways, Fight 1: the exposed big gate (row 0, x 500), then two `?`.
+    let c = fighting(1);
+    let st = layouts::stage(1, 0);
+    assert_eq!(st.gates[0].slot, Slot::Big);
+    assert_eq!(path_score(&c.public.sides[1], st, 500), 32_000);
 }
 
 #[test]
-fn an_unbroken_crate_absorbs_the_path_and_a_broken_one_opens_the_big_gate() {
-    // SPEC §10.2: locked gates count only once the crate is broken.
+fn an_unbroken_crate_weighs_its_jackpot_down_and_a_broken_one_opens_it() {
+    // SPEC §10.2 (rules v7): the path past an unbroken crate counts × d / (d + hp), d = the
+    // dudes reaching it; once broken, the big gate pays in full.
     let mut m = fighting(0);
     let layout = m.public.layout;
     let me = &mut m.public.sides[1];
@@ -131,19 +136,47 @@ fn an_unbroken_crate_absorbs_the_path_and_a_broken_one_opens_the_big_gate() {
     me.phase = Phase::Fight;
     let st = layouts::stage(layout, 1);
     let lock = st.crates[0];
-    assert_eq!(path_score(me, st, i32::from(lock.x)), 0);
+    // The middle column: a `?` (×2), the crate, the big gate's ×8, then the timing gate at its
+    // value on arrival.
+    let v = u64::from(timing_value(travel_ticks(i32::from(st.rows[2]))));
+    let open = 2 * 8 * v * 1_000;
+    let hp = u64::from(lock.hp) * 1_000;
+    assert_eq!(
+        path_score(me, st, i32::from(lock.x)),
+        open * 2_000 / (2_000 + hp)
+    );
+    // A sturdier crate weighs more.
+    me.crates[0] = 300;
+    assert_eq!(
+        path_score(me, st, i32::from(lock.x)),
+        open * 2_000 / (2_000 + 300_000)
+    );
     me.crates[0] = 0;
-    // Mid-lane: the timing gate on row 1 at its value on arrival, then the big gate's ×8.
-    let v = u64::from(timing_value(travel_ticks(i32::from(st.rows[1]))));
-    assert_eq!(path_score(me, st, i32::from(lock.x)), v * 8_000);
+    assert_eq!(path_score(me, st, i32::from(lock.x)), open);
 }
 
 #[test]
 fn predicts_where_a_sliding_gate_will_be() {
-    // SPEC §10.2: moving gates are predicted at the volley's arrival time.
+    // SPEC §10.2: moving gates are predicted at the volley's arrival time. (No layout has a
+    // slider today: a gate that fills its column has no room to slide in it; the rule stays.)
+    const GATES: [GateDef; 1] = [GateDef {
+        row: 0,
+        x: 1_500,
+        width: 600,
+        slot: Slot::Normal,
+        x_min: 500,
+        x_max: 2_500,
+        speed: 30,
+    }];
+    let st = &StageDef {
+        towers: &[],
+        rows: &[1_800],
+        gates: &GATES,
+        crates: &[],
+        walls: &[],
+    };
     let m = fighting(0);
-    let st = layouts::stage(0, 0);
-    let def = st.gates[3];
+    let def = st.gates[0];
     assert!(def.moving());
     let row_y = i32::from(st.rows[usize::from(def.row)]);
     let mut me = m.public.sides[1];
@@ -153,7 +186,7 @@ fn predicts_where_a_sliding_gate_will_be() {
     assert_ne!(arrive, now);
     // At the arrival x the slider counts (its ×2 guess); revealing it as ×1 halves the score.
     let mut one = me;
-    one.gates[3].revealed = Some(GateOp::Mul(1));
+    one.gates[0].revealed = Some(GateOp::Mul(1));
     assert_eq!(
         path_score(&me, st, arrive),
         2 * path_score(&one, st, arrive)
@@ -165,23 +198,22 @@ fn timing_gates_count_their_value_on_arrival_and_are_never_scouted() {
     // SPEC_V5 §3: public, so the bot uses the value the volley will meet.
     let m = fighting(0);
     let st = layouts::stage(0, 0);
-    let t = &st.gates[2];
+    let t = &st.gates[3];
     assert_eq!(t.slot, Slot::Timing);
     let row_y = i32::from(st.rows[usize::from(t.row)]);
     for now in [0u16, 13, 40, 77] {
         let mut me = m.public.sides[1];
         me.phase_ticks = now;
         let v = u64::from(timing_value(u32::from(now) + travel_ticks(row_y)));
-        // x 1,500: a gap on row 0, the timing gate, the slider's guess at arrival (or a gap),
-        // nothing on row 3.
-        let score = path_score(&me, st, 1_500);
+        // The right column: `?`, the timing gate, `?`, `?`.
+        let score = path_score(&me, st, 2_250);
         assert_eq!(score % (v * 1_000), 0, "now {now}: {score} vs ×{v}");
     }
     // Scout never picks it.
     for seed in 0..50 {
         let mut bot = Warlord::new(1, seed);
         let pick = bot.decide(&m.public).peek.unwrap();
-        assert_ne!(pick, 2);
+        assert_ne!(pick, 3);
     }
 }
 
@@ -209,10 +241,11 @@ fn holds_the_trigger_and_lets_go_to_release_the_champion() {
 #[test]
 fn travel_time_matches_the_movement_rules() {
     // SPEC §7: 6 ticks at LAUNCH_SPEED, then cruise.
-    assert_eq!(travel_ticks(240), 1);
-    assert_eq!(travel_ticks(1_440), 6);
-    assert_eq!(travel_ticks(1_441), 7);
-    assert_eq!(travel_ticks(1_520), 7);
+    assert_eq!(travel_ticks(180), 1);
+    assert_eq!(travel_ticks(1_080), 6);
+    assert_eq!(travel_ticks(1_081), 7);
+    assert_eq!(travel_ticks(1_140), 7);
+    assert_eq!(travel_ticks(1_141), 8);
 }
 
 #[test]
@@ -222,12 +255,11 @@ fn alternates_between_equal_options() {
     let mut bot = Warlord::new(1, 3);
     let mut view = m.public;
     view.sides[1].peek_used = true;
-    // The slider is predicted in the middle (a full period after the fight start), so the left
-    // and right lanes (two `?` each) tie.
+    // The left column (four `?`) and the right one (three `?` and the timing gate, ×2 on
+    // arrival at fight tick 10 + 18) tie.
+    view.sides[1].phase_ticks = 10;
     let st = layouts::stage(0, 0);
-    let arrive = travel_ticks(i32::from(st.rows[2]));
-    view.sides[1].phase_ticks = (96 - arrive) as u16;
-    assert_eq!(st.gates[4].x_at(96), st.gates[4].x);
+    assert_eq!(timing_value(10 + travel_ticks(i32::from(st.rows[1]))), 2);
     let mut aims = std::collections::BTreeSet::new();
     for t in (0..600).step_by(2) {
         view.tick = 10_000 + t;
@@ -251,9 +283,9 @@ fn peeks_at_the_fight_start() {
     for g in f2.public.sides[1].gates.iter_mut().take(usize::from(n)) {
         g.revealed = Some(GateOp::Mul(2));
     }
-    f2.public.sides[1].gates[3].revealed = None;
+    f2.public.sides[1].gates[4].revealed = None;
     for _ in 0..20 {
-        assert_eq!(bot.decide(&f2.public).peek, Some(3));
+        assert_eq!(bot.decide(&f2.public).peek, Some(4));
     }
     // Spent → nothing.
     f2.public.sides[1].peek_used = true;
@@ -269,4 +301,29 @@ fn does_nothing_once_finished() {
         Warlord::new(1, 1).decide(&m.public),
         crate::state::SideInput::default()
     );
+}
+
+#[test]
+fn aims_at_column_centres_and_scores_the_column_a_wall_pushes_it_into() {
+    // SPEC_V5 §12: without sliders the bot picks a column (its centre), so its volleys are in a
+    // column before they reach the walls; an x on a wall's line scores the column it is pushed
+    // into (ties left).
+    let m = fighting(2);
+    let st = layouts::stage(2, 0);
+    assert!(!st.walls.is_empty());
+    for seed in 0..20 {
+        let mut view = m.public;
+        view.sides[1].peek_used = true;
+        let mut bot = Warlord::new(1, seed);
+        for t in (0..200).step_by(2) {
+            view.tick = 1_000 + t;
+            let x = bot.decide(&view).aim.unwrap();
+            assert!(layouts::COL3.contains(&(x as i16)), "aim {x}");
+        }
+    }
+    let me = &m.public.sides[1];
+    assert_eq!(path_score(me, st, 1_000), path_score(me, st, 500));
+    assert_eq!(path_score(me, st, 1_001), path_score(me, st, 1_500));
+    // The middle column: two `?`, then open lane.
+    assert_eq!(path_score(me, st, 1_500), 4_000);
 }
