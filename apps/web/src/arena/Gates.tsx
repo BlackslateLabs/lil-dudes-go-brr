@@ -13,7 +13,10 @@ import { GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
 const MAX_GATES = 12;
 /** Panels lean back towards the camera so labels read from the tilted view. */
 const TILT = -0.5;
-const PANEL_H = 2.3;
+const PANEL_H = 2.6;
+/** Gate labels: a 3:2 canvas, as tall as the panel and at most its width. */
+const LABEL_W = 384;
+const LABEL_H = 256;
 const FLIP_TIME = 0.12; // s: label punch ~1.4× (TECH §5)
 const PASS_FLASH = 0.35; // s: a crowd going through
 
@@ -107,15 +110,18 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
       const c = GLASS[look];
       u.uBody.value.set(c.body);
       u.uRim.value.set(c.rim);
-      u.uOpacity.value = g.revealed ? 0.8 : g.locked ? 0.45 : 0.62;
+      // Opaque and bold; a gate still behind its crate is see-through until the crate breaks.
+      u.uOpacity.value = g.locked ? 0.55 : 0.97;
       u.uSize.value.set(width, PANEL_H);
       panel.current.scale.set(width + 2 * GLASS_PAD, PANEL_H + 2 * GLASS_PAD, 1);
-      posts.current.children[0]!.position.x = -(width + 0.4) / 2;
-      posts.current.children[1]!.position.x = (width + 0.4) / 2;
+      posts.current.children[0]!.position.x = -(width / 2 + 0.12);
+      posts.current.children[1]!.position.x = width / 2 + 0.12;
+      const lw = Math.min(width * 0.96, (PANEL_H * LABEL_W) / LABEL_H);
+      label.current.scale.set(lw, (lw * LABEL_H) / LABEL_W, 1);
       orb.color.set(c.rim);
       orb.emissive.set(c.body);
       const lm = label.current.material as MeshBasicMaterial;
-      lm.map = labelTexture(text, { outline: PALETTE.outline, stroke: 0.12 });
+      lm.map = labelTexture(text, { outline: PALETTE.outline, stroke: 0.15, width: LABEL_W, height: LABEL_H });
       lm.needsUpdate = true;
       marker.current.position.x = width / 2 - 0.35;
     }
@@ -176,7 +182,7 @@ function Gate({ feed, index, interactive, hits }: { feed: MatchFeed; index: numb
             <planeGeometry args={[1, 1]} />
           </mesh>
           <mesh ref={label} position={[0, 0, 0.06]} renderOrder={6}>
-            <planeGeometry args={[2.3, 2.3]} />
+            <planeGeometry args={[1, 1]} />
             <meshBasicMaterial transparent depthWrite={false} toneMapped={false} />
           </mesh>
           <mesh ref={marker} position={[1, PANEL_H / 2 - 0.35, 0.1]} renderOrder={7} visible={false}>

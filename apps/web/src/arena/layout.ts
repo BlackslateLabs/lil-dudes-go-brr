@@ -131,12 +131,12 @@ export const PALETTE = {
   outline: '#1b1530',
 } as const;
 
-/** Glass gate colours: body tint and the glowing rim, per gate state. */
+/** Gate colours: a bold saturated body and a bright rim, per gate state. */
 export const GLASS = {
-  unknown: { body: '#9d92e8', rim: '#efeaff' },
-  good: { body: '#2f8cff', rim: '#9fd6ff' },
-  gold: { body: '#ffb300', rim: '#ffe48a' },
-  bad: { body: '#ff3048', rim: '#ff9aa6' },
+  unknown: { body: '#7a2ff0', rim: '#e4d2ff' },
+  good: { body: '#0f6cf2', rim: '#bfe6ff' },
+  gold: { body: '#ff9d00', rim: '#fff0a6' },
+  bad: { body: '#f0182f', rim: '#ffc4ca' },
 } as const;
 
 export function opLabel(op: GateOp): string {
