@@ -1472,3 +1472,19 @@ Each step starts when the one before it is done.
 7. **Together:** feature freeze, fixes only.
 8. **Suparno:** README + demo video. **Kai:** review them; final live check on the hosted link.
 9. **Together:** submit.
+
+## 2026-11-24 22:40 IST · Suparno · deploy decisions · [DECISION] [HANDOFF]
+**Did:** decisions for the v10 deploy (rules v10 work is in progress on `v10-final`).
+**Decided (Suparno):**
+- **Deadline:** Thu Nov 27, ~19:30 IST (14:00 UTC).
+- **Any stake amount:** players type any stake (presets 0.05 / 0.1 / 0.25 / 0.5). Quick Match pairs equal stakes, with
+  the online bot as fallback; Play a Friend rooms carry the creator's stake. The multiplayer front end is being built
+  now; its log entry lists the backend gaps.
+- **Fee and payout formula unchanged** (5%, margin-scaled).
+- **Keep the program upgradeable until after judging** (don't make it immutable), so a bug found after deploy can still
+  be fixed.
+- **Compute budget is a hard limit:** v10 must not cost more than v9's worst tick (44,249 CU).
+
+**Blocked / risks:** the program only accepts the fixed `STAKE_TIERS`, so "any amount" needs a program change before the deploy.
+**Next / handoff (Kai):** in the v10 deploy, replace `STAKE_TIERS` with a min/max range (suggested 0 or 0.01–5 SOL);
+match the server queue by exact stake; let rooms carry a stake. Keep the upgrade authority.
