@@ -14,8 +14,15 @@
 // a moment with a hop before they pop; dudes removed by a clash or a bad gate pop where they are.
 // Every pop is pushed to `pops` (popQueue.ts) with why it happened, for Fx.tsx's bursts. Each agent
 // also carries a walk-cycle phase, advanced by its speed, that drives the baked walk (models/vat.ts).
+//
+// Giants are agents too: a Champion cohort is one purple giant per CHAMP_COUNT dudes and an enemy
+// giant cohort is one big troop. They use the same formation, swarm and collision as the dudes with
+// a bigger body and spacing, shove the dudes aside, squash a little to fit a narrow gap, and die
+// one at a time (staggered) with a pop flagged `PopFlag.Giant` (the last of a cohort: `Last`).
+// Enemy crowds never die at a crate: held behind a live one, they pile up against its far face.
 
 import {
+  CHAMP_COUNT,
   CLASH_REACH,
   FINAL_STAGE,
   HALL_X,
@@ -31,10 +38,10 @@ import {
   type LaneView,
 } from '@lil-dudes/client';
 import { Euler, type InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import { columnWidth, spanAt, wallsOf } from './columns';
+import { columnWidth, spanAt, wallsOf, type WallDef } from './columns';
 import { wx, wz } from './layout';
 import { narrowSpan, pipesOf, pushOut, solidsOf, type Solids } from './levelDefs';
-import { PopKind, pops } from './popQueue';
+import { PopFlag, PopKind, pops } from './popQueue';
 
 // ---- Tuning (sim units: 1 world unit = 200) ---------------------------------------------------
 
@@ -104,9 +111,43 @@ const CYC_SPRINT = 2.4;
 const CYC_SPRINT_MAX = 3.4;
 const SPRINT_FROM = 1600;
 const SPRINT_FULL = 2600;
+/** Giants walk a slower, heavier cycle (loops per second at cruise, and the range). */
+const G_CYC = 1.25;
+const G_CYC_MIN = 0.8;
+const G_CYC_MAX = 1.9;
 /** A clash pop: a foe cohort centre within this of the crowd's centre (sim units). */
 const FOE_DX = CLASH_REACH + 300;
 const FOE_DY = 900;
+
+/** Agent kinds: a dude, a Champion giant (mine, purple), an enemy giant (one big troop). */
+export const Big = {
+  Dude: 0,
+  Champ: 1,
+  Troop: 2,
+} as const;
+export type Big = (typeof Big)[keyof typeof Big];
+/** Most giants drawn for one Champion cohort (a ×8 gate on a fresh Champion makes 8). */
+export const MAX_GIANTS = 16;
+/**
+ * Body radius against solids per kind (sim units). A Champion giant is ~730 wide as drawn; 240
+ * fits the narrowest gap (a comb arm to its wall, ~550) and the drawn body squashes to fit (G_SQUASH).
+ */
+const RAD = [BODY_R, 240, 170];
+/** Formation step for giants (neighbours ~1.9 steps apart, about two bodies). */
+const G_SPACING = [SPACING, 235, 150];
+/** Drawn half-width of a giant (sim units) and the most it squashes across to fit a gap. */
+const G_HALF = [0, 360, 210];
+const G_SQUASH = 0.68;
+/** A giant column can stretch this much along the lane (more than a blob of dudes: they're big). */
+const G_KZ_MAX = 5;
+/** Giants and dudes: a dude is shoved out to the giant's radius plus this. */
+const G_SHOVE = 70;
+/** Giants die one at a time: this far apart (s), plus a little jitter. */
+const G_STAGGER = 0.14;
+/** Enemies held behind a live crate lean on it this hard (sim units/s of feed-forward). */
+const PRESS = 320;
+/** An enemy cohort this close behind a live crate's far face (sim units) is held there. */
+const PRESS_REACH = 900;
 
 const enum St {
   Free = 0,
@@ -130,6 +171,13 @@ const TSX = new Float32Array(MAX_PER);
 const TSY = new Float32Array(MAX_PER);
 const HSX = new Float32Array(MAX_PER);
 const HSY = new Float32Array(MAX_PER);
+// Giants: a sunflower with the first one on the centre, and their own tower and hall wraps.
+const GSX = new Float32Array(MAX_GIANTS);
+const GSY = new Float32Array(MAX_GIANTS);
+const GTSX = new Float32Array(MAX_GIANTS);
+const GTSY = new Float32Array(MAX_GIANTS);
+const GHSX = new Float32Array(MAX_GIANTS);
+const GHSY = new Float32Array(MAX_GIANTS);
 {
   for (let j = 0; j < MAX_PER; j++) {
     const r = Math.sqrt(j + 0.5);
@@ -157,6 +205,39 @@ const HSY = new Float32Array(MAX_PER);
     HSX[k] = alt(p) * RING_D + (row % 2 ? RING_D / 2 : 0);
     HSY[k] = -(BODY_R + 30 + row * RING_D * 0.85);
   }
+  const gr = RAD[Big.Champ]!;
+  const gd = gr * 1.9;
+  for (let j = 0; j < MAX_GIANTS; j++) {
+    const r = Math.sqrt(j);
+    GSX[j] = r * Math.cos(j * 2.39996);
+    GSY[j] = r * Math.sin(j * 2.39996);
+  }
+  j = 0;
+  for (let m = 0; j < MAX_GIANTS; m++) {
+    const r = TOWER_R + gr + 30 + m * gd;
+    const step = (gd * 0.95) / r;
+    for (let p = 0; j < MAX_GIANTS; p++) {
+      const phi = alt(p) * step;
+      if (Math.abs(phi) > ARC) break;
+      GTSX[j] = r * Math.sin(phi);
+      GTSY[j] = -r * Math.cos(phi);
+      j++;
+    }
+  }
+  const gper = Math.floor((2 * HALL_HALF) / gd) + 1;
+  for (let k = 0; k < MAX_GIANTS; k++) {
+    const row = Math.floor(k / gper);
+    GHSX[k] = alt(k % gper) * gd + (row % 2 ? gd / 2 : 0);
+    GHSY[k] = -(gr + 30 + row * gd * 0.85);
+  }
+}
+
+/**
+ * How many giants a Champion cohort is: one per CHAMP_COUNT dudes, rounded up (SPEC_V5 §4: the
+ * Champion multiplies through gates like any cohort, so a ×3 gate makes three giants).
+ */
+export function giantsFor(count: number): number {
+  return count <= 0 ? 0 : Math.min(MAX_GIANTS, Math.ceil(count / CHAMP_COUNT));
 }
 
 /** One cohort's agents and its formation this frame. */
@@ -173,8 +254,12 @@ interface Rec {
   /** Last snapshot position (for where it vanished). */
   lastX: number;
   lastY: number;
-  /** Blob centre x, axis scales, spacing and rotation. */
+  /** What its agents are (Big), and whether it is held behind a live crate (enemies). */
+  big: Big;
+  press: boolean;
+  /** Blob centre, axis scales, spacing and rotation. */
   bx: number;
+  by: number;
   kx: number;
   kz: number;
   c: number;
@@ -244,6 +329,9 @@ export class CrowdSim {
   readonly cyc = new Float32Array(POOL);
   readonly why = new Uint8Array(POOL);
   readonly whyIx = new Int8Array(POOL);
+  /** Kind (Big) and pop flags (PopFlag: a giant, the last of its cohort). */
+  readonly big = new Uint8Array(POOL);
+  readonly flags = new Uint8Array(POOL);
   private free = new Int32Array(POOL);
   private nFree = POOL;
   /** Active agent list (alive + dying), rebuilt each frame. */
@@ -273,6 +361,12 @@ export class CrowdSim {
   private foeY = new Float32Array(64);
   private nFoes = 0;
   private time = 0;
+  /** This frame's solids (giants squash to the room between them). */
+  private walls: readonly WallDef[] = [];
+  private solids: Solids | null = null;
+  /** Active giants this frame (a short list: separation is pairwise). */
+  private giants = new Int32Array(POOL);
+  private nGiants = 0;
   /** Stats: alive / dying agents and the step cost (ms, smoothed). */
   alive = 0;
   dying = 0;
@@ -324,6 +418,8 @@ export class CrowdSim {
     }
     const solids = solidsOf(layout, lane.stage);
     const walls = wallsOf(layout, lane.stage);
+    this.solids = solids;
+    this.walls = walls;
     const col = columnWidth(layout, lane.stage);
     const st = stageDef(layout, lane.stage);
     const pipes = pipesOf(layout, lane.stage);
@@ -367,15 +463,23 @@ export class CrowdSim {
 
     const stamp = ++this.stamp;
     for (const c of list) {
-      if (c.count <= 0 || c.champion || c.giant) continue;
+      if (c.count <= 0) continue;
+      const big: Big = c.champion ? Big.Champ : c.giant ? Big.Troop : Big.Dude;
       let ri = this.byId.get(c.id);
       const p = prevById.get(c.id);
+      if (ri !== undefined && this.recs[ri]!.big !== big) {
+        // A cohort that changed kind (never in the rules today): start its agents over.
+        const r = this.recs[ri]!;
+        for (let i = 0; i < r.n; i++) this.release(r.agents[i]!);
+        r.n = 0;
+        r.big = big;
+      }
       if (ri === undefined) {
         const fresh = this.freeRecs.pop();
         if (fresh === undefined) continue;
         ri = fresh;
         this.byId.set(c.id, ri);
-        resetRec(this.recs[ri]!, c.id);
+        resetRec(this.recs[ri]!, c.id, big);
         const r = this.recs[ri]!;
         // An enemy wave pours out of its tower; one first seen mid-lane (a reload) just appears.
         r.instant = this.enemy ? c.y < TOWER_Y - 500 : false;
@@ -430,22 +534,37 @@ export class CrowdSim {
       }
 
       // Formation: a blob as wide as the free span allows (walls, obstacles beside it, the lane).
-      const units = unitsFor(c.count);
-      const R = SPACING * Math.sqrt(units + 0.5);
+      // Giants keep a whole body off the sides and may stretch into a longer column.
+      const units = big === Big.Champ ? giantsFor(c.count) : big === Big.Troop ? 1 : unitsFor(c.count);
+      const step = G_SPACING[big]!;
+      const body = RAD[big]!;
+      const R = step * Math.sqrt(units + 0.5);
       // Open sides (no wall) give a big blob room to stay round: max(half a column, its radius).
       spanAt(walls, Math.max(col, 2 * R), r.x, r.y, span);
       narrowSpan(solids, r.x, r.y, R, span);
-      const lo = Math.max(EDGE, span.lo + BODY_R * 0.5);
-      const hi = Math.min(LANE_WIDTH - EDGE, span.hi - BODY_R * 0.5);
+      const lo = big ? Math.max(body, span.lo + body) : Math.max(EDGE, span.lo + BODY_R * 0.5);
+      const hi = big ? Math.min(LANE_WIDTH - body, span.hi - body) : Math.min(LANE_WIDTH - EDGE, span.hi - BODY_R * 0.5);
       const half = Math.max(30, (hi - lo) / 2);
       const kx = Math.min(KX_WIDE, half / R);
       r.kx = kx;
       // A small cohort stretches along the lane to about half the volley spacing, so a stream of
       // volleys reads as one flowing crowd rather than a line of separate clumps.
-      r.kz = Math.max(Math.min(KZ_MAX, 1 / Math.max(kx, 1e-3)), Math.min(STREAM_HALF / R, 3));
+      r.kz = big
+        ? Math.min(G_KZ_MAX, 1 / Math.max(kx, 1e-3))
+        : Math.max(Math.min(KZ_MAX, 1 / Math.max(kx, 1e-3)), Math.min(STREAM_HALF / R, 3));
       const w = R * kx;
       r.bx = hi - lo > 2 * w ? Math.max(lo + w, Math.min(hi - w, r.x)) : (lo + hi) / 2;
-      r.c = SPACING / Math.sqrt(keep);
+      r.by = r.y;
+      r.c = big ? step : SPACING / Math.sqrt(keep);
+      // Enemies held behind a live crate: the blob sits against its far face and leans on it.
+      r.press = false;
+      if (this.enemy) {
+        const top = this.crateAhead(r.x, r.y, R * r.kx);
+        if (top > -Infinity) {
+          r.press = true;
+          r.by = Math.max(r.y, top + body + R * r.kz * 0.7);
+        }
+      }
 
       // Swarm a building as the crowd closes in on it (mine only).
       r.k = 0;
@@ -468,7 +587,7 @@ export class CrowdSim {
       }
 
       // Grow or shrink the agent set to the visible count.
-      const want = Math.min(MAX_PER, Math.max(c.count > 0 ? 1 : 0, Math.round(units * keep)));
+      const want = big ? units : Math.min(MAX_PER, Math.max(c.count > 0 ? 1 : 0, Math.round(units * keep)));
       if (r.n < want) {
         r.spawnAcc += Math.max(SPAWN_MIN, want / (this.enemy ? POUR_ENEMY : POUR_MINE)) * dt;
         let budget = r.instant ? want : Math.max(1, Math.floor(r.spawnAcc));
@@ -481,6 +600,8 @@ export class CrowdSim {
           this.st[a] = St.Alive;
           this.owner[a] = ri;
           this.slot[a] = j;
+          this.big[a] = big;
+          this.flags[a] = big ? PopFlag.Giant : 0;
           this.piped[a] = r.pipeT0 >= 0 ? 1 : 0;
           this.hop[a] = 0;
           if (r.instant) {
@@ -491,7 +612,7 @@ export class CrowdSim {
           } else {
             // Pour out of the centre (the gate just crossed; for a wave, the tower's front).
             this.x[a] = r.x + (((j * 37) % 7) - 3) * 9;
-            this.y[a] = (this.enemy && r.y > TOWER_Y - 400 ? r.y - TOWER_R - BODY_R : r.y) + (((j * 53) % 5) - 2) * 9;
+            this.y[a] = (this.enemy && r.y > TOWER_Y - 400 ? r.y - TOWER_R - body : r.y) + (((j * 53) % 5) - 2) * 9;
             this.s[a] = 0.25;
           }
           this.vx[a] = r.vx;
@@ -501,12 +622,14 @@ export class CrowdSim {
         r.instant = false;
       } else if (r.n > want) {
         // Fewer: the outer ring goes (a clash, a bad gate, a crate), popping where it stands.
-        const crate = this.crateNear(st, r.lastX, r.lastY);
+        // Enemies never lose dudes to a crate (they wait behind it), only to a clash or the end.
+        const crate = this.enemy || quiet ? -1 : this.crateNear(st, r.lastX, r.lastY);
         const why = quiet ? PopKind.None : this.foeNear(r.x, r.y) ? PopKind.Clash : PopKind.Gate;
+        let order = 0;
         while (r.n > want) {
           const a = r.agents[--r.n]!;
-          if (crate >= 0) this.dieAtCrate(a, st, crate, r.n);
-          else this.dieInPlace(a, r, why);
+          if (crate >= 0) this.dieAtCrate(a, st, crate, r.n, order++);
+          else this.dieInPlace(a, r, why, order++);
         }
       }
     }
@@ -534,24 +657,32 @@ export class CrowdSim {
           }
         }
       }
-      const crate = kind === 0 ? this.crateNear(st, r.lastX, r.lastY) : -1;
+      const crate = kind === 0 && !this.enemy && !quiet ? this.crateNear(st, r.lastX, r.lastY) : -1;
       const why = quiet ? PopKind.None : this.foeNear(r.lastX, r.lastY) ? PopKind.Clash : PopKind.Gate;
       const ti = kind === 1 ? this.towerNear(r.lastX, false) : -1;
+      const g = r.big !== Big.Dude;
       for (let i = 0; i < r.n; i++) {
         const a = r.agents[i]!;
         if (kind) {
           const j = this.slot[a]!;
           this.st[a] = St.Dying;
-          this.tx[a] = ax + (kind === 1 ? TSX[j]! : HSX[j]!);
-          this.ty[a] = ay + (kind === 1 ? TSY[j]! : HSY[j]!);
+          this.tx[a] = ax + (g ? (kind === 1 ? GTSX[j]! : GHSX[j]!) : kind === 1 ? TSX[j]! : HSX[j]!);
+          this.ty[a] = ay + (g ? (kind === 1 ? GTSY[j]! : GHSY[j]!) : kind === 1 ? TSY[j]! : HSY[j]!);
           this.t[a] = 0;
-          this.life[a] = LINGER_MIN + LINGER_RAND * fract(this.phase[a]!);
+          // Giants go one at a time (in slot order, front first); dudes all at about once.
+          this.life[a] = g ? LINGER_MIN + G_STAGGER * j + 0.05 * fract(this.phase[a]!) : LINGER_MIN + LINGER_RAND * fract(this.phase[a]!);
           this.hop[a] = 1;
           this.face[a] = Math.atan2(wx(ax) - wx(this.tx[a]!), wz(ay) - wz(this.ty[a]!));
           this.why[a] = kind === 1 ? PopKind.Tower : PopKind.Hall;
           this.whyIx[a] = ti;
-        } else if (crate >= 0) this.dieAtCrate(a, st, crate, i);
-        else this.dieInPlace(a, r, why);
+        } else if (crate >= 0) this.dieAtCrate(a, st, crate, i, i);
+        else this.dieInPlace(a, r, why, i);
+      }
+      // The giant that goes last shakes the screen a little.
+      if (g && r.n > 0 && why !== PopKind.None) {
+        let last = r.agents[0]!;
+        for (let i = 1; i < r.n; i++) if (this.life[r.agents[i]!]! > this.life[last]!) last = r.agents[i]!;
+        this.flags[last]! |= PopFlag.Last;
       }
       r.n = 0;
     }
@@ -595,12 +726,33 @@ export class CrowdSim {
     return -1;
   }
 
-  private dieInPlace(a: number, r: Rec, why: PopKind) {
+  /**
+   * The far face (y) of a live crate an enemy blob at (x, y) is held behind (its centre at most
+   * PRESS_REACH past the face, a little into it at most, and the crate across its path), or −∞.
+   */
+  private crateAhead(x: number, y: number, halfW: number): number {
+    let best = -Infinity;
+    for (let k = 0; k < this.nCrates; k++) {
+      const o = k * 4;
+      const top = this.crateBox[o + 3]!;
+      // Rules v10 hold the cohort at `crate.y + CRATE_HOLD`, inside the drawn crate: anything from
+      // the crate's middle line to PRESS_REACH past its far face counts.
+      const mid = (this.crateBox[o + 1]! + top) / 2;
+      if (y < mid - 40 || y - top > PRESS_REACH) continue;
+      const reach = Math.min(halfW, 200);
+      if (x + reach < this.crateBox[o]! || x - reach > this.crateBox[o + 2]!) continue;
+      best = Math.max(best, top);
+    }
+    return best;
+  }
+
+  private dieInPlace(a: number, r: Rec, why: PopKind, order: number) {
     this.st[a] = St.Dying;
     this.why[a] = why;
     this.whyIx[a] = -1;
     this.t[a] = 0;
-    this.life[a] = 0.1 + 0.12 * fract(this.phase[a]! * 3.1);
+    const g = this.big[a] !== Big.Dude && why !== PopKind.None;
+    this.life[a] = g ? 0.12 + G_STAGGER * order + 0.04 * fract(this.phase[a]!) : 0.1 + 0.12 * fract(this.phase[a]! * 3.1);
     // A little lunge the way the crowd was going (into the clash).
     const sp = Math.hypot(r.vx, r.vy) || 1;
     this.tx[a] = this.x[a]! + (r.vx / sp) * 70;
@@ -608,20 +760,24 @@ export class CrowdSim {
     this.hop[a] = 0;
   }
 
-  private dieAtCrate(a: number, st: ReturnType<typeof stageDef>, ci: number, j: number) {
+  /** My dude (or giant) spent on a crate: it lines up on the crate's near face, hops and pops. */
+  private dieAtCrate(a: number, st: ReturnType<typeof stageDef>, ci: number, j: number, order: number) {
     const c = st.crates[ci]!;
     const depth = crateDepth(c.width, isLockCrate(st, c.x, c.y));
+    const g = this.big[a] !== Big.Dude;
+    const body = RAD[this.big[a]!]!;
+    const gap = g ? body * 1.9 : 90;
     const half = Math.max(60, c.width / 2 - 40);
-    const per = Math.max(1, Math.floor((2 * half) / 90));
+    const per = Math.max(1, Math.floor((2 * half) / gap));
     this.st[a] = St.Dying;
     this.why[a] = PopKind.Crate;
     this.whyIx[a] = ci;
     this.t[a] = 0;
-    this.life[a] = 0.18 + 0.15 * fract(this.phase[a]!);
-    this.tx[a] = c.x + Math.max(-half, Math.min(half, alt(j % per) * 90));
-    this.ty[a] = c.y - depth / 2 - BODY_R - Math.floor(j / per) * 85;
+    this.life[a] = g ? 0.2 + G_STAGGER * order + 0.04 * fract(this.phase[a]!) : 0.18 + 0.15 * fract(this.phase[a]!);
+    this.tx[a] = c.x + Math.max(-half, Math.min(half, alt(j % per) * gap));
+    this.ty[a] = c.y - depth / 2 - body - Math.floor(j / per) * gap * 0.95;
     this.hop[a] = 1;
-    this.face[a] = this.enemy ? 0 : Math.PI;
+    this.face[a] = Math.PI;
   }
 
   private popOutOfPipe(r: Rec, a: number) {
@@ -636,13 +792,16 @@ export class CrowdSim {
 
   /** Writes the formation slot of index j into (sx, sy). */
   private slotTarget(r: Rec, j: number) {
-    const ox = SFX[j]! * r.cos - SFY[j]! * r.sin;
-    const oy = SFX[j]! * r.sin + SFY[j]! * r.cos;
+    const g = r.big !== Big.Dude;
+    const fx = g ? GSX[j]! : SFX[j]!;
+    const fy = g ? GSY[j]! : SFY[j]!;
+    const ox = fx * r.cos - fy * r.sin;
+    const oy = fx * r.sin + fy * r.cos;
     let x = r.bx + ox * r.c * r.kx;
-    let y = r.y + oy * r.c * r.kz;
+    let y = r.by + oy * r.c * r.kz;
     if (r.k > 0) {
-      const bx = r.ax + (r.kind === 1 ? TSX[j]! : HSX[j]!);
-      const by = r.ay + (r.kind === 1 ? TSY[j]! : HSY[j]!);
+      const bx = r.ax + (r.kind === 1 ? (g ? GTSX[j]! : TSX[j]!) : g ? GHSX[j]! : HSX[j]!);
+      const by = r.ay + (r.kind === 1 ? (g ? GTSY[j]! : TSY[j]!) : g ? GHSY[j]! : HSY[j]!);
       x += (bx - x) * r.k;
       y += (by - y) * r.k;
     }
@@ -685,7 +844,7 @@ export class CrowdSim {
           tx = sx;
           ty = sy;
           fx = r.vx * (1 - r.k);
-          fy = r.vy * (1 - r.k);
+          fy = r.press ? -PRESS : r.vy * (1 - r.k);
           this.s[a] = Math.min(1, this.s[a]! + dt / GROW_TIME);
         }
         alive++;
@@ -693,7 +852,7 @@ export class CrowdSim {
         this.t[a]! += dt;
         if (this.t[a]! >= this.life[a]!) {
           // The pop itself: hand it to the effects (one record, no allocation).
-          if (this.why[a]) pops.push(this.why[a]! as PopKind, this.enemy ? 1 : 0, this.x[a]!, this.y[a]!, this.whyIx[a]!);
+          if (this.why[a]) pops.push(this.why[a]! as PopKind, this.enemy ? 1 : 0, this.x[a]!, this.y[a]!, this.whyIx[a]!, this.flags[a]!);
           this.release(a);
           continue;
         }
@@ -718,17 +877,27 @@ export class CrowdSim {
       this.act[n++] = a;
     }
     this.nAct = n;
+    let ng = 0;
+    for (let i = 0; i < n; i++) if (this.big[this.act[i]!]) this.giants[ng++] = this.act[i]!;
+    this.nGiants = ng;
     this.alive = alive;
     this.dying = dying;
   }
 
-  /** Light separation: neighbours closer than SEP_D push apart (spatial hash, counting sort). */
+  /**
+   * Light separation: neighbours closer than SEP_D push apart (spatial hash of the dudes, counting
+   * sort); then giants push each other apart and shove the dudes round them out of the way.
+   */
   private separate() {
     const n = this.nAct;
     const start = this.cellStart;
     start.fill(0);
     for (let i = 0; i < n; i++) {
       const a = this.act[i]!;
+      if (this.big[a]) {
+        this.cellOf[a] = -1;
+        continue;
+      }
       const cx = Math.min(GNX - 1, Math.max(0, Math.floor(this.x[a]! / CELL)));
       const cy = Math.min(GNY - 1, Math.max(0, Math.floor((this.y[a]! - GY0) / CELL)));
       const c = cx + cy * GNX;
@@ -741,12 +910,13 @@ export class CrowdSim {
     cursor.set(start.subarray(0, GNX * GNY));
     for (let i = 0; i < n; i++) {
       const a = this.act[i]!;
-      this.cellItems[cursor[this.cellOf[a]!]!++] = a;
+      if (this.cellOf[a]! >= 0) this.cellItems[cursor[this.cellOf[a]!]!++] = a;
     }
     const d2min = SEP_D * SEP_D;
     for (let i = 0; i < n; i++) {
       const a = this.act[i]!;
       const c = this.cellOf[a]!;
+      if (c < 0) continue;
       const cx = c % GNX;
       const cy = (c - cx) / GNX;
       for (let oy = -1; oy <= 1; oy++) {
@@ -785,19 +955,88 @@ export class CrowdSim {
         }
       }
     }
+    if (this.nGiants > 0) this.separateGiants();
   }
   private cellItemsCursor = new Int32Array(GNX * GNY);
+
+  private separateGiants() {
+    const gs = this.giants;
+    const ng = this.nGiants;
+    // Giant against giant: apart to about two bodies (they're few, so pairwise).
+    for (let i = 0; i < ng; i++) {
+      const a = gs[i]!;
+      for (let k = i + 1; k < ng; k++) {
+        const b = gs[k]!;
+        const want = (RAD[this.big[a]!]! + RAD[this.big[b]!]!) * 0.92;
+        const dx = this.x[b]! - this.x[a]!;
+        const dy = this.y[b]! - this.y[a]!;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= want * want) continue;
+        let d = Math.sqrt(d2);
+        let ux: number;
+        let uy: number;
+        if (d < 1) {
+          const ang = (a * 2.39996 + b) % 6.283;
+          ux = Math.cos(ang);
+          uy = Math.sin(ang);
+          d = 0;
+        } else {
+          ux = dx / d;
+          uy = dy / d;
+        }
+        const push = (want - d) * 0.5 * 0.6;
+        this.x[a]! -= ux * push;
+        this.y[a]! -= uy * push;
+        this.x[b]! += ux * push;
+        this.y[b]! += uy * push;
+      }
+    }
+    // Giant against dude: the dude is shoved out (a giant barely notices).
+    const start = this.cellStart;
+    for (let i = 0; i < ng; i++) {
+      const g = gs[i]!;
+      const R = RAD[this.big[g]!]! + G_SHOVE;
+      const gx = this.x[g]!;
+      const gy = this.y[g]!;
+      const span = Math.ceil(R / CELL);
+      const cx = Math.floor(gx / CELL);
+      const cy = Math.floor((gy - GY0) / CELL);
+      for (let yy = Math.max(0, cy - span); yy <= Math.min(GNY - 1, cy + span); yy++) {
+        for (let xx = Math.max(0, cx - span); xx <= Math.min(GNX - 1, cx + span); xx++) {
+          const cc = xx + yy * GNX;
+          for (let k = start[cc]!; k < start[cc + 1]!; k++) {
+            const b = this.cellItems[k]!;
+            const dx = this.x[b]! - gx;
+            const dy = this.y[b]! - gy;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= R * R) continue;
+            const d = Math.sqrt(d2);
+            const ux = d < 1 ? Math.cos(b * 2.39996) : dx / d;
+            const uy = d < 1 ? Math.sin(b * 2.39996) : dy / d;
+            const push = R - d;
+            this.x[b]! += ux * push * 0.85;
+            this.y[b]! += uy * push * 0.85;
+            this.x[g]! -= ux * push * 0.05;
+            this.y[g]! -= uy * push * 0.05;
+          }
+        }
+      }
+    }
+  }
 
   /** Out of obstacles, walls, towers, crates, the hall and the lane edges. */
   private collide(solids: Solids, hallUp: boolean) {
     const n = this.nAct;
-    const yMax = hallUp ? HALL_FRONT - BODY_R : LANE_LENGTH - 120;
     for (let i = 0; i < n; i++) {
       const a = this.act[i]!;
+      const big = this.big[a]!;
+      const BODY = RAD[big]!;
+      const edge = big ? BODY : EDGE;
+      const yMax = hallUp ? HALL_FRONT - BODY : LANE_LENGTH - 120;
       let x = this.x[a]!;
       let y = this.y[a]!;
       for (let k = 0; k < solids.n; k++) {
-        if (pushOut(solids, k, x, y, BODY_R, hitOut) > 0) {
+        if (pushOut(solids, k, x, y, BODY, hitOut) > 0) {
           x = hitOut.x;
           y = hitOut.y;
           this.killInto(a, hitOut.nx, hitOut.ny);
@@ -805,10 +1044,10 @@ export class CrowdSim {
       }
       for (let k = 0; k < this.nCrates; k++) {
         const o = k * 4;
-        const x0 = this.crateBox[o]! - BODY_R;
-        const y0 = this.crateBox[o + 1]! - BODY_R;
-        const x1 = this.crateBox[o + 2]! + BODY_R;
-        const y1 = this.crateBox[o + 3]! + BODY_R;
+        const x0 = this.crateBox[o]! - BODY;
+        const y0 = this.crateBox[o + 1]! - BODY;
+        const x1 = this.crateBox[o + 2]! + BODY;
+        const y1 = this.crateBox[o + 3]! + BODY;
         if (x <= x0 || x >= x1 || y <= y0 || y >= y1) continue;
         const l = x - x0;
         const rr = x1 - x;
@@ -824,7 +1063,7 @@ export class CrowdSim {
         if (!this.towerLive[k]) continue;
         const dx = x - this.towerX[k]!;
         const dy = y - this.towerY[k]!;
-        const R = TOWER_R + BODY_R;
+        const R = TOWER_R + BODY;
         const d2 = dx * dx + dy * dy;
         if (d2 >= R * R) continue;
         const d = Math.sqrt(d2) || 1;
@@ -832,8 +1071,8 @@ export class CrowdSim {
         y = this.towerY[k]! + (dy / d) * R;
       }
       if (y > yMax) y = yMax;
-      if (x < EDGE) x = EDGE;
-      else if (x > LANE_WIDTH - EDGE) x = LANE_WIDTH - EDGE;
+      if (x < edge) x = edge;
+      else if (x > LANE_WIDTH - edge) x = LANE_WIDTH - edge;
       this.x[a] = x;
       this.y[a] = y;
     }
@@ -848,16 +1087,16 @@ export class CrowdSim {
   }
 
   /**
-   * Writes every active agent into `mesh` (from instance `from`); returns the next free instance.
-   * `yaw0` is the resting heading (dudes run up the lane, troops face the camera).
+   * Writes every active agent of kind `kind` (Big) into `mesh` (from instance `from`); returns the
+   * next free instance. Giants walk a slower, heavier cycle and squash across to fit a gap.
    */
-  write(mesh: InstancedMesh, from: number, scale: number, time: number, dt: number, anim: Float32Array | null): number {
+  write(mesh: InstancedMesh, from: number, kind: Big, scale: number, time: number, dt: number, anim: Float32Array | null): number {
     let n = from;
     const cap = mesh.instanceMatrix.count;
-    const turn = Math.min(1, dt * 8);
+    const turn = Math.min(1, dt * (kind ? 5 : 8));
     for (let i = 0; i < this.nAct && n < cap; i++) {
       const a = this.act[i]!;
-      if (this.st[a] === St.Free) continue;
+      if (this.st[a] === St.Free || this.big[a] !== kind) continue;
       const vx = this.vx[a]!;
       const vy = this.vy[a]!;
       const sp = Math.hypot(vx, vy);
@@ -874,17 +1113,19 @@ export class CrowdSim {
       const yaw = (this.yaw[a] = this.yaw[a]! + d * turn);
       // Walk cycle: faster with speed, into the sprint loop once boosted; lingering dudes march.
       const run = Math.max(sp, boost);
-      const sprint = smooth((run - SPRINT_FROM) / (SPRINT_FULL - SPRINT_FROM));
-      const walkRate = Math.min(CYC_WALK_MAX, Math.max(CYC_MIN, run * CYC_PER_SPEED));
+      const sprint = kind ? 0 : smooth((run - SPRINT_FROM) / (SPRINT_FULL - SPRINT_FROM));
+      const walkRate = kind
+        ? Math.min(G_CYC_MAX, Math.max(G_CYC_MIN, (G_CYC * run) / 1200))
+        : Math.min(CYC_WALK_MAX, Math.max(CYC_MIN, run * CYC_PER_SPEED));
       const sprintRate = Math.min(CYC_SPRINT_MAX, CYC_SPRINT * Math.max(1, run / SPRINT_FULL));
-      const rate = dying && this.hop[a] ? 2.4 : walkRate + (sprintRate - walkRate) * sprint;
+      const rate = dying && this.hop[a] ? (kind ? 1.6 : 2.4) : walkRate + (sprintRate - walkRate) * sprint;
       const cyc = (this.cyc[a] = fract(this.cyc[a]! + dt * rate));
       let s = this.s[a]!;
       // The baked cycle has its own bob; this is just a little extra spring in the step.
-      let lift = Math.abs(Math.sin(cyc * Math.PI * 2)) * (sp > 150 ? 0.06 : 0.02);
+      let lift = Math.abs(Math.sin(cyc * Math.PI * 2)) * (kind ? 0.08 : sp > 150 ? 0.06 : 0.02);
       if (dying) {
         const left = this.life[a]! - this.t[a]!;
-        if (this.hop[a]) lift = Math.abs(Math.sin(time * 15 + this.phase[a]!)) * 0.4;
+        if (this.hop[a]) lift = kind ? Math.abs(Math.sin(time * 8 + this.phase[a]!)) * 0.45 : Math.abs(Math.sin(time * 15 + this.phase[a]!)) * 0.4;
         if (left < POP_TIME) {
           const u = 1 - left / POP_TIME;
           s *= u < 0.4 ? 1 + u * 0.8 : 1.32 * (1 - (u - 0.4) / 0.6);
@@ -894,7 +1135,10 @@ export class CrowdSim {
       // Boosted (cannon launch, speed pad): stretch along the run.
       const k = Math.min(1, Math.max(0, (boost - STRETCH_FROM) / 1400));
       const base = scale * s;
-      scl.set(base * (1 - 0.12 * k), base * (1 - 0.05 * k), base * (1 + 0.4 * k));
+      // A giant in a gap narrower than its drawn body squashes across (and grows a touch taller).
+      const sq = kind ? this.squash(this.x[a]!, this.y[a]!, G_HALF[kind]!) : 1;
+      const tall = sq < 1 ? 1 + (1 - sq) * 0.35 : 1;
+      scl.set(base * (1 - 0.12 * k) * sq, base * (1 - 0.05 * k) * tall, base * (1 + 0.4 * k) * tall);
       eul.set(0, yaw + Math.sin(time * 2.3 + this.phase[a]!) * 0.06, 0);
       q.setFromEuler(eul);
       pos.set(wx(this.x[a]!), lift, wz(this.y[a]!));
@@ -906,6 +1150,15 @@ export class CrowdSim {
       mesh.setMatrixAt(n++, m4);
     }
     return n;
+  }
+
+  /** How much a giant of drawn half-width `half` at (x, y) squashes across to fit (G_SQUASH..1). */
+  private squash(x: number, y: number, half: number): number {
+    if (!this.solids) return 1;
+    spanAt(this.walls, 2 * LANE_WIDTH, x, y, span);
+    narrowSpan(this.solids, x, y, half * 0.6, span);
+    const room = Math.min(x - span.lo, span.hi - x);
+    return Math.max(G_SQUASH, Math.min(1, room / half));
   }
 }
 
@@ -925,7 +1178,10 @@ function newRec(): Rec {
     vy: 0,
     lastX: 0,
     lastY: 0,
+    big: Big.Dude,
+    press: false,
     bx: 0,
+    by: 0,
     kx: 1,
     kz: 1,
     c: SPACING,
@@ -945,8 +1201,10 @@ function newRec(): Rec {
   };
 }
 
-function resetRec(r: Rec, id: number) {
+function resetRec(r: Rec, id: number, big: Big) {
   r.id = id;
+  r.big = big;
+  r.press = false;
   r.n = 0;
   r.k = 0;
   r.kind = 0;

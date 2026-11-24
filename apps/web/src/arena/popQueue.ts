@@ -20,12 +20,20 @@ export const PopKind = {
 } as const;
 export type PopKind = (typeof PopKind)[keyof typeof PopKind];
 
+/** Extra bits on a pop: it was a giant (a Champion or an enemy giant), the last of its cohort. */
+export const PopFlag = {
+  Giant: 1,
+  Last: 2,
+} as const;
+
 export class PopQueue {
   readonly kind: Uint8Array;
   /** 0 = mine (blue), 1 = the base's troops (red). */
   readonly team: Uint8Array;
   /** Building / crate index for Tower and Crate pops (−1 otherwise). */
   readonly ix: Int8Array;
+  /** PopFlag bits. */
+  readonly flags: Uint8Array;
   /** Sim units. */
   readonly x: Float32Array;
   readonly y: Float32Array;
@@ -37,6 +45,7 @@ export class PopQueue {
     this.kind = new Uint8Array(cap);
     this.team = new Uint8Array(cap);
     this.ix = new Int8Array(cap);
+    this.flags = new Uint8Array(cap);
     this.x = new Float32Array(cap);
     this.y = new Float32Array(cap);
   }
@@ -45,7 +54,7 @@ export class PopQueue {
     return this.size;
   }
 
-  push(kind: PopKind, team: number, x: number, y: number, ix = -1) {
+  push(kind: PopKind, team: number, x: number, y: number, ix = -1, flags = 0) {
     if (this.size >= this.cap) {
       this.dropped++;
       return;
@@ -54,6 +63,7 @@ export class PopQueue {
     this.kind[i] = kind;
     this.team[i] = team;
     this.ix[i] = ix;
+    this.flags[i] = flags;
     this.x[i] = x;
     this.y[i] = y;
     this.size++;
