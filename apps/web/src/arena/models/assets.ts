@@ -20,6 +20,7 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { loadVat } from './vat';
 
 const BASE = `${import.meta.env.BASE_URL}assets/models/`;
 
@@ -91,7 +92,8 @@ export function preloadPacks(...names: PackName[]) {
  * ticking, so the first frames never stall on a GLB parse. Rejects if a pack fails to load.
  */
 export function modelsReady(): Promise<void> {
-  return Promise.all((Object.keys(MODELS) as PackName[]).map(loadPack)).then(() => undefined);
+  // The baked walk cycles (vat.ts) load alongside; a missing file only leaves the crowds static.
+  return Promise.all([...(Object.keys(MODELS) as PackName[]).map(loadPack), loadVat()]).then(() => undefined);
 }
 
 // ---- Team recolouring -------------------------------------------------------------------------

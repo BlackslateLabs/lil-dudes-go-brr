@@ -12,6 +12,8 @@
 //      towers, crates and the lane edges, so crowds pile up, widen and flow round solid things.
 // A cohort that vanishes (a tower hit, loot, a crate) leaves its dudes lingering at their slots for
 // a moment with a hop before they pop; dudes removed by a clash or a bad gate pop where they are.
+// Every pop is pushed to `pops` (popQueue.ts) with why it happened, for Fx.tsx's bursts. Each agent
+// also carries a walk-cycle phase, advanced by its speed, that drives the baked walk (models/vat.ts).
 
 import {
   CLASH_REACH,
@@ -32,6 +34,7 @@ import { Euler, type InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
 import { columnWidth, spanAt, wallsOf } from './columns';
 import { wx, wz } from './layout';
 import { narrowSpan, pipesOf, pushOut, solidsOf, type Solids } from './levelDefs';
+import { PopKind, pops } from './popQueue';
 
 // ---- Tuning (sim units: 1 world unit = 200) ---------------------------------------------------
 
@@ -42,13 +45,13 @@ export const POOL = 1900;
 /** A cohort is drawn 1:1 up to this many dudes, then grows only slowly (to MAX_PER). */
 const COHORT_FULL = 250;
 const MAX_PER = 400;
-/** Sunflower step: a dude's footprint is ~π·SPACING², so neighbours touch (dudes are ~1 unit wide). */
-const SPACING = 74;
+/** Sunflower step: a dude's footprint is ~π·SPACING², so neighbours touch (dudes are ~1.2 units wide). */
+const SPACING = 84;
 /** Body radius against solids, and the edge margin inside the lane. */
-const BODY_R = 66;
-const EDGE = 84;
+const BODY_R = 76;
+const EDGE = 96;
 /** Neighbours closer than this are pushed apart (a bit under the slot spacing: no fight at rest). */
-const SEP_D = 104;
+const SEP_D = 120;
 const SEP_K = 0.55;
 /** A blob in a roomy corridor spreads up to this much wider than round (and flatter). */
 const KX_WIDE = 1.45;
@@ -68,9 +71,14 @@ const SPAWN_MIN = 60;
 const GROW_TIME = 0.16;
 /** Towers: drawn ~3.4 wide; the solid core the dudes keep off. */
 const TOWER_R = 300;
-/** Swarming: blend toward the building's slots over the last APPROACH of the way. */
-const APPROACH = 950;
-const RING_D = 100;
+/**
+ * Swarming: blend toward the building's slots only over the last APPROACH of the way (~1 s at
+ * cruise), easing in, so a crowd walks straight and turns at the end, like the sim's cohorts.
+ * The blend is complete TURN_DONE short of the building's line.
+ */
+const APPROACH = 1250;
+const TURN_DONE = 220;
+const RING_D = 112;
 const ARC = 1.95; // rad either side of the front
 /** The town hall's front face (Base.tsx: 0.4 world past VAULT_Y) and half its width. */
 const HALL_FRONT = VAULT_Y + 80;
@@ -85,6 +93,20 @@ const PIPE_STAGGER = 0.16;
 const PIPE_JUMP = 700;
 /** Speed above which dudes stretch (boosted by the cannon or a speed pad), sim units/s. */
 const STRETCH_FROM = 1700;
+/**
+ * Walk cycle (the baked `walk` loop, 0.67 s native): cycles per second at a speed, and the blend
+ * into `sprint` once boosted. Cruise (1,200/s) is a brisk ~2.2 cycles/s; standing still marches.
+ */
+const CYC_MIN = 1.3;
+const CYC_PER_SPEED = 2.2 / 1200;
+const CYC_WALK_MAX = 2.6;
+const CYC_SPRINT = 2.4;
+const CYC_SPRINT_MAX = 3.4;
+const SPRINT_FROM = 1600;
+const SPRINT_FULL = 2600;
+/** A clash pop: a foe cohort centre within this of the crowd's centre (sim units). */
+const FOE_DX = CLASH_REACH + 300;
+const FOE_DY = 900;
 
 const enum St {
   Free = 0,
@@ -191,6 +213,8 @@ export interface CrowdInput {
   lane: LaneView;
   layout: number;
   list: readonly CohortView[];
+  /** The other team's cohorts in this lane (clash fronts). */
+  foes: readonly CohortView[];
   prevById: ReadonlyMap<number, CohortView>;
   alpha: number;
   time: number;
@@ -216,6 +240,10 @@ export class CrowdSim {
   readonly hop = new Uint8Array(POOL);
   readonly owner = new Int16Array(POOL);
   readonly slot = new Int16Array(POOL);
+  /** Walk-cycle phase (0..1) and why a dying agent dies (PopKind, + building / crate index). */
+  readonly cyc = new Float32Array(POOL);
+  readonly why = new Uint8Array(POOL);
+  readonly whyIx = new Int8Array(POOL);
   private free = new Int32Array(POOL);
   private nFree = POOL;
   /** Active agent list (alive + dying), rebuilt each frame. */
@@ -240,6 +268,10 @@ export class CrowdSim {
   private towerY = new Float32Array(4);
   private towerLive = new Uint8Array(4);
   private nTowers = 0;
+  /** The other team's cohort centres this frame (for telling a clash from a bad gate). */
+  private foeX = new Float32Array(64);
+  private foeY = new Float32Array(64);
+  private nFoes = 0;
   private time = 0;
   /** Stats: alive / dying agents and the step cost (ms, smoothed). */
   alive = 0;
@@ -253,6 +285,7 @@ export class CrowdSim {
       this.freeRecs.push(63 - i);
     }
     for (let i = 0; i < POOL; i++) this.phase[i] = Math.random() * 100;
+    for (let i = 0; i < POOL; i++) this.cyc[i] = Math.random();
   }
 
   /** A `pipe` event: cohort `id` went into pipe `ix` this tick. */
@@ -281,7 +314,7 @@ export class CrowdSim {
 
   update(inp: CrowdInput) {
     const t0 = performance.now();
-    const { lane, layout, list, prevById, alpha } = inp;
+    const { lane, layout, list, foes, prevById, alpha } = inp;
     const dt = Math.min(0.25, Math.max(0.0001, inp.dt));
     this.time = inp.time;
     const key = `${layout}|${lane.stage}`;
@@ -295,6 +328,8 @@ export class CrowdSim {
     const st = stageDef(layout, lane.stage);
     const pipes = pipesOf(layout, lane.stage);
     const rush = lane.phase === 'rush';
+    // Crowds wiped by the stage ending (transit, the end) vanish without bursts.
+    const quiet = lane.phase !== 'fight' && lane.phase !== 'rush';
     const hallUp = lane.stage === FINAL_STAGE && lane.phase !== 'transit';
 
     // Per-frame solids that change: live crates and towers.
@@ -316,6 +351,13 @@ export class CrowdSim {
       this.towerY[this.nTowers] = tw.y;
       this.towerLive[this.nTowers] = tw.hp > 0 ? 1 : 0;
       this.nTowers++;
+    }
+
+    this.nFoes = 0;
+    for (const f of foes) {
+      if (f.count <= 0 || this.nFoes >= 64) continue;
+      this.foeX[this.nFoes] = f.x;
+      this.foeY[this.nFoes++] = f.y;
     }
 
     // Global cap: past MAX_UNITS every crowd keeps the same share of its units (blobs keep their size).
@@ -410,14 +452,14 @@ export class CrowdSim {
       r.kind = 0;
       if (!this.enemy) {
         if (rush && hallUp) {
-          r.k = smooth((r.y - (VAULT_Y - APPROACH)) / (APPROACH - 150));
+          r.k = lateTurn(r.y, VAULT_Y);
           r.kind = 2;
           r.ax = HALL_X;
           r.ay = HALL_FRONT;
         } else if (!rush) {
           const ti = this.towerNear(r.x, true);
           if (ti >= 0) {
-            r.k = smooth((r.y - (this.towerY[ti]! - APPROACH)) / (APPROACH - 150));
+            r.k = lateTurn(r.y, this.towerY[ti]!);
             r.kind = 1;
             r.ax = this.towerX[ti]!;
             r.ay = this.towerY[ti]!;
@@ -460,10 +502,11 @@ export class CrowdSim {
       } else if (r.n > want) {
         // Fewer: the outer ring goes (a clash, a bad gate, a crate), popping where it stands.
         const crate = this.crateNear(st, r.lastX, r.lastY);
+        const why = quiet ? PopKind.None : this.foeNear(r.x, r.y) ? PopKind.Clash : PopKind.Gate;
         while (r.n > want) {
           const a = r.agents[--r.n]!;
           if (crate >= 0) this.dieAtCrate(a, st, crate, r.n);
-          else this.dieInPlace(a, r);
+          else this.dieInPlace(a, r, why);
         }
       }
     }
@@ -492,6 +535,8 @@ export class CrowdSim {
         }
       }
       const crate = kind === 0 ? this.crateNear(st, r.lastX, r.lastY) : -1;
+      const why = quiet ? PopKind.None : this.foeNear(r.lastX, r.lastY) ? PopKind.Clash : PopKind.Gate;
+      const ti = kind === 1 ? this.towerNear(r.lastX, false) : -1;
       for (let i = 0; i < r.n; i++) {
         const a = r.agents[i]!;
         if (kind) {
@@ -503,8 +548,10 @@ export class CrowdSim {
           this.life[a] = LINGER_MIN + LINGER_RAND * fract(this.phase[a]!);
           this.hop[a] = 1;
           this.face[a] = Math.atan2(wx(ax) - wx(this.tx[a]!), wz(ay) - wz(this.ty[a]!));
+          this.why[a] = kind === 1 ? PopKind.Tower : PopKind.Hall;
+          this.whyIx[a] = ti;
         } else if (crate >= 0) this.dieAtCrate(a, st, crate, i);
-        else this.dieInPlace(a, r);
+        else this.dieInPlace(a, r, why);
       }
       r.n = 0;
     }
@@ -531,6 +578,14 @@ export class CrowdSim {
     return best;
   }
 
+  /** Whether a foe crowd is close enough to (x, y) for losses there to be a clash. */
+  private foeNear(x: number, y: number): boolean {
+    for (let i = 0; i < this.nFoes; i++) {
+      if (Math.abs(this.foeX[i]! - x) <= FOE_DX && Math.abs(this.foeY[i]! - y) <= FOE_DY) return true;
+    }
+    return false;
+  }
+
   /** A crate (stage def index) the cohort at (x, y) is crossing right now, or −1. */
   private crateNear(st: ReturnType<typeof stageDef>, x: number, y: number): number {
     for (let i = 0; i < st.crates.length; i++) {
@@ -540,8 +595,10 @@ export class CrowdSim {
     return -1;
   }
 
-  private dieInPlace(a: number, r: Rec) {
+  private dieInPlace(a: number, r: Rec, why: PopKind) {
     this.st[a] = St.Dying;
+    this.why[a] = why;
+    this.whyIx[a] = -1;
     this.t[a] = 0;
     this.life[a] = 0.1 + 0.12 * fract(this.phase[a]! * 3.1);
     // A little lunge the way the crowd was going (into the clash).
@@ -557,6 +614,8 @@ export class CrowdSim {
     const half = Math.max(60, c.width / 2 - 40);
     const per = Math.max(1, Math.floor((2 * half) / 90));
     this.st[a] = St.Dying;
+    this.why[a] = PopKind.Crate;
+    this.whyIx[a] = ci;
     this.t[a] = 0;
     this.life[a] = 0.18 + 0.15 * fract(this.phase[a]!);
     this.tx[a] = c.x + Math.max(-half, Math.min(half, alt(j % per) * 90));
@@ -633,6 +692,8 @@ export class CrowdSim {
       } else {
         this.t[a]! += dt;
         if (this.t[a]! >= this.life[a]!) {
+          // The pop itself: hand it to the effects (one record, no allocation).
+          if (this.why[a]) pops.push(this.why[a]! as PopKind, this.enemy ? 1 : 0, this.x[a]!, this.y[a]!, this.whyIx[a]!);
           this.release(a);
           continue;
         }
@@ -790,7 +851,7 @@ export class CrowdSim {
    * Writes every active agent into `mesh` (from instance `from`); returns the next free instance.
    * `yaw0` is the resting heading (dudes run up the lane, troops face the camera).
    */
-  write(mesh: InstancedMesh, from: number, scale: number, time: number, dt: number): number {
+  write(mesh: InstancedMesh, from: number, scale: number, time: number, dt: number, anim: Float32Array | null): number {
     let n = from;
     const cap = mesh.instanceMatrix.count;
     const turn = Math.min(1, dt * 8);
@@ -811,9 +872,16 @@ export class CrowdSim {
       let d = want - this.yaw[a]!;
       d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI;
       const yaw = (this.yaw[a] = this.yaw[a]! + d * turn);
-      const ph = time * 13 + this.phase[a]!;
+      // Walk cycle: faster with speed, into the sprint loop once boosted; lingering dudes march.
+      const run = Math.max(sp, boost);
+      const sprint = smooth((run - SPRINT_FROM) / (SPRINT_FULL - SPRINT_FROM));
+      const walkRate = Math.min(CYC_WALK_MAX, Math.max(CYC_MIN, run * CYC_PER_SPEED));
+      const sprintRate = Math.min(CYC_SPRINT_MAX, CYC_SPRINT * Math.max(1, run / SPRINT_FULL));
+      const rate = dying && this.hop[a] ? 2.4 : walkRate + (sprintRate - walkRate) * sprint;
+      const cyc = (this.cyc[a] = fract(this.cyc[a]! + dt * rate));
       let s = this.s[a]!;
-      let lift = Math.abs(Math.sin(ph)) * (sp > 150 ? 0.2 : 0.06);
+      // The baked cycle has its own bob; this is just a little extra spring in the step.
+      let lift = Math.abs(Math.sin(cyc * Math.PI * 2)) * (sp > 150 ? 0.06 : 0.02);
       if (dying) {
         const left = this.life[a]! - this.t[a]!;
         if (this.hop[a]) lift = Math.abs(Math.sin(time * 15 + this.phase[a]!)) * 0.4;
@@ -827,10 +895,14 @@ export class CrowdSim {
       const k = Math.min(1, Math.max(0, (boost - STRETCH_FROM) / 1400));
       const base = scale * s;
       scl.set(base * (1 - 0.12 * k), base * (1 - 0.05 * k), base * (1 + 0.4 * k));
-      eul.set(0, yaw + Math.sin(ph * 0.37 + a) * 0.12, Math.cos(ph) * 0.2 * (1 - k));
+      eul.set(0, yaw + Math.sin(time * 2.3 + this.phase[a]!) * 0.06, 0);
       q.setFromEuler(eul);
       pos.set(wx(this.x[a]!), lift, wz(this.y[a]!));
       m4.compose(pos, q, scl);
+      if (anim) {
+        anim[n * 2] = cyc;
+        anim[n * 2 + 1] = sprint;
+      }
       mesh.setMatrixAt(n++, m4);
     }
     return n;
@@ -885,6 +957,12 @@ function resetRec(r: Rec, id: number) {
 const smooth = (u: number) => {
   const k = Math.min(1, Math.max(0, u));
   return k * k * (3 - 2 * k);
+};
+
+/** Swarm blend for a crowd at y heading for a building line at `ty`: 0 until APPROACH out, eased in. */
+const lateTurn = (y: number, ty: number) => {
+  const u = Math.min(1, Math.max(0, (y - (ty - APPROACH)) / (APPROACH - TURN_DONE)));
+  return smooth(u * u);
 };
 
 const fract = (v: number) => v - Math.floor(v);
