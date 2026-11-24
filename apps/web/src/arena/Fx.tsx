@@ -6,7 +6,7 @@ import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
 import { Particles, burst, pop } from './particles';
-import { PopKind, hallPulse, pops as popQ, towerPulse } from './popQueue';
+import { PopFlag, PopKind, hallPulse, pops as popQ, towerPulse } from './popQueue';
 
 const POOL = 16;
 const POP_LIFE = 0.7; // s
@@ -47,8 +47,8 @@ const COLOR = {
 };
 
 /**
- * Effects in your lane: reveal pops, particle bursts (gate multiply, GOTCHA, tower hits and
- * collapses, crate smashes, coins, clashes, muzzle puffs) and rate-limited camera shake.
+ * Effects in your lane: reveal pops, particle bursts (gate multiply, tower hits and collapses,
+ * crate smashes, coins, clashes, muzzle puffs, crowd and giant pops) and rate-limited camera shake.
  * Purely cosmetic: everything here reacts to match events, nothing feeds back into the match.
  */
 export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
@@ -68,13 +68,14 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
     return () => popQ.clear();
   }, []);
 
+  const kick = (amount: number, force = false) => {
+    if (!force && clock.current - lastShake.current < SHAKE_GAP) return;
+    lastShake.current = clock.current;
+    shake.current = Math.min(1.4, shake.current + amount);
+  };
+
   useEffect(() => {
     free.current = sprites.current.filter(Boolean);
-    const kick = (amount: number, force = false) => {
-      if (!force && clock.current - lastShake.current < SHAKE_GAP) return;
-      lastShake.current = clock.current;
-      shake.current = Math.min(1.4, shake.current + amount);
-    };
     // Per-key rate limit for frequent events (a gate passes many crowds, towers take many hits).
     const last = new Map<string, number>();
     const every = (key: string, gap: number) => {
@@ -166,7 +167,8 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
 
   /**
    * Crowd pops → bursts (budgeted, aggregated), and a hit pulse for the building a wave hits.
-   * Only my lane's crowds exist, so every pop is in my lane.
+   * Only my lane's crowds exist, so every pop is in my lane. A giant always gets its own big burst
+   * (outside the budget: there are few), and the last giant of a cohort shakes the camera.
    */
   function drainPops() {
     const n = popQ.length;
@@ -182,10 +184,18 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
       const z = wz(popQ.y[i]!);
       const team = popQ.team[i]!;
       const ix = popQ.ix[i]!;
+      const flags = popQ.flags[i]!;
       popQ.shift();
       const b = kind === PopKind.Tower && ix >= 0 && ix < 4 ? ix : kind === PopKind.Hall ? 4 : -1;
-      if (b >= 0) pulse.n[b]!++;
-      if (kind === PopKind.None || ++skip < stride) continue;
+      if (b >= 0) pulse.n[b]! += flags & PopFlag.Giant ? 6 : 1;
+      if (kind === PopKind.None) continue;
+      if (flags & PopFlag.Giant) {
+        pop.giant(px, x, z, team, (flags & PopFlag.Last) !== 0);
+        if (flags & PopFlag.Last) kick(0.5, true);
+        else kick(0.12);
+        continue;
+      }
+      if (++skip < stride) continue;
       skip = 0;
       if (made >= POP_MAX) continue;
       made++;

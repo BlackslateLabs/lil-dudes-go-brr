@@ -322,6 +322,11 @@ const WOOD_LIGHT = new Color('#f08a4b');
 
 // Pop colours, linear RGB (the shader multiplies the atlas by them).
 const STAR = new Color('#ffd84a');
+// Giant pops: a Champion bursts purple and gold, an enemy giant red and dark.
+const CHAMP_PURPLE = new Color('#8a5cff');
+const CHAMP_GOLD = new Color('#ffc21a');
+const TROOP_RED = new Color('#ff4a5a');
+const TROOP_DARK = new Color('#ffb0a0');
 const PUFF = new Color('#fffaf0');
 const GATE_DUST = new Color('#e9dfd2');
 
@@ -363,6 +368,35 @@ export const pop = {
       px.solid.emit(Frame.Debris, x + rand(-0.3, 0.3), rand(0.6, 1.2), z + rand(-0.2, 0.2), rand(-2.5, 2.5), rand(3, 5.5), rand(-0.5, 2), 16, 0, rand(0.5, 0.7), rand(0.75, 1) * g, 1, c.r, c.g, c.b, 1, rand(0, 6.28), rand(-10, 10), 0, false);
     }
     px.solid.emit(Frame.Puff, x + rand(-0.2, 0.2), rand(0.4, 0.8), z + 0.2, rand(-0.6, 0.6), rand(0.4, 1.1), 0, 0, 2.5, rand(0.35, 0.5), 0.8 * g, 1.6, DUST.r, DUST.g, DUST.b, 0.8, rand(0, 6.28), 0, 0, true);
+  },
+  /**
+   * A giant pops (one at a time): a big flash and puffs in its colours (`team` 0 = a Champion,
+   * purple and gold; 1 = an enemy giant, red), a shockwave ring, and chunky stars thrown high.
+   * `last` (the last giant of its cohort) is bigger still.
+   */
+  giant(px: Particles, x: number, z: number, team: number, last: boolean) {
+    const g = last ? 1.3 : 1;
+    const a = team ? TROOP_RED : CHAMP_PURPLE;
+    const b = team ? TROOP_DARK : CHAMP_GOLD;
+    // Flash.
+    px.glow.emit(Frame.Burst, x, 2.2, z + 0.3, 0, 0, 0, 0, 0, 0.2, 4.2 * g, 1.5, a.r * 2, a.g * 2, a.b * 2, 0.9, rand(0, 6.28), 0, 0, false);
+    px.glow.emit(Frame.Burst, x, 2.4, z + 0.4, 0, 0, 0, 0, 0, 0.14, 2.6 * g, 1.3, b.r * 2.2, b.g * 2.2, b.b * 2.2, 0.9, rand(0, 6.28), 0, 0, false);
+    // Shockwave: a fast gold ring and a slower, wider purple one.
+    px.glow.emit(Frame.Ring, x, 0.7, z, 0, 0, 0, 0, 0, 0.42, 3 * g, 3.6, b.r * 1.8, b.g * 1.8, b.b * 1.8, 0.9, 0, 0, 0, false);
+    px.glow.emit(Frame.Ring, x, 0.5, z, 0, 0, 0, 0, 0, 0.6, 2.4 * g, 5.2, a.r * 1.6, a.g * 1.6, a.b * 1.6, 0.75, 0, 0, 0, false);
+    // Puffs in the body colour.
+    for (let i = 0; i < 5; i++) {
+      const ang = (i / 5) * Math.PI * 2 + rand(-0.3, 0.3);
+      px.solid.emit(Frame.Puff, x + Math.cos(ang) * 0.6, rand(0.8, 2.4), z + Math.sin(ang) * 0.4, Math.cos(ang) * rand(1.5, 3), rand(0.8, 2), Math.sin(ang) * rand(0.6, 1.4), 0, 2.4, rand(0.5, 0.7), rand(1.9, 2.6) * g, 1.7, a.r * 1.1, a.g * 1.1, a.b * 1.1, 0.95, rand(0, 6.28), 0, 0, true);
+    }
+    // Chunky stars, gold and purple, thrown high (normal blend: they read on the light lane).
+    const stars = last ? 12 : 9;
+    for (let i = 0; i < stars; i++) {
+      const ang = rand(0, Math.PI * 2);
+      const sp = rand(3, 6.5);
+      const c = i % 3 === 2 ? a : b;
+      px.solid.emit(Frame.Sparkle, x, rand(1.6, 2.6), z, Math.cos(ang) * sp, rand(6, 10), Math.sin(ang) * sp * 0.6 + 0.8, 16, 0.8, rand(0.7, 0.95), rand(1.3, 1.9) * g, 0.5, c.r * 1.3, c.g * 1.3, c.b * 1.3, 1, rand(0, 6.28), rand(-7, 7), 0, true);
+    }
   },
   /** Lost to a bad gate (or anything else): a small dust puff. */
   dust(px: Particles, x: number, z: number, k: number) {
