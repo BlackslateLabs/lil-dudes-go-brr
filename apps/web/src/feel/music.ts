@@ -34,7 +34,8 @@ export const MUSIC: Record<MusicTrack, TrackDef> = {
 
 const MUSIC_DIR = `${import.meta.env.BASE_URL}assets/music/`;
 const LOOP_START = 0.1; // s; must stay below the 0.3 s head copy in each loop file
-const FADE = 0.5; // s, crossfade between beds
+const FADE = 1.0; // s, crossfade between beds
+const FADE_IN = 1.4; // s, the first bed (or one after silence) fades in
 const STING_LATE = 1.5; // s; a sting whose file isn't ready by then is dropped, not played late
 
 interface Voice {
@@ -110,6 +111,7 @@ function fadeOut(v: Voice, secs: number) {
 
 function switchTo(track: MusicTrack | null) {
   const ac = ctx!;
+  const cross = !!current;
   if (current && current.track !== track) {
     fadeOut(current, track && !MUSIC[track].loopLen ? 0.25 : FADE);
     current = null;
@@ -126,17 +128,21 @@ function switchTo(track: MusicTrack | null) {
     if (wanted !== track || current) return;
     if (sting && performance.now() - wantedAt > STING_LATE * 1000) return;
     if (bufs.some((b) => !b)) return;
-    start(track, def, bufs as AudioBuffer[]);
+    start(track, def, bufs as AudioBuffer[], cross ? FADE : FADE_IN);
   });
 }
 
-function start(track: MusicTrack, def: TrackDef, bufs: AudioBuffer[]) {
+/**
+ * Starts a track, a bed fading in over `fade` s. On a context still waiting for its first gesture
+ * the clock is stopped, so the fade-in plays out once the gesture resumes it.
+ */
+function start(track: MusicTrack, def: TrackDef, bufs: AudioBuffer[], fade: number) {
   const ac = ctx!;
   const now = ac.currentTime;
   const level = def.gain ?? 1;
   const gain = ac.createGain();
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(level, now + (def.loopLen ? FADE : 0.02));
+  gain.gain.linearRampToValueAtTime(level, now + (def.loopLen ? fade : 0.02));
   gain.connect(bus!);
 
   const srcs: AudioBufferSourceNode[] = [];

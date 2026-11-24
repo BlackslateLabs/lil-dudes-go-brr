@@ -2,9 +2,11 @@
 // public/assets/CREDITS.md. Each cue is a mono MP3 in /assets/sfx/, trimmed and loudness-matched
 // offline (loudest 100 ms at about -14 dBFS), so the gains below are purely about priority.
 //
-// Browsers only allow audio after a user gesture, so the context is created by `unlockSound()`
-// (called from click handlers, and once from the first tap anywhere). Buffers are fetched and
-// decoded once, on unlock. If a file fails to load or decode, that cue is silently skipped.
+// Browsers only allow audio after a user gesture. The context is built as the app loads (it starts
+// suspended, or running where the browser already allows audio), so the menu track and the cues
+// fetch and decode straight away; the very first pointer / touch / key event anywhere resumes it
+// inside that gesture, and the menu music fades in. If a file fails to load or decode, that cue is
+// silently skipped.
 //
 // Graph: AudioBufferSourceNode -> per-voice gain -> bus -> master gain -> speakers. Three buses:
 // `battle` (shots, clash, gates, hits, waves, crates, loot), `ui` (stingers, UI, the end sequence)
@@ -139,15 +141,18 @@ export function setSoundEnabled(on: boolean) {
   else void ctx?.suspend().catch(() => {}); // pauses the music too; it resumes where it was
 }
 
-/** Call from a click/tap handler. */
-export function unlockSound() {
-  if (!enabled) return;
-  if (!ctx) {
+/**
+ * Builds the context and the mix graph, and starts fetching and decoding (menu music first). It
+ * needs no gesture: a context made before one just waits, suspended, until `unlockSound`.
+ */
+function ensureContext(): AudioContext | null {
+  if (ctx || !enabled) return ctx;
+  {
     let ac: AudioContext;
     try {
-      ac = new AudioContext();
+      ac = new AudioContext({ latencyHint: 'interactive' });
     } catch {
-      return; // no WebAudio: stay silent
+      return null; // no WebAudio: stay silent
     }
     ctx = ac;
     const master = ac.createGain();
@@ -162,19 +167,30 @@ export function unlockSound() {
     buses = { battle: bus(battleDucked ? BATTLE_DUCK : 1, master), ui: bus(1, master) };
     musicDuck = bus(1, master);
     attachMusic(ac, bus(MUSIC_LEVEL, musicDuck), undoMusicDuck);
+    loading ??= loadAll(ac);
   }
-  void ctx.resume().catch(() => {});
-  loading ??= loadAll(ctx);
+  return ctx;
 }
 
-// The first tap anywhere also unlocks (e.g. after a reload straight into a match), and any later
-// tap revives a context the OS interrupted (iOS does this on calls and the lock screen).
+/** Call from a click/tap handler (any gesture anywhere already does: see below). */
+export function unlockSound() {
+  const ac = ensureContext();
+  if (ac && ac.state !== 'running') void ac.resume().catch(() => {});
+}
+
 if (typeof window !== 'undefined') {
+  // Build it now: the menu track decodes while the player looks at Home, and where the browser
+  // already allows audio (earlier visits) the music fades in at once.
+  ensureContext();
+  // The very first pointer, touch or key event anywhere resumes it, within that gesture (browsers
+  // differ in which of these count, so listen to all of them, in the capture phase). Any later one
+  // revives a context the OS interrupted (iOS does this on calls and the lock screen).
   const gesture = () => {
     if (enabled && !document.hidden && (!ctx || ctx.state !== 'running')) unlockSound();
   };
-  window.addEventListener('pointerdown', gesture);
-  window.addEventListener('keydown', gesture);
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'touchstart', 'touchend', 'keydown', 'click']) {
+    window.addEventListener(type, gesture, { capture: true, passive: true });
+  }
   // Pause everything (music included) while the tab is hidden; pick up where it was on return.
   document.addEventListener('visibilitychange', () => {
     if (!ctx) return;
@@ -382,7 +398,7 @@ export function setBattleDuck(on: boolean) {
 }
 
 /**
- * Music: 'menu' / 'match' loop (0.5 s crossfade between them); 'win' / 'lose' play once, then
+ * Music: 'menu' / 'match' loop (the first bed fades in over 1.4 s, then 1 s crossfades); 'win' / 'lose' play once, then
  * silence; `null` fades out. Follows the sound toggle and can be called before the first gesture
  * (a bed starts on unlock; a sting asked for while silent is skipped). Tracks: `MUSIC` in music.ts.
  */
