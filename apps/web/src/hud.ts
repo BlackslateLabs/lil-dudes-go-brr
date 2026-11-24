@@ -1,6 +1,24 @@
 import { create } from 'zustand';
 import type { LanePhase, MatchStatus } from '@lil-dudes/client';
 
+/**
+ * One side's race track (the race bar): the towers of each stage and how many are down, the town
+ * hall, and the bar's fill. Both sides play the same layout, so both tracks have the same icons.
+ */
+export interface RaceTrack {
+  /** Towers per stage (Fight 1, Fight 2), and how many of them are down. */
+  towers: number[];
+  down: number[];
+  /** The town hall: 0 not reached, 1 in the Rush, 2 done. */
+  hall: 0 | 1 | 2;
+  /** Overrun. */
+  dead: boolean;
+  /** 0..1: towers broken, plus damage on the live ones, plus the hall. */
+  fill: number;
+}
+
+const EMPTY_TRACK: RaceTrack = { towers: [], down: [], hall: 0, dead: false, fill: 0 };
+
 /** Low-rate HUD state (≤ 10 updates/s), so React doesn't re-render every frame. [me, them] pairs. */
 export interface HudState {
   tick: number;
@@ -15,8 +33,10 @@ export interface HudState {
   myPhaseTick: number;
   /** Ticks since my breach (v4 raid / v5 Rush) started (0 before it). */
   raidTicks: number;
-  /** The opponent's current-stage towers: HP left as a fraction of max (0..1). */
-  theirTowers: number;
+  /** The race bar: [me, them]. */
+  race: [RaceTrack, RaceTrack];
+  /** A short race toast under the bar ("Bot cleared Fight 1!"). */
+  toast: { text: string; tone: 'good' | 'bad'; at: number } | null;
   peekUsed: boolean;
   /** Scout mode (v4 "peek"): the next tap on one of your `?` gates reveals it, privately. */
   peeking: boolean;
@@ -50,7 +70,8 @@ export const HUD_RESET: Omit<HudState, 'set'> = {
   phase: ['plant', 'plant'],
   myPhaseTick: 0,
   raidTicks: 0,
-  theirTowers: 1,
+  race: [EMPTY_TRACK, EMPTY_TRACK],
+  toast: null,
   peekUsed: false,
   peeking: false,
   holding: false,
