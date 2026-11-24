@@ -37,16 +37,18 @@ pub const GIANT_SPEED: i32 = CRUISE_SPEED * 3 / 5;
 pub const FIRE_TICKS: u32 = 8;
 pub const VOLLEY_SIZE: u32 = 1;
 
-/// SPEC §7: movement per tick (3× cruise for the first LAUNCH_TICKS ticks).
-pub const CRUISE_SPEED: i32 = 80;
+/// SPEC §7: movement per tick (3× cruise for the first LAUNCH_TICKS ticks). SPEC_V5 §12 (rules
+/// v7): 60, so the cannon-to-tower walk stays ~5.5 s on the shorter lane.
+pub const CRUISE_SPEED: i32 = 60;
 pub const LAUNCH_TICKS: u32 = 6;
 pub const LAUNCH_SPEED: i32 = CRUISE_SPEED * 3;
 
-/// SPEC §2: x across the lane, y from the cannon line (0) to the base edge.
+/// SPEC §2: x across the lane, y from the cannon line (0) to the base edge. SPEC_V5 §12 (rules
+/// v7): the lane is ~35% shorter than v6 (12,000), the width is unchanged.
 pub const LANE_WIDTH: i32 = 3_000;
-pub const LANE_LENGTH: i32 = 12_000;
+pub const LANE_LENGTH: i32 = 8_200;
 /// SPEC §4: towers sit on this line.
-pub const TOWER_Y: i32 = 11_000;
+pub const TOWER_Y: i32 = 7_200;
 /// (impl) The town hall (the old vault) spans the whole base: a raid cohort loots when it
 /// reaches this line, anywhere across the lane.
 pub const VAULT_Y: i32 = TOWER_Y;
@@ -67,9 +69,13 @@ pub const CLASH_REACH: i32 = 400;
 pub const CLASH_BAND: i32 = 400;
 /// SPEC §4: sideways homing per tick, and how far ahead (in y) units look for a target.
 pub const STEER_STEP: i32 = 40;
-pub const DETECT_Y: i32 = 4_000;
+/// SPEC_V5 §12: enemies notice crowds over most of the lane.
+pub const DETECT_Y: i32 = 5_000;
 /// SPEC §2: the cannon chases the aim by at most this per tick (crosses the lane in 5 ticks).
 pub const CANNON_STEP: i32 = LANE_WIDTH / 5;
+/// SPEC_V5 §12 divider walls: a wall is a line `x` (on a column boundary) active for y in
+/// [y0, y1] and 2 · WALL_HALF thick. A cohort inside an active wall's span never crosses it.
+pub const WALL_HALF: i32 = 60;
 
 /// SPEC §7: live cohorts of yours / enemy cohorts, per lane.
 pub const COHORT_CAP: usize = 40;
@@ -91,7 +97,7 @@ pub const TOWER_BONUS: u32 = 50;
 pub const LOOT_PER_UNIT: u32 = 2;
 
 /// SPEC §10: the bot defends when an enemy cohort is this close to its cannon.
-pub const DEFEND_Y: i32 = 3_000;
+pub const DEFEND_Y: i32 = 2_000;
 
 /// SPEC §8: fee = 5% of the money moved.
 pub const FEE_BPS: u64 = 500;
@@ -122,4 +128,9 @@ const _: () = {
     // The Champion meter is a u8.
     assert!(CHAMP_TICKS <= u8::MAX as u32);
     assert!(GIANT_SPEED > 0 && GIANT_SPEED < CRUISE_SPEED);
+    // v7: the bot defends well inside the lane and enemies see most of it.
+    assert!(DEFEND_Y < DETECT_Y && DETECT_Y < TOWER_Y);
+    // A wall is thinner than the clash reach (two crowds pressed to either side of it would
+    // clash without SPEC_V5 §12 rule (c)).
+    assert!(WALL_HALF > 0 && 2 * WALL_HALF < CLASH_REACH);
 };
