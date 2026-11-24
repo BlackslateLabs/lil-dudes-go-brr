@@ -1292,3 +1292,42 @@ alternates between near-equal paths (identical bots drew ~100%).
   catch-up must stay under 400k);
 - regenerate the IDL with `anchor build` (no instruction or account changed; codec unchanged);
 - redeploy the program for v8 (`RULES_VERSION` 8).
+
+## 2026-11-24 17:36 IST · Suparno · web (arena v8) · [DECISION]
+**Did:** (branch `v8-levels`; commits `dee6ac5`, `db98ef9`, `6295833`, `b9ae89c`, `17defa0`, `e6e59b6`, `e44ebab`)
+- **Per-unit crowd layer** (`arena/crowdSim.ts`, driven by `Crowds.tsx`). The sim's cohort stays the
+  truth for where a crowd is and how big it is. Each drawn dude is a pooled agent (typed arrays,
+  keyed by cohort id + slot, no per-frame allocation) that:
+  - springs to a sunflower slot that widens with the count up to the free width (walls,
+    obstacles, lane edges), with the cohort's velocity fed forward;
+  - is pushed apart from its neighbours (spatial hash, O(n));
+  - is pushed out of obstacles, walls, towers, crates and the hall.
+
+  Small volleys stretch along the lane, so a stream reads as one crowd. Near a tower (or the hall
+  in the Rush) the slots wrap its front and sides; a cohort that hits lingers there 0.3–0.5 s with
+  a hop, then pops. Losses to a clash or a bad gate pop in place; losses to a crate pop at its
+  face. New dudes pour out of the gate or tower. Piped dudes dive into the entrance and pop out
+  of the exit (`pipe` event, with a jump fallback). Boosted cohorts stretch. Enemies use the same
+  layer.
+- **Cost:** 1,500 agents take 0.59 ms per frame (update plus matrix write, desktop node).
+  `?crowdprof=1` exposes `window.__crowd`.
+- **Level elements** (`arena/Level.tsx`, `arena/levelDefs.ts`):
+  - obstacles are bevelled extrusions, cream tops over lilac stone sides, ~1.2 dudes tall;
+    small blocks become round pillars and wedges become prisms;
+  - pads are glowing orange tiles with chevrons running up the lane;
+  - pipes are chunky teal tubes with pale rims and dark mouths;
+  - stand-alone crates are red wood blocks with a big HP number; they crack and jolt when hit.
+- **Dudes** are 1.55 (was 1.3). **Champion** giants are 4.35 on their own mesh: royal purple armour
+  under a gold helmet and trim, and they squeeze between walls. **Enemy giants** are 2.8.
+
+**Decided:** (Suparno) as above. In an open lane a big blob stays round (at least its radius
+either side) instead of squeezing into half a column.
+
+**Blocked / risks:**
+- Headless screenshots run at a low frame rate, so blob shapes in them are rougher than on a
+  phone.
+- The pipe dive was checked in a node test; the bot never takes the side lanes, so no screenshot
+  shows it.
+- Champion giants are big and, after a ×6 gate, fill a corridor.
+
+**Next / handoff:** none for Kai. Web: tune the stone colours and the Champion size on a real phone.
