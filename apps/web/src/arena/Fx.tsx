@@ -5,13 +5,28 @@ import { VAULT_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
-import { Particles, burst } from './particles';
+import { Particles, burst, pop } from './particles';
+import { PopKind, hallPulse, pops as popQ, towerPulse } from './popQueue';
 
 const POOL = 16;
 const POP_LIFE = 0.7; // s
 const SHAKE_GAP = 0.5; // s: shake is rate-limited (TECH §5)
 /** Gate panel centre height (Gates.tsx). */
 const GATE_Y = 1.6;
+/**
+ * Crowd pop budget per frame: up to POP_FULL pops each get a burst; past that one burst stands for
+ * 3 (or, past POP_HEAVY, 5) pops, and never more than POP_MAX bursts a frame (~4 particles each).
+ */
+const POP_FULL = 18;
+const POP_HEAVY = 60;
+const POP_MAX = 30;
+/** Pop / burst counters, for `?crowdprof=1` (read from devtools as `__fx`). */
+const stats = { pops: 0, bursts: 0 };
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('crowdprof')) {
+  (window as unknown as { __fx: typeof stats }).__fx = stats;
+}
+/** A wave of pops at a building pulses it at most this often (s). */
+const PULSE_GAP = 0.16;
 
 interface Pop {
   sprite: Sprite;
@@ -27,6 +42,8 @@ const COLOR = {
   tower: new Color(PALETTE.tower),
   crate: new Color(PALETTE.crate),
   dust: new Color('#fff4e2'),
+  me: new Color(PALETTE.me),
+  enemy: new Color(PALETTE.enemy),
 };
 
 /**
@@ -44,6 +61,12 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
   const camera = useThree((s) => s.camera);
   const px = useMemo(() => new Particles(), []);
   useEffect(() => () => px.dispose(), [px]);
+  // Pops per building since its last pulse, and when that was (towers 0..3, hall 4).
+  const pulse = useMemo(() => ({ n: new Float32Array(5), at: new Float32Array(5).fill(-10) }), []);
+  useEffect(() => {
+    popQ.clear();
+    return () => popQ.clear();
+  }, []);
 
   useEffect(() => {
     free.current = sprites.current.filter(Boolean);
@@ -95,8 +118,10 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
       } else if (e.type === 'crate') {
         const c = lane.crates.find((x) => x.index === e.index);
         if (!c) return;
-        if (e.broken) burst.smash(px, wx(c.x), wz(c.y), c.width * SX, COLOR.crate);
-        else if (every(`c${e.index}`, 0.15)) burst.hit(px, wx(c.x), 1.2, wz(c.y), COLOR.dust);
+        if (e.broken) {
+          burst.smash(px, wx(c.x), wz(c.y), c.width * SX, COLOR.crate);
+          kick(0.35);
+        } else if (every(`c${e.index}`, 0.07)) burst.chip(px, wx(c.x), 1.2, wz(c.y), c.width * SX);
       } else if (e.type === 'loot') {
         if (every('loot', 0.1)) burst.coins(px, (Math.random() - 0.5) * 4, 2.2, wz(VAULT_Y) + 0.4, Math.min(5, 1 + e.count));
       } else if (e.type === 'clash') {
@@ -112,6 +137,7 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
 
   useFrame((_, dt) => {
     clock.current += dt;
+    drainPops();
     px.update(Math.min(dt, 0.05));
     for (let i = pops.current.length - 1; i >= 0; i--) {
       const p = pops.current[i]!;
@@ -137,6 +163,48 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
       camBase.z + Math.cos(t * 1.1) * a * 0.3,
     );
   });
+
+  /**
+   * Crowd pops → bursts (budgeted, aggregated), and a hit pulse for the building a wave hits.
+   * Only my lane's crowds exist, so every pop is in my lane.
+   */
+  function drainPops() {
+    const n = popQ.length;
+    if (n === 0) return;
+    stats.pops += n;
+    const stride = n <= POP_FULL ? 1 : n <= POP_HEAVY ? 3 : 5;
+    let skip = 0;
+    let made = 0;
+    while (popQ.length > 0) {
+      const i = popQ.peek();
+      const kind = popQ.kind[i]!;
+      const x = wx(popQ.x[i]!);
+      const z = wz(popQ.y[i]!);
+      const team = popQ.team[i]!;
+      const ix = popQ.ix[i]!;
+      popQ.shift();
+      const b = kind === PopKind.Tower && ix >= 0 && ix < 4 ? ix : kind === PopKind.Hall ? 4 : -1;
+      if (b >= 0) pulse.n[b]!++;
+      if (kind === PopKind.None || ++skip < stride) continue;
+      skip = 0;
+      if (made >= POP_MAX) continue;
+      made++;
+      stats.bursts++;
+      if (kind === PopKind.Tower || kind === PopKind.Hall) pop.tower(px, x, z, stride, kind === PopKind.Hall);
+      else if (kind === PopKind.Clash) pop.clash(px, x, z, stride, team ? COLOR.enemy : COLOR.me);
+      else if (kind === PopKind.Crate) pop.crate(px, x, z, stride);
+      else pop.dust(px, x, z, stride);
+    }
+    for (let b = 0; b < 5; b++) {
+      const c = pulse.n[b]!;
+      if (c <= 0 || clock.current - pulse.at[b]! < PULSE_GAP) continue;
+      const amt = Math.min(1, 0.35 + c * 0.05);
+      if (b < 4) towerPulse[b] = Math.max(towerPulse[b]!, amt);
+      else hallPulse[0] = Math.max(hallPulse[0]!, amt);
+      pulse.n[b] = 0;
+      pulse.at[b] = clock.current;
+    }
+  }
 
   return (
     <>
