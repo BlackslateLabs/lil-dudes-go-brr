@@ -171,6 +171,9 @@ export type MatchEvent =
   | { type: 'first'; side: Side; stage: number; gold: number }
   /** `side`'s Rush ran out: `lost` dudes still on the lane did not count; `side` is done. */
   | { type: 'rushEnd'; side: Side; lost: number }
+  /** Rules v8: cohort `cohortId` dropped into pipe `pipeIx` (`stageDef(...).pipes[pipeIx]`) and
+   *  popped out at its exit (outX, outY) this tick. */
+  | { type: 'pipe'; side: Side; cohortId: number; pipeIx: number }
   | { type: 'stage'; side: Side; stage: number; phase: LanePhase }
   | { type: 'death'; side: Side }
   | { type: 'end'; result: MatchResult };

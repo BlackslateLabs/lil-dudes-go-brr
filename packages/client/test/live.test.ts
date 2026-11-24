@@ -42,6 +42,8 @@ function laneKey(e: MatchEvent): string | null {
       return `gate:${e.side}:${e.slot}:${e.cohortId}:${opKey(e.op)}:${e.before}:${e.after}`;
     case 'crate':
       return `crate:${e.side}:${e.index}:${e.hp}:${e.broken}`;
+    case 'pipe':
+      return `pipe:${e.side}:${e.cohortId}:${e.pipeIx}`;
     default:
       return null;
   }
@@ -65,7 +67,6 @@ const sorted = (xs: (string | null)[]) => xs.filter((x): x is string => x !== nu
 const FIGHT = 1;
 const RUSH = 3;
 const DONE = 4;
-void DONE;
 
 test('diffEvents reconstructs the sim events of whole matches', () => {
   let ticks = 0;
@@ -79,6 +80,12 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
     const foe = me.enemies.reduce<{ x: number; y: number } | null>((a, e) => (!a || e.y < a.y ? e : a), null);
     src.setAim(foe && foe.y < 4000 ? foe.x : (crate?.x ?? 1500));
   };
+  // Side 0 defends, else takes the left lane's pipe (Pipes).
+  const piper = (src: OfflineSource) => {
+    const foe = src.view.sides[0].enemies.reduce<{ x: number; y: number } | null>((a, e) => (!a || e.y < a.y ? e : a), null);
+    src.setFiring(true);
+    src.setAim(foe && foe.y < 3000 ? foe.x : 500);
+  };
   const runs: { seed: bigint; botSeed: bigint; selfBot?: boolean; drive?: (src: OfflineSource) => void }[] = [
     { seed: 3n, botSeed: 21n, selfBot: true },
     { seed: 11n, botSeed: 77n, selfBot: true },
@@ -87,6 +94,12 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
     { seed: 42n, botSeed: 7n }, // idle side 0 dies
     { seed: 1n, botSeed: 2n, drive: crateHunter },
     { seed: 2n, botSeed: 3n, drive: crateHunter },
+    // Rules v8: two bots on one level often clear on the same tick (no FIRST); a driven side 0
+    // and the pipes layout make sure FIRST and pipes show up.
+    { seed: 3n, botSeed: 4n, drive: crateHunter },
+    { seed: 9n, botSeed: 5n, drive: crateHunter },
+    { seed: 4n, botSeed: 8n, drive: crateHunter },
+    { seed: 15n, botSeed: 2n, drive: piper }, // Pipes
   ];
   for (const opts of runs) {
     const src = new OfflineSource(opts);
@@ -99,7 +112,11 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
       const next = decodePublic(src.publicBytes());
       const derived = diffEvents(prev, next);
       const at = `seed ${opts.seed} tick ${next.tick}`;
-      assert.deepEqual(sorted(derived.map((e) => exactKey(e, prev))), sorted(got.map((e) => exactKey(e, prev))), at);
+      // A volley fired on a lane's last Rush tick is cleared with the lane at once: the
+      // snapshots never show it.
+      const lastRush = (e: MatchEvent) => e.type === 'volley' && prev.sides[e.side].phase === RUSH && next.sides[e.side].phase === DONE;
+      const exact = (es: MatchEvent[]) => sorted(es.filter((e) => !lastRush(e)).map((e) => exactKey(e, prev)));
+      assert.deepEqual(exact(derived), exact(got), at);
       // Fight 2 → Rush keeps the stage and the field, so its gates and crates stay exact.
       const inPlace = (s: Side) => prev.sides[s].phase === FIGHT && next.sides[s].phase === RUSH;
       const moved = new Set(
@@ -120,7 +137,9 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
         if (ended.has(side) && (k.startsWith('clash:') || k.startsWith('rushEnd:'))) {
           // Units gone on the last Rush tick = clash + uncounted, either way.
           const gone = (x: Record<string, number>) => (x[`clash:${side}`] ?? 0) + (x[`rushEnd:${side}`] ?? 0);
-          assert.equal(gone(have), gone(want), `${at}: units gone at the Rush end`);
+          // (plus a volley fired on that last tick, which the snapshots never show)
+          const unseen = got.reduce((n, e) => n + (e.type === 'volley' && lastRush(e) && e.side === side ? e.count : 0), 0);
+          assert.equal(gone(have) + unseen, gone(want), `${at}: units gone at the Rush end`);
           rushEnds++;
           continue;
         }
@@ -135,7 +154,7 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
   assert.ok(ticks > 3000, `${ticks} ticks`);
   assert.ok(rushes > 4, `${rushes} Rushes started`);
   assert.ok(rushEnds > 4, `${rushEnds} Rush ends compared`);
-  for (const type of ['volley', 'reveal', 'gate', 'first', 'rushEnd', 'crate', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'stage', 'death', 'end']) {
+  for (const type of ['volley', 'reveal', 'gate', 'first', 'rushEnd', 'crate', 'pipe', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'stage', 'death', 'end']) {
     assert.ok(seen.has(type), `no ${type} events to compare`);
   }
 });

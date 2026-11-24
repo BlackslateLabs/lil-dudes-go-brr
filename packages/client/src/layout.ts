@@ -49,11 +49,11 @@ export function gateAt(st: C.StageDef, row: number, x: number, gateX: (slot: num
 }
 
 /** The crate that locks gate `slot` of a stage, or -1: a crate just below a big gate's row,
- *  covering its span (crates/sim/src/layouts.rs `lock`). */
+ *  covering its span (crates/sim/src/layouts.rs `lock`). Rules v8: other crates stand alone. */
 export function crateOfGate(st: C.StageDef, slot: number): number {
   const g = st.gates[slot];
   const rowY = g ? st.rows[g.row] : undefined;
-  if (!g || rowY === undefined) return -1;
+  if (!g || !g.big || rowY === undefined) return -1;
   return st.crates.findIndex((c) => Math.abs(c.x - g.x) * 2 <= g.width && c.y < rowY && rowY - c.y <= 500);
 }
 
@@ -107,3 +107,103 @@ export function opFromByte(b: number): GateOp | null {
       return { kind: 'mul', value };
   }
 }
+
+// --- rules v8 geometry (crates/sim/src/layouts.rs StageDef methods; integer, exact mirrors) ------
+
+/** crates/sim `inside_obstacle`: (x, y) is inside obstacle `o` grown by `grace` (the rules use
+ *  OBSTACLE_GRACE): inside the box grown by `grace` on every side and, for a wedge, on the inner
+ *  side of its hypotenuse moved `grace` toward the open side (along x). */
+export function insideObstacle(o: C.ObstacleDef, x: number, y: number, grace: number): boolean {
+  if (x < o.x0 - grace || x > o.x1 + grace || y < o.y0 - grace || y > o.y1 + grace) return false;
+  const w = o.x1 - o.x0;
+  const h = o.y1 - o.y0;
+  let ax: number;
+  let ay: number;
+  switch (o.shape) {
+    case 'rect':
+      return true;
+    case 'wedgeBL':
+      [ax, ay] = [x - grace - o.x0, y - o.y0];
+      break;
+    case 'wedgeBR':
+      [ax, ay] = [o.x1 - x - grace, y - o.y0];
+      break;
+    case 'wedgeTL':
+      [ax, ay] = [x - grace - o.x0, o.y1 - y];
+      break;
+    case 'wedgeTR':
+      [ax, ay] = [o.x1 - x - grace, o.y1 - y];
+      break;
+  }
+  return ax * h + ay * w <= w * h;
+}
+
+const wallActive = (w: C.WallDef, y: number) => w.y0 <= y && y <= w.y1;
+
+/** crates/sim `StageDef::wall_push`: inside a standing wall's thickness → the nearer side (ties left). */
+export function wallPush(st: C.StageDef, x: number, y: number): number {
+  for (const w of st.walls) {
+    if (wallActive(w, y) && Math.abs(x - w.x) <= C.WALL_HALF) x = x <= w.x ? w.x - C.WALL_HALF - 1 : w.x + C.WALL_HALF + 1;
+  }
+  return x;
+}
+
+/** crates/sim `StageDef::column_at`: the x range between the walls standing at `y` around `x`. */
+export function columnAt(st: C.StageDef, x: number, y: number): [number, number] {
+  let lo = 0;
+  let hi = C.LANE_WIDTH - 1;
+  for (const w of st.walls) {
+    if (!wallActive(w, y)) continue;
+    if (w.x < x) lo = Math.max(lo, w.x + C.WALL_HALF + 1);
+    else hi = Math.min(hi, w.x - C.WALL_HALF - 1);
+  }
+  return [lo, hi];
+}
+
+/** crates/sim `StageDef::blocked`: the first obstacle (list order) (x, y) is inside, or -1. */
+export const obstacleAt = (st: C.StageDef, x: number, y: number): number =>
+  st.obstacles.findIndex((o) => insideObstacle(o, x, y, C.OBSTACLE_GRACE));
+
+const stepToward = (x: number, target: number, step: number) => x + Math.min(Math.max(target - x, -step), step);
+
+/** crates/sim `StageDef::slide`: where a crowd at (x, y) blocked by obstacle `ix` slides to. */
+export function slideX(st: C.StageDef, ix: number, x: number, y: number): number {
+  const o = st.obstacles[ix];
+  if (!o) return x;
+  const [lo, hi] = columnAt(st, x, y);
+  const left = o.x0 - C.OBSTACLE_GRACE - 1;
+  const right = o.x1 + C.OBSTACLE_GRACE + 1;
+  const canL = left >= lo;
+  const canR = right <= hi;
+  const openRight = o.shape === 'wedgeBL' || o.shape === 'wedgeTL';
+  let target: number;
+  if (o.shape === 'rect' && canL && canR) target = right - x < x - left ? right : left;
+  else if (!openRight && canL) target = left;
+  else if (canR) target = right;
+  else if (openRight && canL) target = left;
+  else return x;
+  const to = stepToward(x, target, C.SLIDE_STEP);
+  return st.obstacles.some((p, i) => i !== ix && insideObstacle(p, to, y, C.OBSTACLE_GRACE)) ? x : to;
+}
+
+/** crates/sim `StageDef::advance`: one tick of a crowd moving `dy` in y (mine up, enemies down).
+ *  Blocked at the end point or halfway → no y, a slide instead. Returns the new [x, y]. */
+export function advance(st: C.StageDef, x: number, y: number, dy: number): [number, number] {
+  const to = y + dy;
+  const mid = y + Math.trunc(dy / 2);
+  let ix = obstacleAt(st, x, mid);
+  if (ix < 0) ix = obstacleAt(st, x, to);
+  return ix >= 0 ? [slideX(st, ix, x, y), y] : [x, to];
+}
+
+const inBox = (b: { x0: number; y0: number; x1: number; y1: number }, x: number, y: number) =>
+  b.x0 <= x && x <= b.x1 && b.y0 <= y && y <= b.y1;
+
+/** crates/sim `StageDef::on_pad`: a speed pad under (x, y). */
+export const onPad = (st: C.StageDef, x: number, y: number): boolean => st.pads.some((p) => inBox(p, x, y));
+
+/** crates/sim `StageDef::pipe_at`: the index of the pipe whose entrance (x, y) is in, or -1. */
+export const pipeAt = (st: C.StageDef, x: number, y: number): number => st.pipes.findIndex((p) => inBox(p, x, y));
+
+/** crates/sim `StageDef::rows_through`: rows at or below `y` (a pipe's exit skips them). */
+export const rowsThrough = (st: C.StageDef, y: number): number => st.rows.filter((r) => r <= y).length;

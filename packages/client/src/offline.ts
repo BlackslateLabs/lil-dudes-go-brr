@@ -11,7 +11,7 @@ import { matchView, sideOf, type LaneState, type RawResult } from './view';
 import type { MatchEvent, MatchView, PrivateView, Side } from './types';
 
 /** Must equal LAYOUT_VERSION in crates/sim-wasm/src/lib.rs (the flat layouts are documented there). */
-const LAYOUT_VERSION = 4;
+const LAYOUT_VERSION = 5;
 const EVENT_STRIDE = 8;
 const PHASE_NAMES = ['plant', 'fight', 'transit', 'rush', 'done'] as const;
 
@@ -329,6 +329,9 @@ export class OfflineSource implements MatchSource {
           break;
         case 14:
           out.push({ type: 'rushEnd', side, lost: b });
+          break;
+        case 15:
+          out.push({ type: 'pipe', side, cohortId: b, pipeIx: c });
           break;
 
       }

@@ -36,6 +36,7 @@
 //!   12 end [winner (-1 draw), ko, moved, fee]
 //!   13 first [side, stage, gold]
 //!   14 rush end [side, dudes still on the lane (not counted)]
+//!   15 pipe (rules v8) [side, cohort id, pipe] (the cohort is now at that pipe's exit)
 //!   (A called Champion shows as `champion pending` in the view, then as a volley with the
 //!   champion flag.)
 //!
@@ -50,7 +51,7 @@ use lil_dudes_sim::*;
 use wasm_bindgen::prelude::*;
 
 /// Bump when any layout above changes (offline.ts refuses a mismatch).
-pub const LAYOUT_VERSION: u32 = 4;
+pub const LAYOUT_VERSION: u32 = 5;
 pub const EVENT_STRIDE: usize = 8;
 pub const HEADER_LEN: usize = 10;
 pub const SIDE_FIXED: usize = 14 + TOWERS_MAX + CRATES_MAX + 2 * GATES_MAX;
@@ -393,6 +394,11 @@ fn encode_event(e: &Event) -> [f64; EVENT_STRIDE] {
         ]),
         Event::First { side, stage, gold } => f(&[13.0, b(side), b(stage), n(gold)]),
         Event::RushEnd { side, lost } => f(&[14.0, b(side), n(lost)]),
+        Event::Pipe {
+            side,
+            cohort_id,
+            pipe_ix,
+        } => f(&[15.0, b(side), n(cohort_id), b(pipe_ix)]),
     }
 }
 
@@ -447,8 +453,10 @@ pub fn codec_version() -> u8 {
 /// `PM_BY_ROW[row]`; row index 0 draws from the × entries only); `BIG_ODDS` = [[k, percent]].
 /// `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
 /// gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}],
-/// walls: [{x, y0, y1}]}` (rules v7 divider walls, `WALL_HALF` thick each side); gate, tower and
-/// crate indices are the slots used everywhere else.
+/// walls: [{x, y0, y1}], obstacles: [{x0, y0, x1, y1, shape}], pads: [{x0, y0, x1, y1}],
+/// pipes: [{x0, y0, x1, y1, out_x, out_y}]}` (rules v7 divider walls, `WALL_HALF` thick each
+/// side; rules v8 obstacles, `shape` one of "rect", "wedgeBL", "wedgeBR", "wedgeTL",
+/// "wedgeTR"); gate, tower, crate and pipe indices are the slots used everywhere else.
 #[wasm_bindgen]
 pub fn constants_json() -> String {
     let list = |xs: &[i64]| {
@@ -459,7 +467,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 54] = [
+    let pairs: [(&str, String); 56] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -493,6 +501,8 @@ pub fn constants_json() -> String {
         ("DETECT_Y", DETECT_Y.to_string()),
         ("CANNON_STEP", CANNON_STEP.to_string()),
         ("WALL_HALF", WALL_HALF.to_string()),
+        ("OBSTACLE_GRACE", OBSTACLE_GRACE.to_string()),
+        ("SLIDE_STEP", SLIDE_STEP.to_string()),
         ("COHORT_CAP", COHORT_CAP.to_string()),
         ("ENEMY_CAP", ENEMY_CAP.to_string()),
         ("FIRST_WAVE_TICKS", FIRST_WAVE_TICKS.to_string()),
@@ -564,13 +574,50 @@ fn layouts_json() -> String {
             .iter()
             .map(|w| format!("{{\"x\":{},\"y0\":{},\"y1\":{}}}", w.x, w.y0, w.y1))
             .collect();
+        let obstacles: Vec<String> = s
+            .obstacles
+            .iter()
+            .map(|o| {
+                format!(
+                    "{{\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"shape\":\"{}\"}}",
+                    o.x0,
+                    o.y0,
+                    o.x1,
+                    o.y1,
+                    o.shape.name()
+                )
+            })
+            .collect();
+        let pads: Vec<String> = s
+            .pads
+            .iter()
+            .map(|p| {
+                format!(
+                    "{{\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{}}}",
+                    p.x0, p.y0, p.x1, p.y1
+                )
+            })
+            .collect();
+        let pipes: Vec<String> = s
+            .pipes
+            .iter()
+            .map(|p| {
+                format!(
+                    "{{\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"out_x\":{},\"out_y\":{}}}",
+                    p.x0, p.y0, p.x1, p.y1, p.out_x, p.out_y
+                )
+            })
+            .collect();
         format!(
-            "{{\"towers\":[{}],\"rows\":[{}],\"gates\":[{}],\"crates\":[{}],\"walls\":[{}]}}",
+            "{{\"towers\":[{}],\"rows\":[{}],\"gates\":[{}],\"crates\":[{}],\"walls\":[{}],\"obstacles\":[{}],\"pads\":[{}],\"pipes\":[{}]}}",
             towers.join(","),
             rows.join(","),
             gates.join(","),
             crates.join(","),
-            walls.join(",")
+            walls.join(","),
+            obstacles.join(","),
+            pads.join(","),
+            pipes.join(",")
         )
     };
     let all: Vec<String> = LAYOUTS
@@ -589,7 +636,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 445_834_651_989_838_914;
+const PARITY_DIGEST: u64 = 16_846_537_492_206_921_133;
 
 #[cfg(test)]
 mod tests {
@@ -793,10 +840,10 @@ mod tests {
 
     #[test]
     fn gate_x_at_matches_the_layouts() {
-        // Rules v7 has no sliding gates (a gate fills its column); a static gate stays put.
-        let g = LAYOUTS[0].stages[0].gates[5];
+        // No layout has a sliding gate; a static gate stays put.
+        let g = LAYOUTS[0].stages[0].gates[4];
         assert!(!g.moving());
-        assert_eq!(gate_x_at(0, 0, 5, 37), i32::from(g.x));
+        assert_eq!(gate_x_at(0, 0, 4, 37), i32::from(g.x));
         assert_eq!(timing_value(99), 5);
         assert_eq!(gate_x_at(0, 0, 200, 37), 0);
     }
@@ -810,7 +857,7 @@ mod tests {
         assert!(j.contains("\"FINAL_STAGE\":1"));
         assert!(j.contains("\"GATE_GRACE\":100"));
         assert!(j.contains("\"HALL_X\":1500"));
-        assert!(j.contains("\"name\":\"Twin Lanes\""));
+        assert!(j.contains("\"name\":\"Three Lanes\""));
         assert!(j.contains("\"RUSH_TICKS\":70"));
         assert!(j.contains("\"CHAMP_TICKS\":160"));
         assert!(j.contains("\"timing\":true"));
@@ -818,11 +865,17 @@ mod tests {
         assert!(j.contains(
             "\"NORMAL_ODDS\":[[2,30],[3,20],[4,8],[5,2],[64,12],[130,14],[192,12],[131,2]]"
         ));
-        assert!(j.contains("\"PM_BY_ROW\":[0,1,3,6]"));
-        // Rules v7 divider walls.
+        assert!(j.contains("\"PM_BY_ROW\":[0,1,1,2]"));
+        // Rules v7 divider walls; rules v8 obstacles, pads and pipes (always present).
         assert!(j.contains("\"WALL_HALF\":60"));
-        assert!(j.contains("\"walls\":[{\"x\":1000,\"y0\":500,\"y1\":3700},{\"x\":2000,"));
-        assert_eq!(j.matches("\"walls\"").count(), LAYOUTS.len() * STAGES);
+        assert!(j.contains("\"walls\":[{\"x\":1000,\"y0\":600,\"y1\":4400},{\"x\":2000,"));
+        assert!(j.contains("\"OBSTACLE_GRACE\":60") && j.contains("\"SLIDE_STEP\":150"));
+        assert!(j.contains("{\"x0\":0,\"y0\":1900,\"x1\":1000,\"y1\":3500,\"shape\":\"wedgeTL\"}"));
+        assert!(j.contains("\"out_x\":500,\"out_y\":5600"));
+        for key in ["walls", "obstacles", "pads", "pipes"] {
+            let n = j.matches(&format!("\"{key}\"")).count();
+            assert_eq!(n, LAYOUTS.len() * STAGES, "{key}");
+        }
         // Balanced braces and brackets (no JSON parser in this crate).
         let depth = j.chars().fold(0i32, |d, c| match c {
             '{' | '[' => d + 1,
