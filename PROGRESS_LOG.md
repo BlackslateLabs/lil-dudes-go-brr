@@ -1207,3 +1207,43 @@ had not landed yet). The walls and the v7 framing were previewed with local test
 
 **Next / handoff:** once Kai's v7 client lands (`LANE_LENGTH` 8200, `TOWER_Y` 7200, `walls`,
 `WALL_HALF`), rebuild and eyeball: no web code change should be needed.
+
+## 2026-11-24 12:49 IST · Suparno · sim + client + WASM (rules v7) · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `v7-lane-feel`; commits `58c93ba`, `52df18d`, `5173f38`)
+- **Rules v7, lane feel (sim):** `TOWER_Y` 7,200, `LANE_LENGTH` 8,200, cruise 60 (launch 180,
+  giants 36), `DETECT_Y` 5,000, `DEFEND_Y` 2,000. Every stage is 2 or 3 columns of gates that fill
+  their column edge to edge (880 / 1,380 wide), at most one empty cell per stage. **Divider walls**
+  (`StageDef.walls`, `WALL_HALF` 60) on column boundaries in 3 of 6 layouts: no crossing a standing
+  wall, a cohort entering inside one is pushed to the nearer side (ties left), no clash through it.
+  Six layouts rebuilt: Twin Lanes, Three Ways (was Conveyor), Long Shot, Funnel, Zigzag, Pillars
+  (was Stairway). Design-rule test rewritten; unit tests per wall rule. SPEC_V5 §12 has it all.
+- **Balance:** `tools/balance/tune_layouts.py` drives the runner. Result: 7.1% deaths, 65.7 s
+  average, Fight 1 21 s, Fight 2 35 s, no cap hits (3,000 bot matches per layout). Goldens and
+  `PARITY_DIGEST` re-recorded; WASM pkg rebuilt.
+- **Client:** sim 92 + integration tests, sim-wasm 11, client 24 and server 17 tests green; client,
+  server and web typecheck; clippy clean. `programs/lil_dudes` and `tests-magicsvm` pass
+  `cargo check --tests`. MagicSVM **not run** (no SBF toolchain here).
+
+**CONTRACT (packages/client v7):** `RULES_VERSION` 7; `LANE_LENGTH`, `TOWER_Y`, `CRUISE_SPEED`,
+`GIANT_SPEED`, `DETECT_Y`, `DEFEND_Y` and `PM_BY_ROW` [0, 1, 3, 6] changed; new `WALL_HALF` (60) and
+`WallDef { x, y0, y1 }`; `StageDef.walls` (always present, `[]` without walls); new LAYOUTS (no
+sliding gates now, `speed` 0 everywhere). The web reads `stageDef(layout, stage).walls`.
+`scripts/gen-layouts.ts` regenerates the TS table from the WASM build.
+
+**Decided:** (Suparno) v7 as in SPEC_V5 §12 and §11.7, plus three things the balance runs forced:
+- row 1 draws only ×2–×5: a full first row can't be dodged, and ÷2 on a lone dude is 0;
+- ±N is resized to the column crowds (±1 / ±3 / ±6);
+- no sliders: a gate that fills its column has no room to slide.
+
+The bot now floors ÷, aims at column centres and weighs a crate-locked path by `d / (d + hp)`
+(it used to never break a crate, so some fights dragged to 3:00).
+
+**Blocked / risks:** deaths are a cliff in the integer `wave_base`, so the per-layout danger is
+hand-picked (5–9%). That is a bit under the 10–20% band. `tune_layouts.py --deaths N` re-tunes.
+
+**Next / handoff (Kai):**
+- run MagicSVM (`tests-magicsvm`): the layouts and positions changed (no slider, new slots, the
+  bench state's cohorts sit near the new tower line);
+- regenerate the IDL with `anchor build` (no instruction or account changed in v7, so it should
+  be identical);
+- redeploy the program for v7 (`RULES_VERSION` 7; the codec layout is unchanged).
