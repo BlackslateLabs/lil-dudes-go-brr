@@ -6,7 +6,7 @@ import { setBattleDuck, setSoundEnabled, soundEnabled } from '../feel/sound';
 import { useHud } from '../hud';
 import { ChampionMeter } from '../match/ChampionMeter';
 import { EndSequence, GradText } from '../match/EndSequence';
-import { ProgressLine } from '../match/ProgressLine';
+import { RaceBar } from '../match/RaceBar';
 import { Tutorial } from '../match/Tutorial';
 import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
@@ -30,7 +30,7 @@ const frames = (n: number) =>
     step(n);
   });
 
-/** Match screen (SPEC v5 §8): your lane full size, the opponent as a thin progress line. */
+/** Match screen (SPEC v5 §8): your lane full size, the opponent as a track on the race bar. */
 export function Match() {
   const [ready, setReady] = useState(false);
   const feed = useFeed(
@@ -115,7 +115,7 @@ export function Match() {
     >
       <Arena feed={feed} interactive />
       <TopBar />
-      <ProgressLine />
+      <RaceBar />
       <Tutorial feed={feed} />
       <Prompts />
       <Banner />

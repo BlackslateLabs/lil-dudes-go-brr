@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { FINAL_STAGE, LANE_LENGTH, opBad, RUSH_TICKS, TICKS_PER_SEC, type LanePhase, type LaneView, type Side } from '@lil-dudes/client';
+import { FINAL_STAGE, LANE_LENGTH, opBad, RUSH_TICKS, STAGES, TICKS_PER_SEC, stageDef, type LanePhase, type LaneView, type Side } from '@lil-dudes/client';
 import { haptic, setBattleDuck, sfx } from '../feel/sound';
-import { HUD_RESET, useHud } from '../hud';
+import { HUD_RESET, useHud, type RaceTrack } from '../hud';
 import { useApp, type ScoreParts } from '../store';
 import type { MatchFeed } from './feed';
 
@@ -27,6 +27,39 @@ export function isBreach(phase: LanePhase | string): boolean {
 
 const emptyParts = (): ScoreParts => ({ damage: 0, towers: 0, first: 0, rush: 0 });
 
+/** One side's race track from its public lane state (both sides play `layout`). */
+export function raceTrack(lane: LaneView, layout: number): RaceTrack {
+  const towers: number[] = [];
+  const down: number[] = [];
+  const over = lane.phase === 'rush' || lane.phase === 'done';
+  let got = 0;
+  for (let s = 0; s < STAGES; s++) {
+    const n = stageDef(layout, s).towers.length;
+    towers.push(n);
+    let d = 0;
+    if (over || s < lane.stage) d = n;
+    else if (s === lane.stage && lane.phase !== 'transit') {
+      for (const t of lane.towers) {
+        if (t.hp <= 0) d++;
+        else if (t.maxHp > 0) got += 1 - t.hp / t.maxHp;
+      }
+    }
+    down.push(d);
+    got += d;
+  }
+  const hall = lane.phase === 'done' ? 2 : lane.phase === 'rush' ? 1 : 0;
+  got += hall === 2 ? 1 : hall === 1 ? 0.5 : 0;
+  const total = towers.reduce((a, b) => a + b, 0) + 1;
+  return { towers, down, hall, dead: lane.phase === 'dead', fill: Math.min(1, got / total) };
+}
+
+/** How many fights a side has cleared (all of a stage's towers down; the breach clears the last). */
+function cleared(lane: LaneView): number {
+  if (lane.phase === 'rush' || lane.phase === 'done') return STAGES;
+  const all = lane.towers.length > 0 && lane.towers.every((t) => t.hp <= 0) && lane.phase !== 'transit';
+  return lane.stage + (all ? 1 : 0);
+}
+
 /** Drives the HUD store, sound and the end-of-match hand-off from a feed. For the real match only. */
 export function useMatchHud(feed: MatchFeed) {
   useEffect(() => {
@@ -42,6 +75,8 @@ export function useMatchHud(feed: MatchFeed) {
     const parts: [ScoreParts, ScoreParts] = [emptyParts(), emptyParts()];
     let hall = 0;
     const banner = (text: string, tone: 'good' | 'bad' | 'gold') => hud.set({ banner: { text, tone, at: performance.now() } });
+    // Fights cleared per side (indexed by Side), for the race toasts; null until the first view.
+    let clearedBy: [number, number] | null = null;
 
     /** TIME!: the Rush clock ran out (or the 3:00 cap). Once per match. */
     const stampTime = () => {
@@ -92,14 +127,20 @@ export function useMatchHud(feed: MatchFeed) {
         }
       }
 
+      // The race: a toast when a side clears a fight before the other.
+      const ca = cleared(a);
+      const cb = cleared(b);
+      if (clearedBy && v.status !== 'ended') {
+        if (ca > clearedBy[me] && ca > cb && a.phase !== 'dead') {
+          hud.set({ toast: { text: `You cleared Fight ${ca} first!`, tone: 'good', at: now } });
+        } else if (cb > clearedBy[them] && cb > ca && b.phase !== 'dead') {
+          hud.set({ toast: { text: `${b.name} cleared Fight ${cb}!`, tone: 'bad', at: now } });
+        }
+      }
+      clearedBy = me === 0 ? [ca, cb] : [cb, ca];
+
       if (now - lastHud < 100 && v.status !== 'ended') return;
       lastHud = now;
-      let hp = 0;
-      let maxHp = 0;
-      for (const t of b.towers) {
-        hp += t.hp;
-        maxHp += t.maxHp;
-      }
       hud.set({
         tick: v.tick,
         status: v.status,
@@ -110,7 +151,7 @@ export function useMatchHud(feed: MatchFeed) {
         phase: [a.phase, b.phase],
         myPhaseTick: a.phaseTick,
         raidTicks: rushClock(a),
-        theirTowers: maxHp > 0 ? hp / maxHp : 0,
+        race: [raceTrack(a, v.layout), raceTrack(b, v.layout)],
         peekUsed: a.peekUsed,
         hallCount: hall,
       });

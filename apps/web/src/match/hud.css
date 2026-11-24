@@ -1,4 +1,4 @@
-/* ---------- Match HUD v5 (SPEC v5 §8): top bar, progress line, thumb, cog, end sequence ---------- */
+/* ---------- Match HUD v5 (SPEC v5 §8): top bar, race bar, thumb, cog, end sequence ---------- */
 
 /* Gradient numerals (orange → yellow) over a thick ink outline: two stacked copies of the text. */
 .grad {
@@ -120,116 +120,175 @@
   box-shadow: 0 2px 0 var(--outline);
 }
 
-/* ---------- Opponent progress line (replaces the mini-lane) ---------- */
-/* Sits on the grass below the lane, left of the thumb buttons, so it never covers the base. */
-.hud.progress-line {
-  bottom: max(14px, env(safe-area-inset-bottom));
-  left: 10px;
-  right: 86px;
-  height: 28px;
+/* ---------- Race bar: you and the opponent on the same map, tower by tower ---------- */
+.hud.race {
+  top: calc(max(6px, env(safe-area-inset-top)) + 44px);
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 2;
+}
+
+.race-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 4px 0 4px;
+  height: 17px;
+  padding: 0 6px 0 3px;
   border-radius: 999px;
-  border: 2.5px solid var(--outline);
-  background: #1b1530d0;
-  box-shadow: 0 3px 0 #1b153066;
-  color: #fff;
-  font-family: var(--ui);
-  font-weight: 800;
-  font-size: 12px;
-  line-height: 1;
+  background: #1b1530b0;
+  box-shadow: 0 0 0 1.5px #1b1530;
 }
 
-.pl-name {
-  flex: 0 1 auto;
-  max-width: 28%;
+.race-name {
+  flex: none;
+  width: 52px;
+  padding-left: 4px;
+  font-family: var(--ui);
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 3px 8px 4px;
-  border-radius: 999px;
-  border: 2px solid var(--outline);
-  background: linear-gradient(#ff8a95, var(--them));
-  box-shadow: inset 0 1.5px 0 #ffffff70;
-  font-weight: 800;
 }
 
-.pl-stage {
-  flex: none;
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: 14px;
-  letter-spacing: 0.3px;
-  color: var(--gold-light);
-  text-shadow: 0 1.5px 0 var(--outline);
+.race-row.me .race-name {
+  color: #9fd6ff;
 }
 
-.progress-line.ahead .pl-stage {
-  color: var(--gold);
+.race-row.them .race-name {
+  color: #ffb3ba;
 }
 
-.progress-line.dead .pl-stage {
-  color: #ff9aa4;
-}
-
-.pl-bar {
+.race-track {
   position: relative;
   flex: 1 1 auto;
-  min-width: 40px;
-  height: 14px;
+  min-width: 0;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
   border-radius: 999px;
-  border: 2px solid var(--outline);
-  background: #ffffff24;
+  background: #ffffff1f;
   overflow: hidden;
 }
 
-.pl-bar i {
+.race-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(#ff98a1, var(--them) 60%, var(--them-dark));
-  box-shadow: inset 0 1.5px 0 #ffffff80;
-  transition: width 0.25s ease;
-}
-
-.pl-bar em {
-  position: relative;
-  display: block;
-  text-align: center;
-  font-style: normal;
-  font-size: 10px;
-  line-height: 10px;
-  color: #fff;
-  text-shadow:
-    0 1px 0 var(--outline),
-    0 0 2px var(--outline);
-}
-
-.pl-gold {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: 14px;
-  padding: 2px 8px 3px 3px;
   border-radius: 999px;
-  border: 2px solid var(--outline);
-  background: linear-gradient(var(--gold-light), var(--gold));
-  color: var(--outline);
-  box-shadow: inset 0 1.5px 0 #ffffff90;
+  transition: width 0.3s ease-out;
 }
 
-.pl-gold::before {
-  content: '';
-  width: 12px;
-  height: 12px;
+.race-row.me .race-fill {
+  background: linear-gradient(#9fd6ff, var(--me) 60%, var(--me-dark));
+}
+
+.race-row.them .race-fill {
+  background: linear-gradient(#ffa3ab, var(--them) 60%, var(--them-dark));
+}
+
+.race-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  border: 2px solid var(--gold-dark);
-  background: radial-gradient(circle at 35% 35%, #fff6c8 0 25%, var(--gold) 30%);
+  color: #fff;
+}
+
+/* A thin divider before each stage's first tower and before the hall. */
+.race-slot.gap::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 2px;
+  bottom: 2px;
+  width: 1.5px;
+  background: #ffffff40;
+}
+
+.race-slot svg {
+  width: 11px;
+  height: 11px;
+  fill: #ffffffd0;
+}
+
+.race-slot.down {
+  background: var(--gold);
   box-shadow: 0 0 0 1.5px var(--outline);
+  color: var(--outline);
+  animation: race-tick 0.35s var(--bounce);
+}
+
+.race-slot.down svg {
+  width: 10px;
+  height: 10px;
+}
+
+.race-slot.hall.on {
+  background: var(--gold);
+  box-shadow: 0 0 0 1.5px var(--outline);
+  animation: pip-pulse 0.6s ease-in-out infinite;
+}
+
+.race-slot.hall.on svg {
+  fill: var(--outline);
+}
+
+.race-row.dead {
+  opacity: 0.55;
+}
+
+@keyframes race-tick {
+  from {
+    transform: scale(1.8);
+  }
+}
+
+.race-gold {
+  flex: none;
+  min-width: 26px;
+  text-align: right;
+  font-family: var(--display);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--gold);
+}
+
+.race-toast {
+  align-self: center;
+  margin-top: 3px;
+  padding: 2px 12px 4px;
+  border-radius: 999px;
+  border: 2.5px solid var(--outline);
+  font-family: var(--display);
+  font-size: 15px;
+  line-height: 1.1;
+  color: #fff;
+  -webkit-text-stroke: 3px var(--outline);
+  paint-order: stroke fill;
+  box-shadow: 0 3px 0 var(--outline);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation:
+    pop-in 0.35s var(--bounce) both,
+    fade-out 0.4s 2.4s forwards;
+}
+
+.race-toast.good {
+  background: linear-gradient(#9fd6ff, var(--me));
+}
+
+.race-toast.bad {
+  background: linear-gradient(#ffa3ab, var(--them));
 }
 
 /* ---------- Thumb: Scout above, Champion at the bottom ---------- */
@@ -722,14 +781,8 @@
     padding: 3px 9px 4px;
   }
 
-  .hud.progress-line {
-    gap: 4px;
-    font-size: 11px;
-  }
-
-  .pl-stage,
-  .pl-gold {
-    font-size: 13px;
+  .race-name {
+    width: 44px;
   }
 
   .count-num {
