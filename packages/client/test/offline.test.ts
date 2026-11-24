@@ -6,10 +6,9 @@ import { crateOfGate, stageDef } from '../src/layout';
 import { MockSource, OfflineSource, simConstants, simRulesVersion } from '../src/index';
 import type { MatchEvent, MatchView, PrivateView } from '../src/types';
 
-/** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs: bot on side 1, idle side 0
- *  (both finish; the idle mid-lane cannon wins narrowly, 1,826 to 1,818). */
-// Bot vs bot (rules v6: an idle player never fires). Same match as crates/sim-wasm PARITY_DIGEST.
-const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, selfBot: true, digest: 11_513_745_549_247_634_464n, tick: 1140 };
+/** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs (PARITY_DIGEST): bot vs bot
+ *  (since rules v6 an idle player never fires). Rules v7: side 1 is overrun on tick 671. */
+const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, selfBot: true, digest: 445_834_651_989_838_914n, tick: 672 };
 
 function playOut(src: { view: MatchView; step(): void }, onTick?: (view: MatchView) => void) {
   let guard = 0;
@@ -38,15 +37,15 @@ test('TS constants and layouts equal the Rust ones in the WASM build', () => {
 });
 
 test('bundled WASM is built from the current sim (parity digest)', () => {
-  assert.equal(simRulesVersion(), 6);
+  assert.equal(simRulesVersion(), 7);
   const src = new OfflineSource(PARITY);
   playOut(src);
   assert.equal(src.view.tick, PARITY.tick);
   assert.equal(src.digest(), PARITY.digest, 'packages/sim-wasm/pkg is stale: run packages/sim-wasm/build.sh');
   const r = src.view.result!;
-  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [null, null, [1862, 1862], 0]);
+  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [0, 1, [1018, 1068], PARITY.stake]);
   assert.equal(r.fee, Math.floor((r.moved * C.FEE_BPS) / 10_000));
-  assert.deepEqual(src.view.sides.map((s) => s.phase), ['done', 'done']);
+  assert.deepEqual(src.view.sides.map((s) => s.phase), ['fight', 'dead']);
   src.dispose();
 });
 
@@ -85,7 +84,7 @@ function checkView(view: MatchView) {
       if (!g.moving) assert.equal(g.x, st.gates[slot]!.x);
       if (g.revealed?.kind === 'mul') assert.ok(g.revealed.value >= 2 && g.revealed.value <= 10);
       if (g.revealed?.kind === 'div') assert.ok(g.revealed.value === 2 || g.revealed.value === 3);
-      if (g.revealed?.kind === 'add' || g.revealed?.kind === 'sub') assert.ok([5, 15, 30].includes(g.revealed.value));
+      if (g.revealed?.kind === 'add' || g.revealed?.kind === 'sub') assert.ok(g.revealed.value > 0 && C.PM_BY_ROW.includes(g.revealed.value));
       if (g.timing) {
         assert.equal(g.revealed, null, 'the timing gate never flips');
         assert.equal(g.value?.kind, 'mul');

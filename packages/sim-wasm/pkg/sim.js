@@ -194,10 +194,11 @@ export function codec_version() {
 /**
  * Every constant packages/client mirrors, plus the level pool, as JSON (the TS parity test
  * compares them). `NORMAL_ODDS` = [[op byte, percent]] with ±N written as +0 / −0 (N =
- * `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]].
+ * `PM_BY_ROW[row]`; row index 0 draws from the × entries only); `BIG_ODDS` = [[k, percent]].
  * `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
- * gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
- * tower and crate indices are the slots used everywhere else.
+ * gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}],
+ * walls: [{x, y0, y1}]}` (rules v7 divider walls, `WALL_HALF` thick each side); gate, tower and
+ * crate indices are the slots used everywhere else.
  * @returns {string}
  */
 export function constants_json() {
