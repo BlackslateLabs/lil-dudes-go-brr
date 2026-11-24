@@ -1247,3 +1247,48 @@ hand-picked (5–9%). That is a bit under the 10–20% band. `tune_layouts.py --
 - regenerate the IDL with `anchor build` (no instruction or account changed in v7, so it should
   be identical);
 - redeploy the program for v7 (`RULES_VERSION` 7; the codec layout is unchanged).
+
+## 2026-11-24 17:27 IST · Suparno · sim + client + WASM (rules v8) · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `v8-levels`; commits `6f99d4c`, `afe9d03`, `b3f28db`, `5d983d2`, `a868a1e`, `2ffc8a8`, `6524518`)
+- **Rules v8, levels (sim):** the genre's level vocabulary is now real and identical for both
+  players. Solid obstacles (`Rect` and four right-angle wedges) that crowds slide round
+  (`OBSTACLE_GRACE` 60, `SLIDE_STEP` 150), speed pads (renew the launch boost), pipes (pop out
+  near the towers, past the rows behind the exit, `Event::Pipe`), stand-alone breakable blocks.
+  Enemies walk straight down (no homing on my crowds). Six new layouts: Three Lanes, Funnel /
+  Diamond, Speed Comb, Pipes, Pillars, Island / Fortress. Design-rule test rewritten (flood fill
+  to every tower), path tests from every launch x, unit tests per rule, fuzz invariant.
+- **Bot:** aims at row 1's gates, traces each volley's real flight (slides, pads, pipes), a
+  sealed pocket scores 0; alternates between paths within 75% of the best.
+- **Balance** (3,000 bot matches per layout): 5.6% deaths, 65.2 s average, Fight 1 22.0 s,
+  Fight 2 33.6 s; 9 of 18,000 matches hit 3:00 (one rare Speed Comb deal). Goldens and
+  `PARITY_DIGEST` re-recorded; WASM pkg rebuilt. SPEC_V5 §13 has it all.
+- **Tests:** sim 105 + integration, sim-wasm 11, client 24, server 17 green; client, server and
+  web typecheck; clippy `-D warnings` and fmt clean; `programs/lil_dudes` and `tests-magicsvm`
+  pass `cargo check --tests`. MagicSVM **not run** (no SBF toolchain here).
+
+**CONTRACT (packages/client v8):** `RULES_VERSION` 8; `PM_BY_ROW` [0, 1, 1, 2]; new
+`OBSTACLE_GRACE` (60) and `SLIDE_STEP` (150); `StageDef.obstacles: ObstacleDef[]`
+(`{ x0, y0, x1, y1, shape: 'rect' | 'wedgeBL' | 'wedgeBR' | 'wedgeTL' | 'wedgeTR' }`),
+`StageDef.pads: PadDef[]` (`{ x0, y0, x1, y1 }`), `StageDef.pipes: PipeDef[]`
+(`{ x0, y0, x1, y1, outX, outY }`), always present; new `MatchEvent`
+`{ type: 'pipe', side, cohortId, pipeIx }`; pure helpers `insideObstacle(o, x, y, grace)`,
+`wallPush`, `columnAt`, `obstacleAt`, `slideX`, `advance`, `onPad`, `pipeAt`, `rowsThrough`;
+`crateOfGate` only reads crates under big gates. WASM `LAYOUT_VERSION` 5 (event 15 = pipe). The
+live feed re-runs the real movement, so gate, crate and pipe events stay exact.
+
+**Decided:** (Suparno) v8 levels as in SPEC_V5 §13 and §11.8, plus what the runs forced:
+homing is skipped on a tick a cohort slid (else it undid the slide and froze on Fortress's
+wedges); ±N down to [0, 1, 1, 2] (a later row is often reached after one multiplier); the bot
+alternates between near-equal paths (identical bots drew ~100%).
+
+**Blocked / risks:**
+- On-chain cost: each crowd's move now tests obstacles inside their y band (Pillars has 16).
+  Not benched.
+- Pipes draws 100% bot vs bot (the bot only likes the corridor); a player who never shoots the
+  tower's lane is overrun by the first wave (~6 s).
+
+**Next / handoff (Kai):**
+- run MagicSVM (`tests-magicsvm`) and the `bench` (worst tick CU with obstacles; the 8-tick crank
+  catch-up must stay under 400k);
+- regenerate the IDL with `anchor build` (no instruction or account changed; codec unchanged);
+- redeploy the program for v8 (`RULES_VERSION` 8).
