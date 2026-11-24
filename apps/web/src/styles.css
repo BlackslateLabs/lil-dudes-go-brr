@@ -78,6 +78,8 @@ body {
   margin: 0 auto;
   background: linear-gradient(var(--sky-top), var(--bg) 60%);
   overflow: hidden;
+  /* Big centre text sizes itself to the frame (cqw), so it fits a 360 px phone. */
+  container-type: inline-size;
   box-shadow: 0 0 0 4px var(--outline), 0 0 60px #0006;
 }
 
@@ -451,7 +453,10 @@ button {
   left: 0;
   right: 0;
   top: 36%;
+  padding: 0 14px;
   text-align: center;
+  line-height: 1.05;
+  text-wrap: balance;
   font-family: var(--display);
   color: #fff;
   -webkit-text-stroke: 9px var(--outline);
@@ -462,12 +467,12 @@ button {
 }
 
 .banner-pop {
-  font-size: 68px;
+  font-size: min(68px, 15cqw);
   animation: pop-in 0.45s var(--bounce) both;
 }
 
 .banner-pop.flash {
-  font-size: 50px;
+  font-size: min(50px, 11.5cqw);
   animation:
     pop-in 0.45s var(--bounce) both,
     fade-out 0.4s 1.2s forwards;
@@ -560,8 +565,9 @@ button {
   margin: 6px 0 0;
   font-family: var(--display);
   font-weight: 400;
-  font-size: 58px;
+  font-size: min(58px, 14cqw);
   line-height: 1;
+  text-align: center;
   color: #fff;
   -webkit-text-stroke: 10px var(--outline);
   text-shadow:
