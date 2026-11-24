@@ -1518,6 +1518,10 @@
     },
     {
       "name": "set_fire",
+      "docs": [
+        "Rules v6: press (`on`) or let go of the trigger; letting go with a full meter in my",
+        "Fight releases the Champion."
+      ],
       "discriminator": [
         124,
         81,

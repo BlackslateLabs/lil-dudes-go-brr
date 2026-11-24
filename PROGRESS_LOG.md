@@ -1404,3 +1404,21 @@ the crowds just stay static.
 - The robot troops walking through the thin pillar walls is old behaviour, unchanged.
 
 **Next / handoff:** none for Kai. If dudes.glb is rebuilt, rerun `bake-anim.mjs` (header has how).
+
+## 2026-11-24 20:10 IST · Kai · program checked on rules v9 (SBF build, MagicSVM, bench) · [STAGE]
+**Did:** built the program on main (`e197f62`, rules v9) for SBF (deploy, `magicsvm` and `bench` builds) and
+regenerated the IDL with `anchor build`. Suparno's hand-written `set_fire` entry matched (only its doc comment was
+missing); `packages/client/src/idl/lil_dudes.json` is now the generated file. **MagicSVM 19/19 green** on v9.
+
+**Bench (v9, no on-chain bot; the program never runs the sim bot, the server bot plays as a player):**
+- full lanes (40 cohorts + 16 enemies per side): **44,249 CU/tick** (v5 was 3,746, ×12: v8 obstacles + v9 homing);
+- busiest tick of a real match: 15,744 CU (v5: 1,268);
+- crank 8-tick catch-up at the worst case ≈ 368k of 400k (fits, thin margin); a player tx's 2-tick catch-up ≈ 102k
+  of 200k.
+
+**Blocked / risks:** any rule change that adds work per cohort per tick can push the crank over 400k. **Rules are
+frozen at v9 for the deploy**; visual changes only from here unless Kai agrees. Not deployed yet: the new .so is
+481,528 B vs the 467,912 B program account (needs `solana program extend` first).
+
+**Next / handoff:** Kai: deploy v9, live check. Suparno: wire Quick Match / Room Code to `LiveSource` (the server
+already serves `/rooms`, `/queue`, `/topup`, `/settle`, and the online bot), profile page, feel fixes.
