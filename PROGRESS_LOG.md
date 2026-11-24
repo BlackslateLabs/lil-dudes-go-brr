@@ -1459,18 +1459,16 @@ already serves `/rooms`, `/queue`, `/topup`, `/settle`, and the online bot), pro
 **Next / handoff:** Kai: wait for [RULES FINAL], then build → MagicSVM → bench → deploy → live match + privacy check;
 host server and web, post the URLs here.
 
-## 2026-11-24 20:55 IST · Kai · timeline to submission · [DECISION]
-Deadline **Fri 27 Nov 19:30 IST**; we submit by **Fri 15:00 IST** (buffer for upload/form issues).
+## 2026-11-24 20:55 IST · Kai · order of work to submission · [DECISION]
+Each step starts when the one before it is done.
 
-| When (IST) | Suparno | Kai |
-|---|---|---|
-| **Tue night** | Rules review; any rule changes (v10 or none) | Set up Render (server) + Vercel (web), both auto-deploy from `main` |
-| **Wed by 12:00** | Post **[RULES FINAL]** with the commit; start multiplayer wiring | — |
-| **Wed afternoon** | Multiplayer wiring (Quick Match, Room Code, live Result) | Build → MagicSVM → bench → **deploy** → post **[DEPLOYED]** + URLs |
-| **Wed ~21:00** | **Together: first live match on two phones** (30 min), write the fix list here | same |
-| **Thu** | Profile page, feel fixes, load speed, live fixes | Chain/server fixes from the live test; privacy check |
-| **Thu 21:00** | **Feature freeze** (fixes only after this) | same |
-| **Fri by 13:00** | README + 2-min demo video | Review README/video; final live check on the hosted URL |
-| **Fri 15:00** | **Submit** | same |
-
-If [RULES FINAL] slips, everything on Kai's side slips with it, so say here early if it will.
+1. **Suparno:** review the rules, make any rule changes, then post **[RULES FINAL]** with the commit.
+2. **Kai** (can run alongside step 1): set up Render (server) and Vercel (web), both auto-deploy from `main`.
+3. **Kai** (after [RULES FINAL]): build → MagicSVM → bench → deploy, then post **[DEPLOYED]** with the URLs.
+4. **Suparno** (from [RULES FINAL] on, alongside step 3): wire up multiplayer (Quick Match, Room Code, live Result).
+5. **Together** (after steps 3 and 4): first live match on two phones; write the fix list here.
+6. **Suparno:** profile page, feel fixes, load speed, his fixes from the list.
+   **Kai:** chain and server fixes from the list, privacy check.
+7. **Together:** feature freeze, fixes only.
+8. **Suparno:** README + demo video. **Kai:** review them; final live check on the hosted link.
+9. **Together:** submit.
