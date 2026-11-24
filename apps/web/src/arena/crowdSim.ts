@@ -54,6 +54,8 @@ const SEP_K = 0.55;
 const KX_WIDE = 1.45;
 /** A blob squeezed across grows along the lane, at most this much; past that it packs tighter. */
 const KZ_MAX = 2.4;
+/** Small cohorts are at least this long either side of their centre (volleys are ~480 apart). */
+const STREAM_HALF = 220;
 /** Spring rate (1/s), critically damped. */
 const OMEGA = 7.5;
 /** Integration substep (s). */
@@ -396,7 +398,9 @@ export class CrowdSim {
       const half = Math.max(30, (hi - lo) / 2);
       const kx = Math.min(KX_WIDE, half / R);
       r.kx = kx;
-      r.kz = Math.min(KZ_MAX, 1 / Math.max(kx, 1e-3));
+      // A small cohort stretches along the lane to about half the volley spacing, so a stream of
+      // volleys reads as one flowing crowd rather than a line of separate clumps.
+      r.kz = Math.max(Math.min(KZ_MAX, 1 / Math.max(kx, 1e-3)), Math.min(STREAM_HALF / R, 3));
       const w = R * kx;
       r.bx = hi - lo > 2 * w ? Math.max(lo + w, Math.min(hi - w, r.x)) : (lo + hi) / 2;
       r.c = SPACING / Math.sqrt(keep);

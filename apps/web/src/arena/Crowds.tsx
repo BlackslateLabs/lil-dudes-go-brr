@@ -20,7 +20,7 @@ const GIANT_SCALE = 2.8;
 const MAX_GIANTS = 16;
 const CHAMP_POOL = 48;
 /** Spacing of a Champion's giants (sim units): two abreast across the lane, rows along it. */
-const GIANT_DX = 270;
+const GIANT_DX = 290;
 const GIANT_DZ = 420;
 const GIANT_R = 150;
 
