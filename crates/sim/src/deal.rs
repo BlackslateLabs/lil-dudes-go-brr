@@ -19,9 +19,10 @@ pub const NORMAL_ODDS: [(GateOp, u64); 8] = [
     (GateOp::Div(3), 2),
 ];
 /// SPEC_V5 §3: N of a ±N gate by row index (row 1 = index 0 has none; rows past the table use
-/// its last N), sized to the crowd a lone volley brings to that row (SPEC_V5 §12, rules v7:
-/// ~3, ~5, ~10 dudes), so a −N hurts a column without wiping it.
-pub const PM_BY_ROW: [u8; 4] = [0, 1, 3, 6];
+/// its last N), sized to the crowd a lone volley brings to that row. Rules v8 (SPEC_V5 §13):
+/// [0, 1, 1, 2], since a later row is often reached after one multiplier only (~2–5 dudes), and
+/// v7's −3 there wiped whole paths (fights stuck at 3:00).
+pub const PM_BY_ROW: [u8; 4] = [0, 1, 1, 2];
 /// SPEC_V5 §12 (rules v7): the first row is always good. Its gates fill every column, so there
 /// is no gap to dodge it, and a ÷ or −N there would wipe every 1-dude volley of that column; a
 /// row-1 slot draws from the × entries of `NORMAL_ODDS` only (their odds mass).
