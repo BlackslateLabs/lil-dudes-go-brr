@@ -1488,3 +1488,28 @@ Each step starts when the one before it is done.
 **Blocked / risks:** the program only accepts the fixed `STAKE_TIERS`, so "any amount" needs a program change before the deploy.
 **Next / handoff (Kai):** in the v10 deploy, replace `STAKE_TIERS` with a min/max range (suggested 0 or 0.01–5 SOL);
 match the server queue by exact stake; let rooms carry a stake. Keep the upgrade authority.
+
+## 2026-11-24 22:46 IST · Suparno · docs · [HANDOFF]
+**Did:** (branch `v10-final`; commits `50416a9`, `c0cc52e`)
+- **`README.md` rewritten for the submission:** banner, Play link, what it is, how a match works (v9/v10
+  rules, no numbers that v10 is still changing), a "remove it and what breaks" table (Private ER + permissions,
+  ER at 20 Hz, VRF, crank, delegation + commit/undelegate + Magic Action, burner TEE auth), a "Proof: try to
+  cheat" table with an honest status column, a Mermaid architecture diagram, Limits (TEE trust, devnet, the
+  44k CU tick, off-chain bot, the leader's revealed gates are public, Verify checks the deal not every move,
+  one server instance, not tested at scale), run commands, repo layout, on-chain table, credits.
+- **`docs/SUBMISSION.md`:** every form field ready to paste (tagline 79 chars, short description 275, long
+  ~270 words, pitch ~160 words), 3 categories with reasons, which explorer tx to link and why, address
+  placeholders, a judge checklist (only true items ticked) and 5 talking points.
+
+**Decided:** (Suparno) the explorer proof is the base-layer settle tx of a real staked match on the final
+program. The README shows `4QFSXrcG…9FDa` as the current devnet program, marked pre-v10.
+
+**Blocked / risks:** the in-app Verify button is disabled and there is no in-app "denied read" console; both
+are marked TODO / not built in the README. If they don't land, the video shows `privacy-check.ts` instead.
+
+**Next / handoff (Kai):** please review both files for accuracy (especially the MagicBlock table and Limits),
+then fill in after the v10 deploy: the Play URL (README header, SUBMISSION "Website"), the program ID
+confirmation, explorer links to a staked match's settle tx and match account (README "On chain", SUBMISSION
+"Explorer link"), the treasury (fee vault) and sponsor (app wallet) addresses, and a privacy-check re-run on
+the final program. Suparno: gameplay GIF (`docs/assets/gameplay.gif`), demo video link, public repo URL,
+prize wallet, devnet usage numbers.
