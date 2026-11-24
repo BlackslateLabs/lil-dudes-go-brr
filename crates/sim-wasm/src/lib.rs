@@ -467,7 +467,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 56] = [
+    let pairs: [(&str, String); 59] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -498,7 +498,10 @@ pub fn constants_json() -> String {
         ("CLASH_REACH", CLASH_REACH.to_string()),
         ("CLASH_BAND", CLASH_BAND.to_string()),
         ("STEER_STEP", STEER_STEP.to_string()),
-        ("DETECT_Y", DETECT_Y.to_string()),
+        ("ENGAGE_Y", ENGAGE_Y.to_string()),
+        ("ENGAGE_X", ENGAGE_X.to_string()),
+        ("TOWER_STEER", TOWER_STEER.to_string()),
+        ("TURN_MARGIN", TURN_MARGIN.to_string()),
         ("CANNON_STEP", CANNON_STEP.to_string()),
         ("WALL_HALF", WALL_HALF.to_string()),
         ("OBSTACLE_GRACE", OBSTACLE_GRACE.to_string()),
@@ -636,7 +639,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 16_846_537_492_206_921_133;
+const PARITY_DIGEST: u64 = 2_875_921_047_618_464_984;
 
 #[cfg(test)]
 mod tests {
