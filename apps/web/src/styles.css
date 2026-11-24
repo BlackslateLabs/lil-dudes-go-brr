@@ -238,7 +238,7 @@ button {
 /* The Face-Off logo (drawn by us; source in the art picks). The image carries its own outline and shadow. */
 .logo {
   margin: 0;
-  width: min(94vw, 440px);
+  width: min(76vw, 330px);
   line-height: 0;
   animation: logo-bob 3.2s ease-in-out infinite;
 }

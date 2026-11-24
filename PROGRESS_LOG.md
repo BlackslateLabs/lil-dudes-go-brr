@@ -1167,3 +1167,16 @@ picks page. Lilita One stays the in-game display font.
 
 **Next / handoff:** none for Kai. The VS screen still uses the old blob avatars; the mascot heads
 could replace them.
+
+## 2026-11-24 10:30 IST · Suparno · web / art
+**Did:**
+- Logo v2: the wordmark is bigger and sits higher; the cards, knight, bot and bolt are ~20% smaller;
+  the image is cropped to its content. Shown smaller in game (Home `min(76vw, 330px)`, wipe
+  `min(74vw, 320px)`).
+- Favicon renamed `icon.svg` → `favicon.svg` (busts the old cached icon) with a PNG fallback.
+
+**Decided:** none.
+
+**Blocked / risks:** none.
+
+**Next / handoff:** PR `web/logo` → `main` (includes `web/champion-giants` and `v5-hold-fire`).
