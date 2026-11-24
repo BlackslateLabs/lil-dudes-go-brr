@@ -11,7 +11,7 @@ Nothing copied from any existing game.
 | Baloo 2 (`public/fonts/Baloo2-Latin-Variable.woff2`) | UI text | https://fonts.google.com/specimen/Baloo+2 (https://github.com/EkType/Baloo2) | The Baloo 2 Project Authors (Ek Type) | SIL OFL 1.1 (`public/fonts/Baloo2-OFL.txt`) |
 | Particle Pack (`public/assets/fx/particles.webp`: star_06, star_09, circle_05, smoke_04, dirt_01, circle_02, recoloured and resized) | Sparkles, glows, rings, smoke, debris | https://kenney.nl/assets/particle-pack | Kenney | CC0 1.0 |
 | Puff and coin cells in `public/assets/fx/particles.webp` | Cartoon puffs, coins | drawn in code by us | ours | — |
-| Mini Characters (`public/assets/models/dudes.glb`: character-knight, character-robot) | Your dudes (knight, team blue) and the base's troops (robot, team red) | https://kenney.nl/assets/mini-characters | Kenney | CC0 1.0 |
+| Mini Characters (`public/assets/models/dudes.glb`: character-knight, character-robot; `dudes-anim.bin`: their `walk` and `sprint` cycles baked per vertex by `bake-anim.mjs`) | Your dudes (knight, team blue) and the base's troops (robot, team red), and how they walk | https://kenney.nl/assets/mini-characters | Kenney | CC0 1.0 |
 | Blaster Kit (`public/assets/models/blaster.glb`: blaster-b, crate-wide) | Cannon launcher; gate-lock crates | https://kenney.nl/assets/blaster-kit | Kenney | CC0 1.0 |
 | Tower Defense Kit (`public/assets/models/towers.glb`: tower-round-bottom-a, tower-round-roof-b) | Enemy towers; cannon base | https://kenney.nl/assets/tower-defense-kit | Kenney | CC0 1.0 |
 | Fantasy Town Kit (`public/assets/models/hall.glb`: walls, doorway, windows, pillars, banner, roofs, lantern, wall-block) | Town hall and base wall | https://kenney.nl/assets/fantasy-town-kit | Kenney | CC0 1.0 |
