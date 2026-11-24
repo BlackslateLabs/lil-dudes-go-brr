@@ -51,7 +51,7 @@ interface Cue {
 // hit = impactMining; crate = impactWood_medium / impactPlank_medium + impactWood_heavy;
 // tower down / KO = impactPunch_heavy + impactMining or impactSoft_heavy + impactBell_heavy +
 // casino chips-handle-5; coins after a tower = casino chips-handle/collide/stack; loot = casino
-// chips-stack / chip-lay; gotcha = digital phaserDown3; fight = impactBell_heavy_002;
+// chips-stack / chip-lay; fight = impactBell_heavy_002;
 // raid / win / lose = digital powerUp7 / powerUp1 / zapThreeToneDown; click = interface select_002.
 // v5: breach = impactPunch_heavy + impactSoft_heavy + impactMetal_heavy + impactBell_heavy +
 // digital powerUp9; countdown tick = interface bong_001 + select_007 + impactSoft_medium +
@@ -78,7 +78,6 @@ const CUES = {
   towerDown: { files: ['tower-down'], bus: 'ui', gain: 0.95, voices: 2, jitter: 0.04, throttle: 0 },
   towerCoins: { files: ['coins-short'], bus: 'ui', gain: 0.6, voices: 2, jitter: 0.06, throttle: 0 },
   ko: { files: ['ko'], bus: 'ui', stinger: true, gain: 1, voices: 1, jitter: 0.02, throttle: 0 },
-  gotcha: { files: ['gotcha'], bus: 'ui', gain: 0.85, voices: 1, jitter: 0, throttle: 0 },
   fight: { files: ['fight'], bus: 'ui', gain: 0.6, voices: 1, jitter: 0, throttle: 0 },
   raid: { files: ['raid'], bus: 'ui', gain: 0.75, voices: 1, jitter: 0, throttle: 0 },
   win: { files: ['win'], bus: 'ui', stinger: true, gain: 0.8, voices: 1, jitter: 0, throttle: 0 },
@@ -284,10 +283,6 @@ export const sfx = {
   /** Raid loot landing in the vault: chips clinking. Throttled. */
   loot() {
     play('loot');
-  },
-  /** A rigged gate springs: a descending "womp". */
-  gotcha() {
-    play('gotcha');
   },
   /** Big knockout: a cannon dies. */
   ko() {
