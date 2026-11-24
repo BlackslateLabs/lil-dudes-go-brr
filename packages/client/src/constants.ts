@@ -507,7 +507,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Island',
     stages: [
       {
-        towers: [{ x: 1500, hp: 218, waveBase: 12 }],
+        towers: [{ x: 1500, hp: 218, waveBase: 11 }],
         rows: [1000, 4000],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
@@ -528,7 +528,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 750, hp: 423, waveBase: 6 }, { x: 2250, hp: 423, waveBase: 6 }],
+        towers: [{ x: 750, hp: 423, waveBase: 5 }, { x: 2250, hp: 423, waveBase: 5 }],
         rows: [1000, 3800],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
