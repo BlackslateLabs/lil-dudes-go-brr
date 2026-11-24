@@ -227,7 +227,8 @@ function pipeMaterials() {
 
 /**
  * A chunky bent pipe: its entrance mouth faces down the lane at the entrance box (dudes run
- * straight in), it rises, arcs over and comes down behind the exit, whose mouth faces up the lane.
+ * straight in), it humps low along the lane and comes down behind the exit, whose mouth faces up
+ * the lane.
  */
 function Pipe({ p }: { p: PipeDef }) {
   const mats = pipeMaterials();
@@ -239,7 +240,8 @@ function Pipe({ p }: { p: PipeDef }) {
     const ez = wz((p.y0 + p.y1) / 2);
     const ox = wx(p.outX);
     const oz = wz(p.outY);
-    const H = R + 2.1;
+    // A low, flat hump lying along the lane (a tall arch reads as an upright tube from the camera).
+    const H = R + 0.75;
     const dir = oz <= ez ? -1 : 1; // which way along the lane the exit lies
     const run = Math.max(1.2, Math.min(2.2, Math.abs(oz - ez) / 4));
     const curve = new CatmullRomCurve3(
