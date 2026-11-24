@@ -9,6 +9,7 @@ import { labelTexture } from './labelTexture';
 import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
 import { mergeParts, preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
 import { HALL_DOOR, HALL_FRONT_Z, HALL_TOP, hallParts, wallParts } from './models/hall';
+import { hallPulse, towerPulse } from './popQueue';
 
 const MAX_TOWERS = 4;
 const MAX_CRATES = 6;
@@ -103,6 +104,11 @@ function TownHall({ feed }: { feed: MatchFeed }) {
       return;
     }
     const raid = lane.phase === 'rush' || lane.phase === 'done';
+    // Each wave of dudes popping at the door (Fx.tsx) jolts it too.
+    if (hallPulse[0]! > 0) {
+      hit.current = Math.min(1, Math.max(hit.current, hallPulse[0]! * 0.7));
+      hallPulse[0] = 0;
+    }
     hit.current = Math.max(0, hit.current - dt * 4);
     const h = hit.current;
     const wob = Math.sin(clock.elapsedTime * 40) * h;
@@ -144,6 +150,7 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
   const hpLabel = useRef<Sprite>(null!);
   const shown = useRef<number | null>(null);
   const flash = useRef(0);
+  const shake = useRef(0);
   const lastHp = useRef(0);
   const down = useRef(0); // 0 standing … 1 fully sunk
   const pack = usePack('towers');
@@ -168,7 +175,7 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
     [pack],
   );
 
-  useFrame((_, dt) => {
+  useFrame(({ clock }, dt) => {
     const t = feed.me?.towers[index];
     if (!t) {
       root.current.visible = false;
@@ -193,15 +200,26 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
     root.current.visible = true;
     down.current = 0;
     body.current.position.y = 0;
-    body.current.rotation.z = 0;
     hpLabel.current.visible = true;
     if (t.hp < lastHp.current) flash.current = 1;
     lastHp.current = t.hp;
+    // Each wave of dudes popping against it (Fx.tsx) flashes and shakes it.
+    const pulse = towerPulse[index]!;
+    if (pulse > 0) {
+      flash.current = Math.max(flash.current, pulse);
+      shake.current = Math.max(shake.current, pulse);
+      towerPulse[index] = 0;
+    }
     flash.current = Math.max(0, flash.current - dt * 6);
+    shake.current = Math.max(0, shake.current - dt * 5);
     mat.emissiveIntensity = flash.current * 0.5;
-    // A little squash on each hit.
+    // A little squash on each hit, and a rattle while a crowd pops against it.
     const f = flash.current;
+    const sh = shake.current;
     body.current.scale.set(1 + f * 0.04, 1 - f * 0.05, 1 + f * 0.04);
+    body.current.position.x = Math.sin(clock.elapsedTime * 57) * sh * 0.16;
+    body.current.position.z = Math.cos(clock.elapsedTime * 43) * sh * 0.08;
+    body.current.rotation.z = Math.sin(clock.elapsedTime * 37) * sh * 0.02;
     // HP label ticks smoothly toward the real value (no per-hit numbers).
     shown.current = shown.current === null ? t.hp : shown.current + (t.hp - shown.current) * Math.min(1, dt * 8);
     const tex = labelTexture(shortNum(shown.current), { color: '#ffffff', outline: PALETTE.base, width: 256, height: 112 });
