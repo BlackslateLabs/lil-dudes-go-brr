@@ -262,6 +262,12 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
    cruise 60; every stage is 2 or 3 columns of gates that fill their column edge to edge, with at
    most one empty cell; divider walls in half the layouts; the first row is always good and ±N is
    resized to the new column crowds (±1 / ±3 / ±6); no sliding gates (no room in a full column).
+8. (Suparno, 24 Nov, rules v8) Levels (§13): one obstacle theme per stage from the genre's
+   vocabulary (long walls, comb arms, wedges, a central block, pillar fields), plus speed pads,
+   pipes and stand-alone breakable blocks, all in the sim and identical for both players; a row
+   of 2–3 near-touching gates right in front of the cannon, the obstacles, then one or two gates
+   beyond them. Enemies walk straight down to the cannon line and only fight what they meet (no
+   homing on my crowds). ±N is now [0, 1, 1, 2].
 
 ---
 
@@ -362,6 +368,112 @@ v7 makes the lane short and the choice a choice of **column**.
 - The bot needed two fixes the full rows exposed: it floors `÷` to whole dudes, and it weighs a
   crate-locked path by `d / (d + hp)` instead of writing it off (before, it never broke a crate,
   and a stage whose open columns were poor dragged to 3:00).
+
+## 13. v8 levels (rules v8, Suparno, 24 Nov)
+
+Playtests next to the genre showed our levels were the weakest part: open lanes with rows of
+gates. v8 builds every stage from the genre's level vocabulary, in the sim, so it is real and the
+same for both players (Verify re-derives it like everything else).
+
+**Vocabulary** (`StageDef` in `crates/sim/src/layouts.rs`; mirrored in `packages/client`)
+
+| Piece | Data | What it does |
+|---|---|---|
+| Long wall | `walls: [WallDef { x, y0, y1 }]` (v7) | splits the lane into lanes while it stands |
+| Solid obstacle | `obstacles: [ObstacleDef { x0, y0, x1, y1, shape }]` | crowds flow around it: comb arms, pillars, a central block (`Rect`), wedges (`WedgeBL/BR/TL/TR`) |
+| Speed pad | `pads: [PadDef { x0, y0, x1, y1 }]` | my cohorts on it get the launch boost again |
+| Pipe | `pipes: [PipeDef { x0, y0, x1, y1, out_x, out_y }]` | my cohorts entering the box pop out at the exit, further up |
+| Breakable block | `crates: [CrateDef]` (v4) | absorbs dudes until broken; now also stands alone, anywhere |
+
+The client has the same fields in camelCase (`obstacles`, `pads`, `pipes` with `outX` / `outY`;
+`shape` is `'rect' | 'wedgeBL' | 'wedgeBR' | 'wedgeTL' | 'wedgeTR'`), always present (`[]` if
+none).
+
+A wedge is the right triangle inside its box with the right angle at the named corner
+(B = low y, the cannon side; T = high y; L = `x0`; R = `x1`): `WedgeBL` is (x0, y0), (x1, y0),
+(x0, y1); `WedgeTL` is (x0, y0), (x0, y1), (x1, y1); the R ones mirror them. Its **open side**
+faces away from that corner: +x for the L wedges, −x for the R ones.
+
+**Rules** (integer, deterministic; constants `OBSTACLE_GRACE` 60, `SLIDE_STEP` 150)
+
+- **Inside an obstacle** (`inside_obstacle`, client `insideObstacle(o, x, y, grace)`): the point
+  is inside the box grown by the grace on every side and, for a wedge, on the inner side of the
+  hypotenuse moved `grace` toward the open side along x: with `w = x1 − x0`, `h = y1 − y0` and
+  (ax, ay) the distances from the right-angle corner (ax less the grace), `ax·h + ay·w ≤ w·h`.
+- **Blocked → slide.** Each tick a crowd (mine moving +y, an enemy −y) checks its end point and
+  the halfway point. If either is inside an obstacle (the first in list order), it does **not
+  advance in y** that tick; it slides in x by at most `SLIDE_STEP` toward a free side of that
+  obstacle: the box edge ± (grace + 1), if that x is inside the lane and the crowd's column (no
+  standing wall crossed). A rect goes to the nearer reachable side (ties left); a wedge to its
+  open side, else the other one. It never slides into another obstacle (it waits instead). Then
+  the v7 wall push applies.
+- **Homing** (my cohorts past the last row) never moves into an obstacle, and is skipped on a tick
+  the cohort slid (the slide is its move, so homing cannot undo it).
+- **Speed pads** (my cohorts only): a cohort whose centre is on a pad after moving gets `age = 0`,
+  so it moves at `LAUNCH_SPEED` while on the pad and for `LAUNCH_TICKS` after. No new state.
+- **Pipes** (my cohorts only): after crates and gate rows, a cohort whose centre is in a pipe's
+  entrance box moves to (`out_x`, `out_y`) with `age = 0`, and `last_row` jumps past every row at
+  or below `out_y`. It does nothing else that tick. Event `Pipe { side, cohort_id, pipe_ix }`
+  (WASM event 15; client `{ type: 'pipe', side, cohortId, pipeIx }`).
+- **Enemies walk straight down** at their speed; they no longer home in on my crowds, and only
+  fight what they meet. Walls push them as before, obstacles deflect them by the same slide; pads
+  and pipes ignore them. One reaching the cannon line still kills.
+- **Crates** may stand alone (any x, y, width, HP) and absorb as before. No gold for breaking one
+  (that would touch the score); the jackpot behind a locking crate stays the reward.
+- Order in a tick for my cohorts: speed (boost) → move or slide → wall push → pad → crates →
+  gate rows → pipe → homing.
+
+**Design rules** (`layouts::tests::layouts_follow_the_design_rules` and the path tests in
+`step::tests`): row 1 is 2–3 near-touching gates (880 wide three across, 1,380 two across) at
+y 900–1,100 covering the whole lane; then one obstacle theme; then one or two gates beyond it;
+exactly one timing gate and 3–5 hidden gates per stage; at most one crate-locked big gate per
+layout; obstacles, pads and pipes inside the lane and off the gate rows and crate lines,
+obstacles too thick to jump at launch speed; pipe exits clear of obstacles and walls; a coarse
+flood fill reaches every tower; a lone dude fired from **every** x on the cannon line reaches a
+tower (each Fight 2 tower on its own too) within 300 ticks, and enemies from every tower reach
+the cannon line, by the real movement rules.
+
+**The 12 stages**
+
+| # | Layout | Fight 1 | Fight 2 |
+|---|---|---|---|
+| 0 | Three Lanes | walls at 1,000 / 2,000 (y 600–4,400); row 1 of 3; a breakable block (HP 20) in the middle lane at 2,600; row 2 (3,400): left `?`, right timing; tower 1,500 | same walls and row 1; row 2: left `?`, middle **crate-locked big gate** (crate HP 30 at 3,100), right timing; towers 500 / 2,500 |
+| 1 | Funnel | row 1 of 3; edge wedges `WedgeTL` (0–1,000) and `WedgeTR` (2,000–3,000), y 1,900–3,500, squeeze the crowd into the middle 1,000; the timing gate alone at (1,500, 4,100); tower 1,500 | **Diamond**: four wedges round (1,500, 3,000), 1,400 wide, y 2,200–3,800, split the crowd left and right; rows of 2 at 1,000 and 4,400 (right one timing); towers 500 / 2,500 |
+| 2 | Speed Comb | centre wall at 1,500 (600–4,800); the left half is a comb of four 120-tall arms (edge / wall alternately, ≥ 500 gaps) at 1,600 / 2,300 / 3,000 / 3,700 with a speed pad in each of the 3 pockets; the right half is open with a 700-wide block (HP 15) at 2,000 and a `?` at 2,700; top row (4,500): left `?`, right timing; tower 750 | mirrored (comb on the right, block and `?` on the left, timing on the left); towers 750 / 2,250 |
+| 3 | Pipes | walls at 1,000 / 2,000 (600–5,200); row 1 of 3; the corridor has a `?` at 2,600 and the timing gate at 4,000; each side lane has a block (HP 10) at 1,500 and a lane-wide pipe (y 3,000–3,400) that pops out at (500 or 2,500, 5,600), past the walls and every row; tower 1,500 | the same, towers 1,200 / 1,800 in the corridor |
+| 4 | Pillars | row 1 of 3; a checkerboard of 16 pillars (260 × 260, 440 gaps, rows 600 apart, every other row shifted) over y 1,900–3,960; row of 2 at 4,400 (right timing); tower 1,500 | the same field, an **exposed big gate** on the left of row 1, speed pads on both flanks (y 1,250–1,650); row 2: left timing, right `?`; towers 750 / 2,250 |
+| 5 | Island | one block 1,100 × 1,300 (x 950–2,050, y 2,100–3,400); a speed pad on the left path, a 700-wide block (HP 15) on the right path; rows of 2 at 1,000 and 4,000 (right timing); tower 1,500 | **Fortress**: wedges `WedgeTL` (0–1,100) and `WedgeTR` (1,900–3,000) at y 5,000–6,000 in front of the towers funnel into the middle 800; pads on both flanks at mid-lane (2,600–3,200); row 1 of 3, row of 2 at 3,800 (right timing); towers 750 / 2,250 |
+
+**Bot** (`crates/sim/src/bot.rs`): its aim points are row 1's gate centres. For each it **traces**
+a volley's flight by the movement rules (launch boost, slides, wall pushes, pads, pipes) through
+the rows and crates it crosses (cached per stage), then scores that path as before (revealed
+values, guesses, the timing gate on arrival, `d / (d + hp)` for crates); a path stuck in a sealed
+pocket scores 0. It alternates between aim points within 75% of the best (`NEAR_PCT`), so two
+bots on one level do not play identically.
+
+**Deck:** row 1 stays ×-only; `PM_BY_ROW` [0, 1, 3, 6] → **[0, 1, 1, 2]**: a later row is often
+reached after a single multiplier (2–5 dudes), and v7's −3 there wiped whole paths (fights stuck
+at 3:00).
+
+**Tuning** (`TUNE`; 3,000 bot matches per layout)
+
+| # | Layout | Fight 1 HP / wave_base | Fight 2 HP per tower / wave_base | Deaths (F1 / F2) | Length | F1 / F2 |
+|---|---|---|---|---|---|---|
+| 0 | Three Lanes | 411 / 6 | 400 / 5 | 7.3% (0 / 302) | 65.4 s | 21.1 / 33.3 s |
+| 1 | Funnel | 372 / 13 | 372 / 5 | 5.5% (87 / 91) | 66.5 s | 21.3 / 35.4 s |
+| 2 | Speed Comb | 273 / 10 | 250 / 5 | 0.7% (40 / 0) | 62.2 s | 21.4 / 29.2 s |
+| 3 | Pipes | 407 / 26 | 330 / 14 | 3.5% (70 / 140) | 67.6 s | 25.2 / 32.3 s |
+| 4 | Pillars | 403 / 7 | 1,119 / 4 | 6.3% (196 / 0) | 65.2 s | 21.5 / 35.7 s |
+| 5 | Island | 218 / 12 | 423 / 6 | 10.3% (515 / 8) | 64.1 s | 21.8 / 35.9 s |
+| | **All** | | | **5.6%** | **65.2 s** | 22.0 / 33.6 s |
+
+- Deaths are again a cliff in the integer `wave_base` (e.g. Speed Comb Fight 1: 1.4% at 10,
+  18% at 11), so each layout sits next to its cliff. Enemies no longer home in, so the waves are
+  far smaller than in v7: a wave walks straight down its tower's lane, and only volleys in that
+  lane meet it. A player who never shoots the tower's lane is overrun by the first wave (~6 s).
+- Caps: 9 of 18,000 matches (all Speed Comb, one rare deal: ÷3 on one path and ÷2 on the other
+  leave lone volleys at 0–1 dude). Draws 52% (identical bots on mirrored copies; 100% on Pipes,
+  whose corridor is the only path the bot likes).
 
 ## Status (23 Nov, Kai): v5 built end to end
 
