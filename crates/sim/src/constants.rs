@@ -76,6 +76,12 @@ pub const CANNON_STEP: i32 = LANE_WIDTH / 5;
 /// SPEC_V5 §12 divider walls: a wall is a line `x` (on a column boundary) active for y in
 /// [y0, y1] and 2 · WALL_HALF thick. A cohort inside an active wall's span never crosses it.
 pub const WALL_HALF: i32 = 60;
+/// SPEC_V5 §13 (rules v8) solid obstacles: a crowd's centre this close to an obstacle (its box
+/// grown on every side; a wedge's hypotenuse moved this far toward its open side) is inside it.
+pub const OBSTACLE_GRACE: i32 = 60;
+/// SPEC_V5 §13: a crowd an obstacle blocks does not advance in y that tick; it slides sideways
+/// by at most this toward a free side instead.
+pub const SLIDE_STEP: i32 = 150;
 
 /// SPEC §7: live cohorts of yours / enemy cohorts, per lane.
 pub const COHORT_CAP: usize = 40;
@@ -133,4 +139,7 @@ const _: () = {
     // A wall is thinner than the clash reach (two crowds pressed to either side of it would
     // clash without SPEC_V5 §12 rule (c)).
     assert!(WALL_HALF > 0 && 2 * WALL_HALF < CLASH_REACH);
+    // v8: a blocked crowd gets round a pillar's corner in a few ticks, and the grace is less
+    // than a fresh volley's first step.
+    assert!(SLIDE_STEP > CRUISE_SPEED && OBSTACLE_GRACE > 0 && OBSTACLE_GRACE < LAUNCH_SPEED);
 };

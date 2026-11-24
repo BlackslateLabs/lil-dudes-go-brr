@@ -6,15 +6,16 @@
 //!    - the cannon steps toward its aim                                   SPEC §2
 //!    - moving gates slide (timed from the Fight start; the Rush keeps
 //!      the Fight's clock, as does the timing gate)                       SPEC §6, V5 §3
-//!    - Fight/Rush only: cohorts move (launch boost), hit crates, cross
-//!      gate rows and home in past the last row; enemy cohorts (giants
-//!      slower) home in and walk down; divider walls keep both in their
-//!      column while they stand; clash (never through a wall); tower
-//!      hits, gold, Rush
-//!      loot, losses at the base edge; death; all towers down (the
-//!      breach, its tick recorded) → Transit (Fight 1) or the Rush in
-//!      place (Fight 2); waves; a volley while the trigger is held
-//!      (it charges the Champion meter) or a called Champion              SPEC §4–§7, V5 §2–§5
+//!    - Fight/Rush only: cohorts move (launch boost; speed pads renew
+//!      it), slide around obstacles, hit crates, cross gate rows, drop
+//!      into pipes, and home in past the last row; enemy cohorts (giants
+//!      slower) walk straight down, sliding around obstacles; divider
+//!      walls keep both in their column while they stand; clash (never
+//!      through a wall); tower hits, gold, Rush loot, losses at the base
+//!      edge; death; all towers down (the breach, its tick recorded) →
+//!      Transit (Fight 1) or the Rush in place (Fight 2); waves; a volley
+//!      while the trigger is held (it charges the Champion meter) or a
+//!      called Champion                                                   SPEC §4–§7, V5 §2–§5, §12, §13
 //!    - the phase timer: Plant → Fight, Transit → Plant, Rush over →
 //!      Done (whatever is left on the lane is cleared, uncounted)         SPEC §3, V5 §2
 //! 3. FIRST for a fight first cleared this tick                           V5 §6
@@ -260,22 +261,29 @@ fn move_cohorts(
     let stage = *stage;
     let rush = *phase == Phase::Rush;
     let enemies = enemies.get(..usize::from(*enemy_len)).unwrap_or(&[]);
+    let band = st.obstacle_band();
     for c in cohorts.iter_mut().take(usize::from(*cohort_len)) {
         if c.count == 0 {
             continue;
         }
-        // SPEC §7: 3× cruise speed for the first LAUNCH_TICKS ticks.
+        // SPEC §7: 3× cruise speed for the first LAUNCH_TICKS ticks (a speed pad or a pipe
+        // starts the count again, SPEC_V5 §13).
         let speed = if u32::from(c.age) < LAUNCH_TICKS {
             LAUNCH_SPEED
         } else {
             CRUISE_SPEED
         };
         let prev_y = i32::from(c.y);
-        let y = prev_y.saturating_add(speed);
+        // SPEC_V5 §13: an obstacle in the way → no y this tick, a slide instead.
+        let (x, y) = travel(st, band, i32::from(c.x), prev_y, speed);
         c.y = y.min(i32::from(i16::MAX)) as i16;
         c.age = c.age.saturating_add(1);
         // SPEC_V5 §12 (b): entering a wall's span inside its thickness pushes it out.
-        c.x = st.wall_push(i32::from(c.x), y) as i16;
+        c.x = st.wall_push(x, y) as i16;
+        // SPEC_V5 §13: a speed pad under the cohort renews its launch boost.
+        if st.on_pad(i32::from(c.x), y) {
+            c.age = 0;
+        }
 
         // SPEC §4: a crate absorbs what crosses its row inside its span (edges count, as for
         // gates), until it breaks.
@@ -327,13 +335,48 @@ fn move_cohorts(
             }
         }
 
+        // SPEC_V5 §13: a pipe's entrance → out at its exit with a fresh launch boost, past
+        // every row up to there. Nothing else happens to it this tick.
+        if let Some((pipe_ix, p)) = st.pipe_at(i32::from(c.x), y).filter(|_| c.count > 0) {
+            c.x = p.out_x;
+            c.y = p.out_y;
+            c.age = 0;
+            c.last_row = c.last_row.max(st.rows_through(i32::from(p.out_y)));
+            ev.push(Event::Pipe {
+                side: s,
+                cohort_id: c.id,
+                pipe_ix,
+            });
+            continue;
+        }
+
         // SPEC §4: past the last row, home in on the nearest enemy ahead, else the nearest tower
-        // (in the Rush: the town hall's centre).
-        if usize::from(c.last_row) >= st.rows.len() && c.count > 0 {
+        // (in the Rush: the town hall's centre). SPEC_V5 §13: not on a tick it slid round an
+        // obstacle (the slide is its move), and never into an obstacle.
+        let slid = y == prev_y;
+        if usize::from(c.last_row) >= st.rows.len() && c.count > 0 && !slid {
             if let Some(tx) = cohort_target(c, enemies, towers, st, rush) {
-                c.x = steer(st, c.x, tx, y);
+                let to = steer(st, c.x, tx, y);
+                if !near(band, y, y) || st.blocked(i32::from(to), y).is_none() {
+                    c.x = to;
+                }
             }
         }
+    }
+}
+
+/// The move from `y` to `to` comes within `band` (`StageDef::obstacle_band`).
+fn near(band: (i32, i32), y: i32, to: i32) -> bool {
+    y.max(to) >= band.0 && y.min(to) <= band.1
+}
+
+/// SPEC_V5 §13 `StageDef::advance`, skipping the per-obstacle tests when the move stays clear of
+/// every obstacle's y band (the same result, cheaper on-chain).
+fn travel(st: &StageDef, band: (i32, i32), x: i32, y: i32, dy: i32) -> (i32, i32) {
+    if near(band, y, y.saturating_add(dy)) {
+        st.advance(x, y, dy)
+    } else {
+        (x, y.saturating_add(dy))
     }
 }
 
@@ -424,40 +467,29 @@ fn cohort_target(
 
 // --- enemies -----------------------------------------------------------------------------------
 
-/// SPEC §4: an enemy cohort steers toward the nearest of my cohorts ahead of it (below it)
-/// within DETECT_Y (never across a standing wall, SPEC_V5 §12 (a)), else walks straight; then
-/// walks down at cruise speed (a giant at GIANT_SPEED, SPEC_V5 §5), pushed out of a wall's
-/// thickness as it enters the wall's span (SPEC_V5 §12 (b)).
+/// SPEC_V5 §13 (rules v8): an enemy cohort walks straight down at cruise speed (a giant at
+/// GIANT_SPEED, SPEC_V5 §5); it does not home in on my cohorts, it only fights what it meets.
+/// Obstacles deflect it by the same slide as mine (SPEC_V5 §13); it is pushed out of a wall's
+/// thickness as it enters the wall's span (SPEC_V5 §12 (b)). Pads and pipes don't touch it.
 fn move_enemies(side: &mut PublicSide, st: &StageDef) {
     let PublicSide {
-        cohorts,
-        cohort_len,
-        enemies,
-        enemy_len,
-        ..
+        enemies, enemy_len, ..
     } = side;
-    let mine = cohorts.get(..usize::from(*cohort_len)).unwrap_or(&[]);
+    let band = st.obstacle_band();
     for e in enemies.iter_mut().take(usize::from(*enemy_len)) {
         if e.count == 0 {
             continue;
         }
-        let mut best: Option<(i64, i16)> = None;
-        for c in mine {
-            let ahead = i32::from(e.y).saturating_sub(i32::from(c.y));
-            if c.count == 0 || ahead <= 0 || ahead > DETECT_Y {
-                continue;
-            }
-            let d = dist2(c.x, c.y, e.x, e.y);
-            if best.is_none_or(|(bd, _)| d < bd) {
-                best = Some((d, c.x));
-            }
-        }
-        if let Some((_, x)) = best {
-            e.x = steer(st, e.x, x, i32::from(e.y));
-        }
         let speed = if e.giant { GIANT_SPEED } else { CRUISE_SPEED };
-        e.y = i32::from(e.y).saturating_sub(speed) as i16;
-        e.x = st.wall_push(i32::from(e.x), i32::from(e.y)) as i16;
+        let (x, y) = travel(
+            st,
+            band,
+            i32::from(e.x),
+            i32::from(e.y),
+            speed.saturating_neg(),
+        );
+        e.y = y as i16;
+        e.x = st.wall_push(x, y) as i16;
     }
 }
 

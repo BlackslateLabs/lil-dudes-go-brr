@@ -91,6 +91,22 @@ fn check(m: &MatchState, prev_gold: &mut [u32; 2]) {
             assert!(e.y > 0 || side.dead, "an enemy at the line means death");
             assert!(i32::from(e.y) <= TOWER_Y && usize::from(e.tower) < st.towers.len());
         }
+        // Rules v8: nobody stands inside an obstacle (they slide round them).
+        for (x, y) in side
+            .cohorts()
+            .iter()
+            .map(|c| (c.x, c.y))
+            .chain(side.enemies().iter().map(|e| (e.x, e.y)))
+        {
+            for o in st.obstacles {
+                assert!(!lil_dudes_sim::layouts::inside_obstacle(
+                    o,
+                    x.into(),
+                    y.into(),
+                    0
+                ));
+            }
+        }
         assert!(side.cohorts[usize::from(side.cohort_len)..]
             .iter()
             .all(|c| *c == Cohort::default()));

@@ -80,6 +80,13 @@ pub enum Event {
     Phase { side: u8, stage: u8, phase: Phase },
     /// An enemy reached `side`'s cannon line (SPEC §4).
     Death { side: u8 },
+    /// A cohort dropped into pipe `pipe_ix` of `side`'s current stage and popped out at its exit
+    /// (`StageDef.pipes[pipe_ix]`, `out_x` / `out_y`) this tick (SPEC_V5 §13).
+    Pipe {
+        side: u8,
+        cohort_id: u32,
+        pipe_ix: u8,
+    },
     /// Death, both done, or the time cap (SPEC §3, §8).
     End { result: MatchResult },
 }
