@@ -618,7 +618,7 @@ const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
     (273, 10, 250, 5),
     (407, 26, 330, 14),
     (403, 7, 1119, 4),
-    (218, 12, 423, 6),
+    (218, 11, 423, 5),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
