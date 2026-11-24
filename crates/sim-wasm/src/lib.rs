@@ -444,10 +444,11 @@ pub fn codec_version() -> u8 {
 
 /// Every constant packages/client mirrors, plus the level pool, as JSON (the TS parity test
 /// compares them). `NORMAL_ODDS` = [[op byte, percent]] with ±N written as +0 / −0 (N =
-/// `PM_BY_ROW[row]`; row index 0 re-draws a ±N as × or ÷); `BIG_ODDS` = [[k, percent]].
+/// `PM_BY_ROW[row]`; row index 0 draws from the × entries only); `BIG_ODDS` = [[k, percent]].
 /// `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
-/// gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}]}`; gate,
-/// tower and crate indices are the slots used everywhere else.
+/// gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}],
+/// walls: [{x, y0, y1}]}` (rules v7 divider walls, `WALL_HALF` thick each side); gate, tower and
+/// crate indices are the slots used everywhere else.
 #[wasm_bindgen]
 pub fn constants_json() -> String {
     let list = |xs: &[i64]| {
@@ -458,7 +459,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 53] = [
+    let pairs: [(&str, String); 54] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -491,6 +492,7 @@ pub fn constants_json() -> String {
         ("STEER_STEP", STEER_STEP.to_string()),
         ("DETECT_Y", DETECT_Y.to_string()),
         ("CANNON_STEP", CANNON_STEP.to_string()),
+        ("WALL_HALF", WALL_HALF.to_string()),
         ("COHORT_CAP", COHORT_CAP.to_string()),
         ("ENEMY_CAP", ENEMY_CAP.to_string()),
         ("FIRST_WAVE_TICKS", FIRST_WAVE_TICKS.to_string()),
@@ -557,12 +559,18 @@ fn layouts_json() -> String {
                 )
             })
             .collect();
+        let walls: Vec<String> = s
+            .walls
+            .iter()
+            .map(|w| format!("{{\"x\":{},\"y0\":{},\"y1\":{}}}", w.x, w.y0, w.y1))
+            .collect();
         format!(
-            "{{\"towers\":[{}],\"rows\":[{}],\"gates\":[{}],\"crates\":[{}]}}",
+            "{{\"towers\":[{}],\"rows\":[{}],\"gates\":[{}],\"crates\":[{}],\"walls\":[{}]}}",
             towers.join(","),
             rows.join(","),
             gates.join(","),
-            crates.join(",")
+            crates.join(","),
+            walls.join(",")
         )
     };
     let all: Vec<String> = LAYOUTS
@@ -581,7 +589,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 11_513_745_549_247_634_464;
+const PARITY_DIGEST: u64 = 445_834_651_989_838_914;
 
 #[cfg(test)]
 mod tests {
@@ -785,9 +793,10 @@ mod tests {
 
     #[test]
     fn gate_x_at_matches_the_layouts() {
-        let g = LAYOUTS[0].stages[0].gates[3];
-        assert!(g.moving());
-        assert_eq!(gate_x_at(0, 0, 3, 37), i32::from(g.x_at(37)));
+        // Rules v7 has no sliding gates (a gate fills its column); a static gate stays put.
+        let g = LAYOUTS[0].stages[0].gates[5];
+        assert!(!g.moving());
+        assert_eq!(gate_x_at(0, 0, 5, 37), i32::from(g.x));
         assert_eq!(timing_value(99), 5);
         assert_eq!(gate_x_at(0, 0, 200, 37), 0);
     }
@@ -809,7 +818,11 @@ mod tests {
         assert!(j.contains(
             "\"NORMAL_ODDS\":[[2,30],[3,20],[4,8],[5,2],[64,12],[130,14],[192,12],[131,2]]"
         ));
-        assert!(j.contains("\"PM_BY_ROW\":[0,5,15,30]"));
+        assert!(j.contains("\"PM_BY_ROW\":[0,1,3,6]"));
+        // Rules v7 divider walls.
+        assert!(j.contains("\"WALL_HALF\":60"));
+        assert!(j.contains("\"walls\":[{\"x\":1000,\"y0\":500,\"y1\":3700},{\"x\":2000,"));
+        assert_eq!(j.matches("\"walls\"").count(), LAYOUTS.len() * STAGES);
         // Balanced braces and brackets (no JSON parser in this crate).
         let depth = j.chars().fold(0i32, |d, c| match c {
             '{' | '[' => d + 1,
