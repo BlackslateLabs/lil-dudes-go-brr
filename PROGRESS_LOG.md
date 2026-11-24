@@ -1331,3 +1331,41 @@ either side) instead of squeezing into half a column.
 - Champion giants are big and, after a ×6 gate, fill a corridor.
 
 **Next / handoff:** none for Kai. Web: tune the stone colours and the Champion size on a real phone.
+
+## 2026-11-24 18:32 IST · Suparno · sim + client + WASM (rules v9) · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `v9-feel`; commits `11d2c78`, `4534084`, `8805c68`, `33ce7a5`)
+- **Rules v9, late turn (sim):** past the last row my crowds walk straight and turn toward the
+  tower (the hall's centre in the Rush) only once `TOWER_Y − y ≤ |dx| · CRUISE_SPEED /
+  TOWER_STEER + TURN_MARGIN`, then steer `TOWER_STEER` 60 a tick (~45°; the gap closes 250
+  before the tower line). They engage an enemy only within `ENGAGE_Y` 1,200 ahead and
+  `ENGAGE_X` 900 sideways (`STEER_STEP` 40 as before). `DETECT_Y` removed. Walls, slides, pads,
+  pipes and straight-walking enemies unchanged; the bot's trace stops at the last row, so it is
+  unchanged. New tests: a cohort from x 500 keeps its x to y 5,950, then turns and hits the
+  tower square at 1,500; an enemy 3,000 ahead is ignored, one 800 ahead in the column engaged.
+- **Balance** (3,000 bot matches per layout, `TUNE` unchanged): 8.3% deaths (v8 5.6%), 64.0 s
+  (65.2), Fight 1 22.1 s, Fight 2 33.3 s; caps unchanged (~9, Speed Comb). Inside the band, so
+  `TUNE` stays, but Island jumped 10.3% → 25.6% (its waves slide down a side path round the
+  block and far crowds no longer converge on them). `(218, 11, 423, 5)` for Island gives 11.1%
+  (5.9% overall); not applied. SPEC_V5 §14 has the table.
+- **Tests:** sim 106 + integration (goldens re-recorded), sim-wasm 11, client 24, server 17
+  green; client and server typecheck; clippy `-D warnings` and fmt clean; `programs/lil_dudes`
+  and `tests-magicsvm` pass `cargo check --tests`. WASM pkg rebuilt, `PARITY_DIGEST` updated.
+  Web typecheck currently fails in `apps/web/src/arena/Crowds.tsx` from uncommitted web work in
+  progress (not this change).
+
+**CONTRACT (packages/client v9):** `RULES_VERSION` 9; `DETECT_Y` removed; new `ENGAGE_Y`
+(1,200), `ENGAGE_X` (900), `TOWER_STEER` (60), `TURN_MARGIN` (250); new pure helpers
+`turnDue(x, y, tx)`, `homing(st, x, y, enemies, towerHp, rush)` → `[targetX, step] | null` and
+`steerX(st, x, target, step, y)`. The live feed's re-run uses them, so gate/crate/pipe events
+stay exact. WASM `constants_json` exports the new constants; codec and layouts unchanged.
+
+**Decided:** (Suparno) SPEC_V5 §14 and §11.9: crowds keep their lane and bend in late; close
+enemies only.
+
+**Blocked / risks:** Island's deaths (25.6%) are well above the other layouts; one-line
+`TUNE` fix above if wanted.
+
+**Next / handoff (Kai):**
+- run MagicSVM (`tests-magicsvm`): positions near the tower line differ now;
+- redeploy the program for v9 (`RULES_VERSION` 9; no instruction, account or codec change, so
+  the IDL should be identical).
