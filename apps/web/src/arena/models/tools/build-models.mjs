@@ -17,6 +17,7 @@ import { weldPrimitive, simplifyPrimitive, dedup, prune } from '@gltf-transform/
 import { MeshoptSimplifier } from 'meshoptimizer';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const [ASSETS, OUT] = process.argv.slice(2);
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
@@ -47,8 +48,28 @@ function xfN(m, n) {
 }
 const srgbToLin = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 
-/** Flatten a source file into raw arrays in its own (scene) space. */
-async function flatten(file, opts = {}) {
+/** Sample a channel at `time` (s): linear for translation/scale, normalised lerp for rotation. */
+function sampleAt(s, time) {
+  const inp = s.getInput().getArray();
+  const n = inp.length;
+  if (time <= inp[0]) return s.getOutput().getElement(0, []);
+  if (time >= inp[n - 1]) return s.getOutput().getElement(n - 1, []);
+  let k = 0;
+  while (k < n - 2 && inp[k + 1] <= time) k++;
+  const u = (time - inp[k]) / Math.max(1e-9, inp[k + 1] - inp[k]);
+  const a = s.getOutput().getElement(k, []), b = s.getOutput().getElement(k + 1, []);
+  const sign = a.length === 4 && a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3] < 0 ? -1 : 1;
+  const o = a.map((v, i) => v + (sign * b[i] - v) * u);
+  if (o.length === 4) { const l = Math.hypot(...o) || 1; for (let i = 0; i < 4; i++) o[i] /= l; }
+  return o;
+}
+
+/**
+ * Flatten a source file into raw arrays in its own (scene) space. `opts.pose` poses a skinned
+ * character from a named animation: keyframe `opts.key` (default 0), or `opts.time` seconds in.
+ * The vertex order never depends on the pose (bake-anim.mjs relies on that).
+ */
+export async function flatten(file, opts = {}) {
   const doc = await io.read(file);
   const P = [], N = [], U = [], C = [], I = [];
   let textured = false;
@@ -58,7 +79,8 @@ async function flatten(file, opts = {}) {
     const anim = doc.getRoot().listAnimations().find((a) => a.getName() === opts.pose);
     for (const ch of anim.listChannels()) {
       const s = ch.getSampler(); const k = Math.min(opts.key ?? 0, s.getInput().getCount() - 1);
-      const e = poseLocal.get(ch.getTargetNode()) || {}; e[ch.getTargetPath()] = s.getOutput().getElement(k, []);
+      const e = poseLocal.get(ch.getTargetNode()) || {};
+      e[ch.getTargetPath()] = opts.time !== undefined ? sampleAt(s, opts.time) : s.getOutput().getElement(k, []);
       poseLocal.set(ch.getTargetNode(), e);
     }
   }
@@ -171,9 +193,14 @@ async function buildPack(name, kit, pieces, colors) {
   console.log(name, fs.statSync(out).size, 'bytes', stats.join(' '));
 }
 
-const cfg = JSON.parse(fs.readFileSync(new URL('./packs.json', import.meta.url), 'utf8'));
-fs.mkdirSync(OUT, { recursive: true });
-for (const [name, p] of Object.entries(cfg)) {
-  if (process.argv[4] && !process.argv[4].split(',').includes(name)) continue;
-  await buildPack(name, p.kit, p.pieces, p.colors);
+export const KIT_DIRS = KITS;
+
+// Run as a script (bake-anim.mjs imports `flatten` without building anything).
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const cfg = JSON.parse(fs.readFileSync(new URL('./packs.json', import.meta.url), 'utf8'));
+  fs.mkdirSync(OUT, { recursive: true });
+  for (const [name, p] of Object.entries(cfg)) {
+    if (process.argv[4] && !process.argv[4].split(',').includes(name)) continue;
+    await buildPack(name, p.kit, p.pieces, p.colors);
+  }
 }
