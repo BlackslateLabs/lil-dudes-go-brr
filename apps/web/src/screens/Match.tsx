@@ -11,6 +11,7 @@ import { Tutorial } from '../match/Tutorial';
 import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
 import { isBreach, useMatchHud } from '../match/useMatchHud';
+import { clearSeed, peekSeed } from '../match/nextSeed';
 import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
 
@@ -34,18 +35,17 @@ export function Match() {
   const [ready, setReady] = useState(false);
   const feed = useFeed(
     () => {
-      // `?seed=123` replays a specific match (testing); the seed also picks the layout.
+      // The seed (it picks the layout) was chosen for the VS screen; `?seed=123` pins it (testing).
       // `?autoplay=1` lets the bot drive your side too (demos, screenshots).
       const params = new URLSearchParams(window.location.search);
-      const raw = params.get('seed');
-      const seed = raw && /^\d+$/.test(raw) ? BigInt(raw) : undefined;
+      const seed = peekSeed();
       const selfBot = params.get('autoplay') === '1';
       // `?speed=4` plays the match faster (testing, screenshots). Clamped to 1–16.
       const speedRaw = Number(params.get('speed'));
       const speed = Number.isFinite(speedRaw) && speedRaw >= 1 ? Math.min(16, speedRaw) : 1;
       // A bot is always labelled "Bot"; in your first bot match its Fight 1 waves are gentler (SPEC v5 §8).
       const base = { myName: 'You', opponentName: 'Bot', selfBot, speed, tutorial: !selfBot && isTutorialMatch() };
-      return new OfflineSource(seed === undefined ? base : { ...base, seed });
+      return new OfflineSource({ ...base, seed });
     },
     // Don't start the clock until the models are in and the arena has drawn (no first-frame stall).
     () =>
@@ -85,6 +85,8 @@ export function Match() {
     }
     if (fingers.current.size === 0) hold(false);
   };
+  // The next match (a rematch) gets a fresh seed once this one is gone.
+  useEffect(() => clearSeed, []);
   // Losing the page (app switch, lock) lets go.
   useEffect(() => {
     const letGo = () => {

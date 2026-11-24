@@ -277,12 +277,15 @@
 }
 
 .vs-card {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   width: 62%;
-  padding: 14px 10px 12px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 22px 8px 10px;
   border-radius: 24px;
   border: var(--edge);
   background: linear-gradient(#ffffff, var(--cream));
@@ -321,8 +324,9 @@
 
 .vs-avatar {
   position: relative;
-  width: 92px;
-  height: 92px;
+  flex: none;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   border: var(--edge);
   background: radial-gradient(circle at 35% 30%, #9fd6ff, var(--me) 60%, var(--me-dark));
@@ -333,79 +337,47 @@
   background: radial-gradient(circle at 35% 30%, #ffa3ab, var(--them) 60%, var(--them-dark));
 }
 
-.vs-avatar .eye {
-  position: absolute;
-  top: 30px;
-  width: 20px;
-  height: 24px;
-  border-radius: 50%;
-  border: 3px solid var(--outline);
-  background: radial-gradient(circle at 55% 60%, var(--outline) 0 32%, #fff 36%);
-}
-
-.vs-avatar .eye.l {
-  left: 22px;
-}
-
-.vs-avatar .eye.r {
-  right: 22px;
-}
-
-.vs-avatar .mouth {
+/* The mascot head pops out of the top of its disc (the knight's plume, the Bot's antenna). */
+.vs-avatar img {
   position: absolute;
   left: 50%;
-  bottom: 16px;
-  width: 26px;
-  height: 13px;
-  margin-left: -13px;
-  border-radius: 0 0 14px 14px;
-  border: 3px solid var(--outline);
-  background: #7a1530;
+  bottom: -9%;
+  width: 150%;
+  height: auto;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 3px 0 #1b153055);
+  pointer-events: none;
+  user-select: none;
 }
 
-.vs-avatar.bot .eye {
-  border-radius: 6px;
-  background: radial-gradient(circle, #ffe27a 0 35%, var(--outline) 40%);
+.vs-card.me .vs-avatar img {
+  animation: vs-head 0.5s 0.25s var(--bounce) both;
 }
 
-.vs-avatar.bot .mouth {
-  height: 8px;
-  border-radius: 4px;
-  background: repeating-linear-gradient(90deg, #fff 0 4px, var(--outline) 4px 6px);
+.vs-card.them .vs-avatar img {
+  animation: vs-head 0.5s 0.32s var(--bounce) both;
 }
 
-.vs-avatar .antenna {
-  position: absolute;
-  left: 50%;
-  top: -20px;
-  width: 4px;
-  height: 18px;
-  margin-left: -2px;
-  background: var(--outline);
-}
-
-.vs-avatar .antenna::after {
-  content: '';
-  position: absolute;
-  left: -6px;
-  top: -10px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2.5px solid var(--outline);
-  background: var(--gold);
+@keyframes vs-head {
+  from {
+    transform: translateX(-50%) translateY(12px) scale(0.6);
+    opacity: 0;
+  }
 }
 
 .vs-name {
+  box-sizing: border-box;
   font-family: var(--display);
   font-weight: 400;
   font-size: 28px;
-  line-height: 1;
+  line-height: 1.1;
   color: #fff;
   -webkit-text-stroke: 6px var(--outline);
   paint-order: stroke fill;
   text-shadow: 0 3px 0 var(--outline);
+  /* The 6 px outline and the drop sit inside the clip box (padding), so they're never cut off. */
   max-width: 100%;
+  padding: 2px 8px 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -510,29 +482,147 @@
   text-shadow: 0 2px 0 var(--outline);
 }
 
+/* The level both play: a little top-down map and the "same map" line. */
+.vs-map {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+  box-sizing: border-box;
+  padding: 8px 12px 8px 8px;
+  border-radius: 18px;
+  border: var(--edge);
+  background: linear-gradient(#ffffff, var(--cream));
+  box-shadow: var(--gloss), var(--ledge), var(--soft);
+  animation: card-in 0.4s 0.55s var(--bounce) both;
+}
+
+.vs-map-svg {
+  flex: none;
+  width: 46px;
+  height: auto;
+  display: block;
+}
+
+.vs-map-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vs-map-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vs-map-name {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.05;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vs-map-line {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.lp-grass {
+  fill: #7fd36b;
+}
+
+.lp-lane {
+  fill: #f3e2bd;
+}
+
+.lp-block {
+  fill: #6d6a8c;
+}
+
+.lp-pad {
+  fill: #ffd21f;
+}
+
+.lp-pipe {
+  fill: #34b86a;
+}
+
+.lp-crate {
+  fill: #b5612d;
+}
+
+.lp-gate {
+  fill: #3fa3ff;
+}
+
+.lp-gate.big {
+  fill: var(--gold);
+}
+
+.lp-q {
+  fill: #fff;
+  font-family: var(--display);
+  font-size: 520px;
+  text-anchor: middle;
+}
+
+.lp-tower {
+  fill: var(--them);
+}
+
+.lp-cannon {
+  fill: var(--me);
+}
+
 @media (max-width: 380px) {
   .vs-avatar {
-    width: 80px;
-    height: 80px;
+    width: 76px;
+    height: 76px;
   }
 
-  .vs-avatar .eye {
-    top: 24px;
+  .vs-name {
+    font-size: 25px;
   }
 
   .vs-stamp {
-    font-size: 88px;
+    font-size: 84px;
   }
 }
 
-@media (max-height: 700px) {
+@media (max-height: 760px) {
+  .vs {
+    gap: 12px;
+  }
+
   .vs-card {
-    padding: 10px 10px 8px;
+    padding: 16px 8px 6px;
+  }
+
+  .vs-avatar {
+    width: 68px;
+    height: 68px;
   }
 
   .vs-stamp {
-    height: 76px;
-    font-size: 80px;
+    height: 70px;
+    font-size: 76px;
+  }
+
+  .vs-map-svg {
+    width: 38px;
   }
 }
 
