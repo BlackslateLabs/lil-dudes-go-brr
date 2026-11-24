@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group } from 'three';
 import type { MatchFeed } from '../match/feed';
-import { PALETTE, wx, wz } from './layout';
+import { CANNON_Z, PALETTE, wx } from './layout';
 import { mergeParts, preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
 
 /** Base: a Tower Defense round tower bottom, its red trim swatch repainted team blue. */
@@ -53,7 +53,7 @@ function CannonModel({ feed }: { feed: MatchFeed }) {
   });
 
   return (
-    <group ref={ref} position={[0, 0, wz(0) + 1.2]}>
+    <group ref={ref} position={[0, 0, CANNON_Z]}>
       <mesh geometry={baseGeo} material={baseMat} />
       <group ref={barrel} position-y={BASE_SCALE * 0.6 + 0.75}>
         <mesh
