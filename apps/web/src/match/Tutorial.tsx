@@ -28,6 +28,8 @@ const DEFEND_MS = 4000;
 const BREACH_MS = 2400;
 /** Finger travel that counts as a drag. */
 const DRAG_PX = 12;
+/** The "same lane" cut-in under the race bar stays up this long (once, as the first fight starts). */
+const RACE_MS = 4800;
 
 interface Bubble {
   id: StepId;
@@ -43,6 +45,7 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
   const [on] = useState(isTutorialMatch);
   const [bubble, setBubble] = useState<Bubble | null>(null);
   const [doneCount, setDoneCount] = useState(0);
+  const [raceUp, setRaceUp] = useState(false);
 
   useEffect(() => {
     if (!on) return;
@@ -55,6 +58,8 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
     let selfTickTimer: ReturnType<typeof setTimeout> | undefined;
     let startAim: number | null = null;
     let botMatch: boolean | null = null;
+    let raceShown = false;
+    let raceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const show = (b: Bubble | null) => {
       shown = b;
@@ -117,6 +122,12 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
         next();
       }
       const lane = v.sides[me];
+      // Right after the countdown: the Bot plays this exact lane too (points at the race bar).
+      if (!raceShown && lane.phase === 'fight') {
+        raceShown = true;
+        setRaceUp(true);
+        raceTimer = setTimeout(() => setRaceUp(false), RACE_MS);
+      }
       if (startAim === null) startAim = lane.aimX;
       else if (Math.abs(lane.aimX - startAim) > LANE_WIDTH * 0.04) complete('aim');
       if (lane.phase === 'rush' && lane.stage === FINAL_STAGE) cutIn('breach');
@@ -144,6 +155,7 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
       offView();
       clearTimeout(advanceTimer);
       clearTimeout(selfTickTimer);
+      clearTimeout(raceTimer);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -151,7 +163,24 @@ export function Tutorial({ feed }: { feed: MatchFeed }) {
     };
   }, [on, feed]);
 
-  if (!on || !bubble) return null;
+  if (!on) return null;
+  return (
+    <>
+      {raceUp && (
+        <div className="tut-race" role="status">
+          <div className="tut-bubble">
+            <span>
+              The Bot is playing this exact lane right now. <b>Beat it to the towers!</b>
+            </span>
+          </div>
+        </div>
+      )}
+      {bubble && <Bubbles bubble={bubble} doneCount={doneCount} />}
+    </>
+  );
+}
+
+function Bubbles({ bubble, doneCount }: { bubble: Bubble; doneCount: number }) {
   return (
     <div className="tut" aria-live="polite">
       <div key={bubble.id} className={`tut-bubble ${bubble.ticked ? 'ticked' : ''} ${bubble.id === 'breach' ? 'hot' : ''}`}>

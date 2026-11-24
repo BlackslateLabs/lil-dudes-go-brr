@@ -1361,6 +1361,42 @@
   transform: rotate(45deg);
 }
 
+/* The "same lane" cut-in: under the race bar, its arrow pointing up at it. */
+.tut-race {
+  position: absolute;
+  z-index: 3;
+  left: 14px;
+  right: 14px;
+  top: calc(max(6px, env(safe-area-inset-top)) + 96px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  animation:
+    pop-in 0.4s var(--bounce) both,
+    fade-out 0.4s 4.4s forwards;
+}
+
+.tut-race .tut-bubble {
+  max-width: 300px;
+  padding: 7px 14px 8px;
+  font-size: 16px;
+  line-height: 1.15;
+  text-align: center;
+  opacity: 1;
+}
+
+.tut-race .tut-bubble b {
+  font-weight: 400;
+  color: var(--me-dark);
+}
+
+.tut-race .tut-bubble::after {
+  display: block;
+  top: -12px;
+  bottom: auto;
+  border-width: 3px 0 0 3px;
+}
+
 .tut-bubble.hot {
   background: linear-gradient(var(--gold-light), var(--gold));
 }
