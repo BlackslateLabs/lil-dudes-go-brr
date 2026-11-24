@@ -13,6 +13,9 @@ interface RustStage {
   gates: RustGate[];
   crates: { x: number; width: number; y: number; hp: number }[];
   walls: { x: number; y0: number; y1: number }[];
+  obstacles: { x0: number; y0: number; x1: number; y1: number; shape: string }[];
+  pads: { x0: number; y0: number; x1: number; y1: number }[];
+  pipes: { x0: number; y0: number; x1: number; y1: number; out_x: number; out_y: number }[];
 }
 interface RustLayout { name: string; stages: RustStage[] }
 
@@ -25,6 +28,9 @@ const stage = (s: RustStage) => `{
         gates: ${list(s.gates, (g) => `{ row: ${g.row}, x: ${g.x}, width: ${g.width}, big: ${g.big}, timing: ${g.timing}, xMin: ${g.x_min}, xMax: ${g.x_max}, speed: ${g.speed} }`, '        ')},
         crates: ${list(s.crates, (c) => `{ x: ${c.x}, width: ${c.width}, y: ${c.y}, hp: ${c.hp} }`, '        ')},
         walls: ${list(s.walls, (w) => `{ x: ${w.x}, y0: ${w.y0}, y1: ${w.y1} }`, '        ')},
+        obstacles: ${list(s.obstacles, (o) => `{ x0: ${o.x0}, y0: ${o.y0}, x1: ${o.x1}, y1: ${o.y1}, shape: '${o.shape}' }`, '        ')},
+        pads: ${list(s.pads, (p) => `{ x0: ${p.x0}, y0: ${p.y0}, x1: ${p.x1}, y1: ${p.y1} }`, '        ')},
+        pipes: ${list(s.pipes, (p) => `{ x0: ${p.x0}, y0: ${p.y0}, x1: ${p.x1}, y1: ${p.y1}, outX: ${p.out_x}, outY: ${p.out_y} }`, '        ')},
       }`;
 const table = `export const LAYOUTS: readonly LayoutDef[] = [
 ${layouts

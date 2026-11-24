@@ -89,8 +89,10 @@ export function codec_version(): number;
  * `PM_BY_ROW[row]`; row index 0 draws from the × entries only); `BIG_ODDS` = [[k, percent]].
  * `LAYOUTS[id].stages[s]` = `{towers: [{x, hp, wave_base}], rows: [y],
  * gates: [{row, x, width, big, timing, x_min, x_max, speed}], crates: [{x, width, y, hp}],
- * walls: [{x, y0, y1}]}` (rules v7 divider walls, `WALL_HALF` thick each side); gate, tower and
- * crate indices are the slots used everywhere else.
+ * walls: [{x, y0, y1}], obstacles: [{x0, y0, x1, y1, shape}], pads: [{x0, y0, x1, y1}],
+ * pipes: [{x0, y0, x1, y1, out_x, out_y}]}` (rules v7 divider walls, `WALL_HALF` thick each
+ * side; rules v8 obstacles, `shape` one of "rect", "wedgeBL", "wedgeBR", "wedgeTL",
+ * "wedgeTR"); gate, tower, crate and pipe indices are the slots used everywhere else.
  */
 export function constants_json(): string;
 

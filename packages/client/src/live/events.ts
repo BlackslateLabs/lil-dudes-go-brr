@@ -14,13 +14,17 @@
 // - v5 flow: Fight 2 → Rush keeps the stage, the field and the phase clock, so cohorts are
 //   re-run straight through the switch. Rush → Done clears the lane: that tick's rushEnd counts
 //   my units that are gone and did not loot (it can include that tick's clash losses).
+// - rules v8: the re-run follows the real movement (obstacle slides, wall pushes, speed pads,
+//   pipes with their `pipe` event, homing past the last row on the enemies and towers of the
+//   earlier snapshot), so one-tick snapshots stay exact;
+// - missing: a volley fired on a lane's last Rush tick (the lane is cleared in that same tick);
 // - approximate: a wave that merged into an existing enemy cohort (at ENEMY_CAP) shows as the
 //   count increase net of that cohort's clash losses.
 // Gaps of several ticks collapse phase changes, and the reveals, gates and crates of a stage the
 // lane left inside the gap are not recovered.
 import * as C from '../constants';
 import { matchResultOf, type PublicState, type SideState } from '../codec';
-import { applyOp, covers, gateAt, gateXAt, stageDef, timingValue } from '../layout';
+import { advance, applyOp, columnAt, covers, gateAt, gateXAt, obstacleAt, onPad, pipeAt, rowsThrough, stageDef, timingValue, wallPush } from '../layout';
 import { firstOf } from '../view';
 import type { GateOp, LanePhase, MatchEvent, Side } from '../types';
 
@@ -73,9 +77,13 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
       const t = a.phaseTicks + k;
       for (const c of cohorts) {
         if (c.count === 0) continue;
+        // Rules v8 movement (crates/sim step.rs move_cohorts): obstacle slides, wall pushes, pads.
         const prevY = c.y;
-        c.y += c.age < C.LAUNCH_TICKS ? C.LAUNCH_SPEED : C.CRUISE_SPEED;
+        const [nx, ny] = advance(st, c.x, prevY, c.age < C.LAUNCH_TICKS ? C.LAUNCH_SPEED : C.CRUISE_SPEED);
+        c.y = ny;
         c.age = Math.min(255, c.age + 1);
+        c.x = wallPush(st, nx, ny);
+        if (onPad(st, c.x, c.y)) c.age = 0;
         st.crates.forEach((def, index) => {
           const hp = crates[index] ?? 0;
           if (hp === 0 || c.count === 0 || prevY >= def.y || c.y < def.y || !covers(c.x, def.x, def.width)) return;
@@ -93,6 +101,24 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
           const before = c.count;
           c.count = applyOp(op, before);
           out.push({ type: 'gate', side, slot, cohortId: c.id, op, before, after: c.count });
+        }
+        // Pipes: out at the exit with a fresh boost, past the rows up to there.
+        const pipeIx = c.count > 0 ? pipeAt(st, c.x, c.y) : -1;
+        const pipe = st.pipes[pipeIx];
+        if (pipe) {
+          [c.x, c.y, c.age] = [pipe.outX, pipe.outY, 0];
+          c.lastRow = Math.max(c.lastRow, rowsThrough(st, pipe.outY));
+          out.push({ type: 'pipe', side, cohortId: c.id, pipeIx });
+          continue;
+        }
+        // Homing past the last row (not on a tick it slid, never into an obstacle). The enemies and
+        // towers are those of `a` (exact for one-tick snapshots).
+        if (c.lastRow >= st.rows.length && c.count > 0 && c.y !== prevY) {
+          const tx = homingTarget(c, a, st);
+          if (tx !== null) {
+            const to = wallClamp(st, c.x, Math.min(Math.max(c.x + Math.min(Math.max(tx - c.x, -C.STEER_STEP), C.STEER_STEP), 0), C.LANE_WIDTH - 1), c.y);
+            if (obstacleAt(st, to, c.y) < 0) c.x = to;
+          }
         }
       }
     }
@@ -177,4 +203,29 @@ function laneEvents(out: MatchEvent[], side: Side, layout: number, a: SideState,
 
   if (a.stage !== b.stage || a.phase !== b.phase) out.push({ type: 'stage', side, stage: b.stage, phase: PHASES[b.phase] ?? 'plant' });
   if (!a.dead && b.dead) out.push({ type: 'death', side });
+}
+
+const wallClamp = (st: C.StageDef, from: number, to: number, y: number): number => {
+  const [lo, hi] = columnAt(st, from, y);
+  return Math.min(Math.max(to, lo), hi);
+};
+
+/** crates/sim step.rs `cohort_target`: the nearest enemy ahead within DETECT_Y, else (in the Rush)
+ *  the town hall's centre, else the nearest live tower; ties to the lower index. */
+function homingTarget(c: { x: number; y: number }, a: SideState, st: C.StageDef): number | null {
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (const e of a.enemies) {
+    const ahead = e.y - c.y;
+    if (e.count === 0 || ahead <= 0 || ahead > C.DETECT_Y) continue;
+    const d = (c.x - e.x) ** 2 + (c.y - e.y) ** 2;
+    if (d < bestD) [best, bestD] = [e.x, d];
+  }
+  if (best !== null) return best;
+  if (a.phase === RUSH) return C.HALL_X;
+  st.towers.forEach((t, i) => {
+    const d = Math.abs(t.x - c.x);
+    if ((a.towers[i] ?? 0) > 0 && d < bestD) [best, bestD] = [t.x, d];
+  });
+  return best;
 }

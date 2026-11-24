@@ -1,10 +1,10 @@
 // Mirrors crates/sim/src/constants.rs, the odds in crates/sim/src/deal.rs and the level pool in
-// crates/sim/src/layouts.rs (rules v7, docs/SPEC_V5.md on top of docs/SPEC.md). Change both
+// crates/sim/src/layouts.rs (rules v8, docs/SPEC_V5.md on top of docs/SPEC.md). Change both
 // together (CONTRACT log entry);
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 7;
+export const RULES_VERSION = 8;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
@@ -68,6 +68,12 @@ export const CANNON_STEP = LANE_WIDTH / 5;
  *  (ties left), and nothing clashes through a standing wall. Below y0 (the cannon, fresh volleys)
  *  and past y1 the lane is open. */
 export const WALL_HALF = 60;
+/** Rules v8 solid obstacles (`StageDef.obstacles`): a crowd's centre this close to one is inside
+ *  it (`insideObstacle(o, x, y, OBSTACLE_GRACE)`). Crowds never move into an obstacle: a blocked
+ *  crowd does not advance that tick and slides sideways by at most SLIDE_STEP toward a free side
+ *  (rects: the nearer reachable one, ties left; wedges: their open side). */
+export const OBSTACLE_GRACE = 60;
+export const SLIDE_STEP = 150;
 
 /** Live cohorts of yours / enemy cohorts, per lane. */
 export const COHORT_CAP = 40;
@@ -99,9 +105,10 @@ export const TOWERS_MAX = 2;
 export const CRATES_MAX = 2;
 
 /** SPEC_V5 §3 normal `?` odds: [op byte, percent]; ±N is written +0 (64) / −0 (192), with N =
- *  PM_BY_ROW[row]. Rules v7: row index 0 is always good (it draws from the × entries only). */
+ *  PM_BY_ROW[row]. Rules v7: row index 0 is always good (it draws from the × entries only).
+ *  Rules v8: ±N is [0, 1, 1, 2]. */
 export const NORMAL_ODDS = [[2, 30], [3, 20], [4, 8], [5, 2], [64, 12], [130, 14], [192, 12], [131, 2]];
-export const PM_BY_ROW = [0, 1, 3, 6];
+export const PM_BY_ROW = [0, 1, 1, 2];
 export const BIG_ODDS = [[6, 30], [8, 40], [10, 30]];
 
 // --- the level pool (SPEC §9) ----------------------------------------------------------------
@@ -144,15 +151,56 @@ export interface WallDef {
   y1: number;
 }
 
+/** Rules v8: the shape of an obstacle inside its box. A wedge is the right triangle with its right
+ *  angle at the named corner (B = low y, the cannon side; T = high y; L = x0; R = x1); its open
+ *  side faces away from that corner (+x for the L wedges, −x for the R ones). */
+export type ObstacleShape = 'rect' | 'wedgeBL' | 'wedgeBR' | 'wedgeTL' | 'wedgeTR';
+
+/** Rules v8 solid obstacle in the box x0 < x1, y0 < y1 (blocks, comb arms, pillars, wedges). */
+export interface ObstacleDef {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  shape: ObstacleShape;
+}
+
+/** Rules v8 speed pad: each tick a cohort's centre is on it (edges included) its launch boost
+ *  starts again (LAUNCH_SPEED for LAUNCH_TICKS). Enemies ignore it. */
+export interface PadDef {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Rules v8 pipe: a cohort whose centre enters the box pops out at (outX, outY) with a fresh launch
+ *  boost, past every gate row at or below outY (a `pipe` MatchEvent). Enemies ignore it. */
+export interface PipeDef {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  outX: number;
+  outY: number;
+}
+
 export interface StageDef {
   towers: TowerDef[];
   /** Gate row y, ascending. */
   rows: number[];
   /** Gate slots (Scout names these), sorted by row then x. */
   gates: GateDef[];
+  /** Breakable blocks: they lock a big gate when just below it (`crateOfGate`), or stand alone. */
   crates: CrateDef[];
-  /** Rules v7: divider walls (empty in half the layouts), sorted by x. */
+  /** Rules v7: divider walls, sorted by x (`[]` if none). */
   walls: WallDef[];
+  /** Rules v8: solid obstacles (`[]` if none). */
+  obstacles: ObstacleDef[];
+  /** Rules v8: speed pads (`[]` if none). */
+  pads: PadDef[];
+  /** Rules v8: pipes (`[]` if none); a `pipe` event names one by index. */
+  pipes: PipeDef[];
 }
 
 export interface LayoutDef {
@@ -164,122 +212,50 @@ export interface LayoutDef {
 /** `LAYOUTS[id]`, id = seed % LAYOUTS.length (MatchView.layout). */
 export const LAYOUTS: readonly LayoutDef[] = [
   {
-    name: 'Twin Lanes',
+    name: 'Three Lanes',
     stages: [
       {
-        towers: [{ x: 2250, hp: 968, waveBase: 21 }],
-        rows: [900, 1800, 2700, 3600],
+        towers: [{ x: 1500, hp: 411, waveBase: 6 }],
+        rows: [1000, 3400],
         gates: [
-          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 1, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 2, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 3, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 3, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
+          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 1, x: 2500, width: 880, big: false, timing: true, xMin: 2500, xMax: 2500, speed: 0 },
         ],
-        crates: [],
-        walls: [],
+        crates: [
+          { x: 1500, width: 880, y: 2600, hp: 20 },
+        ],
+        walls: [
+          { x: 1000, y0: 600, y1: 4400 },
+          { x: 2000, y0: 600, y1: 4400 },
+        ],
+        obstacles: [],
+        pads: [],
+        pipes: [],
       },
       {
-        towers: [{ x: 500, hp: 746, waveBase: 6 }, { x: 2500, hp: 746, waveBase: 6 }],
-        rows: [1000, 2000, 3000],
+        towers: [{ x: 500, hp: 400, waveBase: 5 }, { x: 2500, hp: 400, waveBase: 5 }],
+        rows: [1000, 3400],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
           { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 1, x: 1500, width: 880, big: true, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
-        ],
-        crates: [
-          { x: 1500, width: 880, y: 1700, hp: 30 },
-        ],
-        walls: [],
-      },
-    ],
-  },
-  {
-    name: 'Three Ways',
-    stages: [
-      {
-        towers: [{ x: 2500, hp: 1016, waveBase: 22 }],
-        rows: [1000, 2000, 3000],
-        gates: [
-          { row: 0, x: 500, width: 880, big: true, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 1, x: 2500, width: 880, big: false, timing: true, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-        ],
-        crates: [],
-        walls: [],
-      },
-      {
-        towers: [{ x: 500, hp: 573, waveBase: 9 }, { x: 1500, hp: 573, waveBase: 9 }],
-        rows: [1000, 2000, 3000],
-        gates: [
-          { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: true, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 2, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-        ],
-        crates: [],
-        walls: [],
-      },
-    ],
-  },
-  {
-    name: 'Long Shot',
-    stages: [
-      {
-        towers: [{ x: 500, hp: 615, waveBase: 13 }],
-        rows: [1000, 2000, 3000],
-        gates: [
-          { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 0, x: 2500, width: 880, big: true, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: true, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
         ],
         crates: [
-          { x: 2500, width: 880, y: 700, hp: 20 },
+          { x: 1500, width: 880, y: 3100, hp: 30 },
         ],
         walls: [
-          { x: 1000, y0: 500, y1: 3700 },
-          { x: 2000, y0: 500, y1: 3700 },
+          { x: 1000, y0: 600, y1: 4400 },
+          { x: 2000, y0: 600, y1: 4400 },
         ],
-      },
-      {
-        towers: [{ x: 750, hp: 1039, waveBase: 4 }, { x: 2250, hp: 1039, waveBase: 4 }],
-        rows: [900, 1800, 2700, 3600],
-        gates: [
-          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 1, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 2, x: 750, width: 1380, big: false, timing: true, xMin: 750, xMax: 750, speed: 0 },
-          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 3, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 3, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-        ],
-        crates: [],
-        walls: [
-          { x: 1500, y0: 500, y1: 4300 },
-        ],
+        obstacles: [],
+        pads: [],
+        pipes: [],
       },
     ],
   },
@@ -287,78 +263,159 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Funnel',
     stages: [
       {
-        towers: [{ x: 2500, hp: 1745, waveBase: 32 }],
-        rows: [1000, 2000, 3000],
+        towers: [{ x: 1500, hp: 372, waveBase: 13 }],
+        rows: [1000, 4100],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 1, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 1500, width: 880, big: true, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-        ],
-        crates: [
-          { x: 1500, width: 880, y: 2700, hp: 40 },
-        ],
-        walls: [],
-      },
-      {
-        towers: [{ x: 750, hp: 670, waveBase: 10 }, { x: 2250, hp: 670, waveBase: 10 }],
-        rows: [1000, 2000, 3000],
-        gates: [
-          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 1, x: 750, width: 1380, big: false, timing: true, xMin: 750, xMax: 750, speed: 0 },
-          { row: 1, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 2, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
         ],
         crates: [],
         walls: [],
+        obstacles: [
+          { x0: 0, y0: 1900, x1: 1000, y1: 3500, shape: 'wedgeTL' },
+          { x0: 2000, y0: 1900, x1: 3000, y1: 3500, shape: 'wedgeTR' },
+        ],
+        pads: [],
+        pipes: [],
+      },
+      {
+        towers: [{ x: 500, hp: 372, waveBase: 5 }, { x: 2500, hp: 372, waveBase: 5 }],
+        rows: [1000, 4400],
+        gates: [
+          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 1, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
+        ],
+        crates: [],
+        walls: [],
+        obstacles: [
+          { x0: 800, y0: 2200, x1: 1500, y1: 3000, shape: 'wedgeTR' },
+          { x0: 1500, y0: 2200, x1: 2200, y1: 3000, shape: 'wedgeTL' },
+          { x0: 800, y0: 3000, x1: 1500, y1: 3800, shape: 'wedgeBR' },
+          { x0: 1500, y0: 3000, x1: 2200, y1: 3800, shape: 'wedgeBL' },
+        ],
+        pads: [],
+        pipes: [],
       },
     ],
   },
   {
-    name: 'Zigzag',
+    name: 'Speed Comb',
     stages: [
       {
-        towers: [{ x: 750, hp: 1634, waveBase: 16 }],
-        rows: [900, 1800, 2700, 3600],
+        towers: [{ x: 750, hp: 273, waveBase: 10 }],
+        rows: [1000, 2700, 4500],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
           { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 1, x: 750, width: 1380, big: true, timing: false, xMin: 750, xMax: 750, speed: 0 },
           { row: 1, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
-          { row: 3, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 3, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 2, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 2, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
         ],
-        crates: [],
+        crates: [
+          { x: 2250, width: 700, y: 2000, hp: 15 },
+        ],
         walls: [
-          { x: 1500, y0: 500, y1: 4300 },
+          { x: 1500, y0: 600, y1: 4800 },
+        ],
+        obstacles: [
+          { x0: 0, y0: 1600, x1: 850, y1: 1720, shape: 'rect' },
+          { x0: 600, y0: 2300, x1: 1440, y1: 2420, shape: 'rect' },
+          { x0: 0, y0: 3000, x1: 850, y1: 3120, shape: 'rect' },
+          { x0: 600, y0: 3700, x1: 1440, y1: 3820, shape: 'rect' },
+        ],
+        pads: [
+          { x0: 900, y0: 1850, x1: 1440, y1: 2150 },
+          { x0: 0, y0: 2550, x1: 560, y1: 2850 },
+          { x0: 900, y0: 3250, x1: 1440, y1: 3550 },
+        ],
+        pipes: [],
+      },
+      {
+        towers: [{ x: 750, hp: 250, waveBase: 5 }, { x: 2250, hp: 250, waveBase: 5 }],
+        rows: [1000, 2700, 4500],
+        gates: [
+          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 2, x: 750, width: 1380, big: false, timing: true, xMin: 750, xMax: 750, speed: 0 },
+          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+        ],
+        crates: [
+          { x: 750, width: 700, y: 2000, hp: 15 },
+        ],
+        walls: [
+          { x: 1500, y0: 600, y1: 4800 },
+        ],
+        obstacles: [
+          { x0: 2150, y0: 1600, x1: 3000, y1: 1720, shape: 'rect' },
+          { x0: 1560, y0: 2300, x1: 2400, y1: 2420, shape: 'rect' },
+          { x0: 2150, y0: 3000, x1: 3000, y1: 3120, shape: 'rect' },
+          { x0: 1560, y0: 3700, x1: 2400, y1: 3820, shape: 'rect' },
+        ],
+        pads: [
+          { x0: 1560, y0: 1850, x1: 2100, y1: 2150 },
+          { x0: 2440, y0: 2550, x1: 3000, y1: 2850 },
+          { x0: 1560, y0: 3250, x1: 2100, y1: 3550 },
+        ],
+        pipes: [],
+      },
+    ],
+  },
+  {
+    name: 'Pipes',
+    stages: [
+      {
+        towers: [{ x: 1500, hp: 407, waveBase: 26 }],
+        rows: [1000, 2600, 4000],
+        gates: [
+          { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
+          { row: 1, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 2, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
+        ],
+        crates: [
+          { x: 500, width: 880, y: 1500, hp: 10 },
+          { x: 2500, width: 880, y: 1500, hp: 10 },
+        ],
+        walls: [
+          { x: 1000, y0: 600, y1: 5200 },
+          { x: 2000, y0: 600, y1: 5200 },
+        ],
+        obstacles: [],
+        pads: [],
+        pipes: [
+          { x0: 0, y0: 3000, x1: 939, y1: 3400, outX: 500, outY: 5600 },
+          { x0: 2061, y0: 3000, x1: 2999, y1: 3400, outX: 2500, outY: 5600 },
         ],
       },
       {
-        towers: [{ x: 500, hp: 405, waveBase: 3 }, { x: 2500, hp: 405, waveBase: 3 }],
-        rows: [1000, 2000, 3000],
+        towers: [{ x: 1200, hp: 330, waveBase: 14 }, { x: 1800, hp: 330, waveBase: 14 }],
+        rows: [1000, 2600, 4000],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: true, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 1, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 2, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 2, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
         ],
         crates: [
-          { x: 1500, width: 880, y: 1700, hp: 30 },
+          { x: 500, width: 880, y: 1500, hp: 10 },
+          { x: 2500, width: 880, y: 1500, hp: 10 },
         ],
         walls: [
-          { x: 1000, y0: 500, y1: 3700 },
-          { x: 2000, y0: 500, y1: 3700 },
+          { x: 1000, y0: 600, y1: 5200 },
+          { x: 2000, y0: 600, y1: 5200 },
+        ],
+        obstacles: [],
+        pads: [],
+        pipes: [
+          { x0: 0, y0: 3000, x1: 939, y1: 3400, outX: 500, outY: 5600 },
+          { x0: 2061, y0: 3000, x1: 2999, y1: 3400, outX: 2500, outY: 5600 },
         ],
       },
     ],
@@ -367,41 +424,121 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Pillars',
     stages: [
       {
-        towers: [{ x: 1500, hp: 554, waveBase: 9 }],
-        rows: [1000, 2000, 3000],
+        towers: [{ x: 1500, hp: 403, waveBase: 7 }],
+        rows: [1000, 4400],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
           { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 1, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
         ],
         crates: [],
-        walls: [
-          { x: 1000, y0: 500, y1: 3700 },
-          { x: 2000, y0: 500, y1: 3700 },
+        walls: [],
+        obstacles: [
+          { x0: 220, y0: 1900, x1: 480, y1: 2160, shape: 'rect' },
+          { x0: 920, y0: 1900, x1: 1180, y1: 2160, shape: 'rect' },
+          { x0: 1620, y0: 1900, x1: 1880, y1: 2160, shape: 'rect' },
+          { x0: 2320, y0: 1900, x1: 2580, y1: 2160, shape: 'rect' },
+          { x0: 570, y0: 2500, x1: 830, y1: 2760, shape: 'rect' },
+          { x0: 1270, y0: 2500, x1: 1530, y1: 2760, shape: 'rect' },
+          { x0: 1970, y0: 2500, x1: 2230, y1: 2760, shape: 'rect' },
+          { x0: 2670, y0: 2500, x1: 2930, y1: 2760, shape: 'rect' },
+          { x0: 220, y0: 3100, x1: 480, y1: 3360, shape: 'rect' },
+          { x0: 920, y0: 3100, x1: 1180, y1: 3360, shape: 'rect' },
+          { x0: 1620, y0: 3100, x1: 1880, y1: 3360, shape: 'rect' },
+          { x0: 2320, y0: 3100, x1: 2580, y1: 3360, shape: 'rect' },
+          { x0: 570, y0: 3700, x1: 830, y1: 3960, shape: 'rect' },
+          { x0: 1270, y0: 3700, x1: 1530, y1: 3960, shape: 'rect' },
+          { x0: 1970, y0: 3700, x1: 2230, y1: 3960, shape: 'rect' },
+          { x0: 2670, y0: 3700, x1: 2930, y1: 3960, shape: 'rect' },
         ],
+        pads: [],
+        pipes: [],
       },
       {
-        towers: [{ x: 1500, hp: 853, waveBase: 8 }, { x: 2500, hp: 853, waveBase: 8 }],
-        rows: [1000, 2000, 3000],
+        towers: [{ x: 750, hp: 1119, waveBase: 4 }, { x: 2250, hp: 1119, waveBase: 4 }],
+        rows: [1000, 4400],
+        gates: [
+          { row: 0, x: 500, width: 880, big: true, timing: false, xMin: 500, xMax: 500, speed: 0 },
+          { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: true, xMin: 750, xMax: 750, speed: 0 },
+          { row: 1, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+        ],
+        crates: [],
+        walls: [],
+        obstacles: [
+          { x0: 220, y0: 1900, x1: 480, y1: 2160, shape: 'rect' },
+          { x0: 920, y0: 1900, x1: 1180, y1: 2160, shape: 'rect' },
+          { x0: 1620, y0: 1900, x1: 1880, y1: 2160, shape: 'rect' },
+          { x0: 2320, y0: 1900, x1: 2580, y1: 2160, shape: 'rect' },
+          { x0: 570, y0: 2500, x1: 830, y1: 2760, shape: 'rect' },
+          { x0: 1270, y0: 2500, x1: 1530, y1: 2760, shape: 'rect' },
+          { x0: 1970, y0: 2500, x1: 2230, y1: 2760, shape: 'rect' },
+          { x0: 2670, y0: 2500, x1: 2930, y1: 2760, shape: 'rect' },
+          { x0: 220, y0: 3100, x1: 480, y1: 3360, shape: 'rect' },
+          { x0: 920, y0: 3100, x1: 1180, y1: 3360, shape: 'rect' },
+          { x0: 1620, y0: 3100, x1: 1880, y1: 3360, shape: 'rect' },
+          { x0: 2320, y0: 3100, x1: 2580, y1: 3360, shape: 'rect' },
+          { x0: 570, y0: 3700, x1: 830, y1: 3960, shape: 'rect' },
+          { x0: 1270, y0: 3700, x1: 1530, y1: 3960, shape: 'rect' },
+          { x0: 1970, y0: 3700, x1: 2230, y1: 3960, shape: 'rect' },
+          { x0: 2670, y0: 3700, x1: 2930, y1: 3960, shape: 'rect' },
+        ],
+        pads: [
+          { x0: 0, y0: 1250, x1: 600, y1: 1650 },
+          { x0: 2400, y0: 1250, x1: 3000, y1: 1650 },
+        ],
+        pipes: [],
+      },
+    ],
+  },
+  {
+    name: 'Island',
+    stages: [
+      {
+        towers: [{ x: 1500, hp: 218, waveBase: 12 }],
+        rows: [1000, 4000],
+        gates: [
+          { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 1, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
+        ],
+        crates: [
+          { x: 2525, width: 700, y: 2700, hp: 15 },
+        ],
+        walls: [],
+        obstacles: [
+          { x0: 950, y0: 2100, x1: 2050, y1: 3400, shape: 'rect' },
+        ],
+        pads: [
+          { x0: 100, y0: 2300, x1: 800, y1: 2900 },
+        ],
+        pipes: [],
+      },
+      {
+        towers: [{ x: 750, hp: 423, waveBase: 6 }, { x: 2250, hp: 423, waveBase: 6 }],
+        rows: [1000, 3800],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
           { row: 0, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 0, x: 2500, width: 880, big: true, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 1, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 1, x: 1500, width: 880, big: false, timing: true, xMin: 1500, xMax: 1500, speed: 0 },
-          { row: 1, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
-          { row: 2, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
-          { row: 2, x: 1500, width: 880, big: false, timing: false, xMin: 1500, xMax: 1500, speed: 0 },
+          { row: 0, x: 2500, width: 880, big: false, timing: false, xMin: 2500, xMax: 2500, speed: 0 },
+          { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 1, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
         ],
         crates: [],
-        walls: [
-          { x: 2000, y0: 500, y1: 3700 },
+        walls: [],
+        obstacles: [
+          { x0: 0, y0: 5000, x1: 1100, y1: 6000, shape: 'wedgeTL' },
+          { x0: 1900, y0: 5000, x1: 3000, y1: 6000, shape: 'wedgeTR' },
         ],
+        pads: [
+          { x0: 0, y0: 2600, x1: 600, y1: 3200 },
+          { x0: 2400, y0: 2600, x1: 3000, y1: 3200 },
+        ],
+        pipes: [],
       },
     ],
   },
