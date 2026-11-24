@@ -47,7 +47,7 @@ fn play(seed: u64) -> Golden {
 
 #[test]
 fn golden_bot_vs_bot_match_per_layout() {
-    assert_eq!(RULES_VERSION, 6);
+    assert_eq!(RULES_VERSION, 7);
     let got: Vec<Golden> = (0..LAYOUTS.len() as u64).map(play).collect();
     // Paste-ready for GOLDEN (tools/balance/regen_golden.py does it).
     for (seed, (tick, gold, dead, res, sum, digest)) in got.iter().enumerate() {
@@ -75,56 +75,56 @@ const fn r(winner: Option<u8>, ko: bool, moved: u64, fee: u64) -> Option<MatchRe
 const GOLDEN: &[Golden] = &[
     // Twin Lanes
     (
-        1403,
-        [1766, 1720],
+        1735,
+        [2866, 2866],
         [false, false],
-        r(Some(0), false, 2630000, 131500),
-        [321, 720, 16, 2, 40, 52, 210, 17],
-        17702114105741362414,
+        r(None, false, 0, 0),
+        [414, 1264, 20, 0, 50, 54, 332, 18],
+        3643231261687311306,
     ),
-    // Conveyor
+    // Three Ways
     (
-        1123,
-        [5759, 5859],
+        1288,
+        [2442, 2442],
         [false, false],
-        r(Some(1), false, 1720000, 86000),
-        [252, 663, 14, 0, 30, 58, 126, 18],
-        8664106602444036093,
+        r(None, false, 0, 0),
+        [296, 714, 20, 0, 42, 51, 210, 16],
+        12746502540841813532,
     ),
     // Long Shot
     (
-        828,
-        [2807, 2807],
+        1928,
+        [3067, 3067],
         [false, false],
         r(None, false, 0, 0),
-        [174, 488, 14, 14, 20, 22, 84, 16],
-        6838554425863865540,
+        [464, 1636, 22, 0, 52, 66, 378, 16],
+        12753941482395539916,
     ),
     // Funnel
     (
-        2635,
-        [2194, 2294],
+        1247,
+        [4039, 4039],
         [false, false],
-        r(Some(1), false, 4450000, 222500),
-        [645, 1249, 15, 3, 108, 152, 494, 16],
-        14347463494442514150,
+        r(None, false, 0, 0),
+        [286, 814, 20, 8, 34, 50, 188, 18],
+        3228373999286563861,
     ),
     // Zigzag
     (
-        832,
-        [1863, 1861],
-        [false, true],
-        r(Some(0), true, 100000000, 5000000),
-        [177, 199, 10, 10, 32, 84, 18, 0],
-        17511237822351891261,
+        848,
+        [1684, 1686],
+        [true, false],
+        r(Some(1), true, 100000000, 5000000),
+        [182, 593, 24, 3, 14, 22, 113, 0],
+        8621635406033375657,
     ),
-    // Stairway
+    // Pillars
     (
-        2315,
-        [1225, 1175],
+        1288,
+        [3050, 3050],
         [false, false],
-        r(Some(0), false, 4160000, 208000),
-        [563, 734, 14, 5, 76, 132, 381, 16],
-        2650925351619489186,
+        r(None, false, 0, 0),
+        [296, 638, 18, 0, 28, 34, 210, 16],
+        11728872140495645885,
     ),
 ];
