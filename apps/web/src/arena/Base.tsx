@@ -1,7 +1,9 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Group, MeshStandardMaterial, Sprite } from 'three';
-import { FINAL_STAGE, VAULT_Y } from '@lil-dudes/client';
+import { CanvasTexture, Group, type Mesh, MeshStandardMaterial, SRGBColorSpace, Sprite } from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { FINAL_STAGE, VAULT_Y, stageDef } from '@lil-dudes/client';
+import { crateDepth, isLockCrate } from './crowdSim';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
 import { HALF_L, LANE_W, PALETTE, SX, shortNum, wx, wz } from './layout';
@@ -221,28 +223,155 @@ function Tower({ feed, index }: { feed: MatchFeed; index: number }) {
   );
 }
 
+/** A stand-alone crate is a chunky block about 1.1 dudes tall. */
+const BLOCK_H = 1.4;
+const CRATE_RED = '#c8552c';
+const CRATE_DARK = '#7a2e16';
+const CRATE_LIGHT = '#f08a4b';
+
+/** Wood-block faces drawn in code: a light frame, planks and an X brace, plus `crack` (0–2) cracks. */
+const woodTex: CanvasTexture[] = [];
+function woodTexture(crack: number): CanvasTexture {
+  if (woodTex[crack]) return woodTex[crack]!;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = CRATE_RED;
+  g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = CRATE_DARK;
+  g.lineWidth = 3;
+  for (const y of [44, 84]) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(128, y);
+    g.stroke();
+  }
+  g.lineCap = 'round';
+  g.strokeStyle = CRATE_LIGHT;
+  g.lineWidth = 14;
+  g.beginPath();
+  g.moveTo(16, 16);
+  g.lineTo(112, 112);
+  g.stroke();
+  g.strokeStyle = CRATE_LIGHT;
+  g.lineWidth = 16;
+  g.strokeRect(8, 8, 112, 112);
+  g.strokeStyle = CRATE_DARK;
+  g.lineWidth = 2.5;
+  g.strokeRect(1.5, 1.5, 125, 125);
+  g.strokeRect(16.5, 16.5, 95, 95);
+  if (crack > 0) {
+    g.strokeStyle = '#3a130a';
+    g.lineWidth = 3;
+    g.lineJoin = 'round';
+    const paths =
+      crack === 1
+        ? [[[64, 6], [58, 30], [70, 46], [62, 64]]]
+        : [
+            [[64, 6], [58, 30], [70, 46], [62, 64], [74, 86], [66, 110]],
+            [[6, 70], [30, 64], [44, 74], [62, 64]],
+            [[122, 40], [98, 52], [90, 70], [74, 86]],
+          ];
+    for (const path of paths) {
+      g.beginPath();
+      path.forEach(([x, y], i) => (i ? g.lineTo(x!, y!) : g.moveTo(x!, y!)));
+      g.stroke();
+    }
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  woodTex[crack] = t;
+  return t;
+}
+
+const blockGeo = new Map<string, RoundedBoxGeometry>();
+function blockGeometry(w: number, d: number): RoundedBoxGeometry {
+  const key = `${w.toFixed(2)}|${d.toFixed(2)}`;
+  let g = blockGeo.get(key);
+  if (!g) {
+    g = new RoundedBoxGeometry(w, BLOCK_H, d, 3, 0.16);
+    g.translate(0, BLOCK_H / 2, 0);
+    blockGeo.set(key, g);
+  }
+  return g;
+}
+
+/**
+ * A crate: one locking a big gate is a wide plank of boxes (the blaster-kit crate); a stand-alone
+ * one (rules v8) is a chunky red wood block with a big HP number on top. Both jolt and flash when
+ * hit, and a block cracks as it loses HP (Fx.tsx puffs and smashes it).
+ */
 function Crate({ feed, index }: { feed: MatchFeed; index: number }) {
   const root = useRef<Group>(null!);
   const box = useRef<Group>(null!);
+  const block = useRef<Mesh>(null!);
   const label = useRef<Sprite>(null!);
+  const lastHp = useRef(-1);
+  const flash = useRef(0);
   const pack = usePack(CRATE_MODEL[0]);
   const mat = useMemo(() => {
     const m = pack.material.clone();
     m.roughness = 0.55;
+    m.emissive.set('#ffffff');
+    m.emissiveIntensity = 0;
     return m;
   }, [pack]);
+  const blockMat = useMemo(
+    () => new MeshStandardMaterial({ map: woodTexture(0), roughness: 0.6, metalness: 0, emissive: '#ffffff', emissiveIntensity: 0 }),
+    [],
+  );
 
-  useFrame(() => {
-    const c = feed.me?.crates[index];
+  useFrame(({ clock }, dt) => {
+    const lane = feed.me;
+    const view = feed.cur;
+    const c = lane?.crates[index];
     root.current.visible = !!c && c.hp > 0;
-    if (!c || c.hp <= 0) return;
+    if (!c || c.hp <= 0 || !lane || !view) {
+      lastHp.current = -1;
+      return;
+    }
     root.current.position.set(wx(c.x), 0, wz(c.y));
-    // Same width as the sim's crate: c.width sim units across the lane.
-    box.current.scale.set((c.width * SX) / CRATE_LEN, 1, 1);
-    const tex = labelTexture(String(c.hp), { color: '#ffffff', outline: PALETTE.crate, width: 192, height: 112 });
+    const lock = isLockCrate(stageDef(view.layout, lane.stage), c.x, c.y);
+    if (lastHp.current >= 0 && c.hp < lastHp.current) flash.current = 1;
+    lastHp.current = c.hp;
+    flash.current = Math.max(0, flash.current - dt * 5);
+    const f = flash.current;
+    const jolt = Math.sin(clock.elapsedTime * 60) * f * 0.12;
+    box.current.visible = lock;
+    block.current.visible = !lock;
+    if (lock) {
+      // Same width as the sim's crate: c.width sim units across the lane.
+      box.current.scale.set(((c.width * SX) / CRATE_LEN) * (1 + f * 0.04), 1 - f * 0.06, 1);
+      box.current.position.x = jolt;
+      mat.emissiveIntensity = f * 0.45;
+    } else {
+      const w = c.width * SX;
+      const d = crateDepth(c.width, false) * SX;
+      const geo = blockGeometry(w, d);
+      if (block.current.geometry !== geo) block.current.geometry = geo;
+      block.current.scale.set(1 + f * 0.06, 1 - f * 0.1, 1 + f * 0.06);
+      block.current.position.x = jolt;
+      const lost = 1 - c.hp / Math.max(1, c.maxHp);
+      const tex = woodTexture(lost > 0.6 ? 2 : lost > 0.25 ? 1 : 0);
+      if (blockMat.map !== tex) {
+        blockMat.map = tex;
+        blockMat.needsUpdate = true;
+      }
+      blockMat.emissiveIntensity = f * 0.5;
+    }
+    const tex = labelTexture(String(c.hp), { color: '#ffffff', outline: CRATE_DARK, width: 192, height: 112 });
     if (label.current.material.map !== tex) {
       label.current.material.map = tex;
       label.current.material.needsUpdate = true;
+    }
+    const pop = 1 + f * 0.3;
+    if (lock) {
+      label.current.position.set(0, 2.6, 0.8);
+      label.current.scale.set(2.6 * pop, 1.5 * pop, 1);
+    } else {
+      label.current.position.set(0, BLOCK_H + 1.0, 0.3);
+      label.current.scale.set(3.4 * pop, 2 * pop, 1);
     }
   });
 
@@ -252,6 +381,7 @@ function Crate({ feed, index }: { feed: MatchFeed; index: number }) {
         {/* Turned a quarter so the long side lies across the lane; ~1.6 deep and ~1.7 tall. */}
         <mesh geometry={pack.geo[CRATE_MODEL[1]]!} material={mat} rotation-y={Math.PI / 2} scale={[2.9, 4.6, 1]} />
       </group>
+      <mesh ref={block} material={blockMat} visible={false} castShadow receiveShadow />
       <sprite ref={label} position={[0, 2.6, 0.8]} scale={[2.6, 1.5, 1]} renderOrder={15}>
         <spriteMaterial transparent depthTest={false} />
       </sprite>
