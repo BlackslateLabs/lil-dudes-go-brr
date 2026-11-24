@@ -1513,3 +1513,34 @@ confirmation, explorer links to a staked match's settle tx and match account (RE
 "Explorer link"), the treasury (fee vault) and sponsor (app wallet) addresses, and a privacy-check re-run on
 the final program. Suparno: gameplay GIF (`docs/assets/gameplay.gif`), demo video link, public repo URL,
 prize wallet, devnet usage numbers.
+
+## 2026-11-24 23:01 IST · Suparno · web (v10 playtest fixes, race bar) · [DECISION]
+**Did:** (branch `v10-final`; commits `ce2f0ed`..`0bc1132`, web only)
+- **Champions are crowd agents** (`crowdSim.ts`): Champion giants (and enemy giants) use the dudes' formation,
+  swarm and push-out against walls, comb arms, obstacles, towers, crates and lane edges, with a 240 body and
+  their own spacing; they shove dudes aside and squash across (to 0.68) in a gap narrower than their drawn
+  body. Sampled over a Speed Comb match: 0 giant penetration into any wall or arm. They die **one at a
+  time** (0.14 s apart) with a new purple-and-gold burst, shockwave rings and chunky stars (`PopFlag.Giant`),
+  the last one with a small shake. `Crowds.tsx` no longer places giants itself.
+- **Enemies at crates (rules v10):** enemy crowds never pop at a crate; held behind a live one they pile up
+  against its far face and lean on it, then flow on when it breaks (checked with the rebuilt WASM).
+- **Music:** the AudioContext is built at load, so the menu track decodes before any tap; the first
+  pointer / touch / key event anywhere resumes it in that gesture; the first bed fades in over 1.4 s, beds
+  crossfade over 1 s.
+- **VS:** mascot heads (blue knight, red Bot, red knight for a human; `public/brand/head-*.webp`, exported
+  from the logo vectors), names never clip (ellipsis), a level card (name, top-down SVG of stage 1, "Same map.
+  Same gates. First to break the towers wins."). The match seed is now picked for the VS screen
+  (`match/nextSeed.ts`). Big centre banners and stamps scale to the frame (`cqw`) and fit 360 px.
+- **Race bar** (replaces the bottom progress line): two thin tracks, you and the opponent, with the same
+  tower icons for Fight 1, Fight 2 and the town hall, plus "Bot cleared Fight 1!" / "You cleared Fight 1
+  first!" toasts. **Tutorial cut-in** right after the first countdown: "The Bot is playing this exact lane
+  right now. Beat it to the towers!", pointing up at the race bar.
+- Lower, flatter pipes. Removed the rig/GOTCHA leftovers (burst, sfx cue) and the dead result-board styles.
+
+**Decided:** giants squash rather than shrink to fit a corridor; the race bar takes the opponent's gold too, so
+the bottom progress line is gone.
+**Blocked / risks:** another session's commit `68dcadb` swept up two of my staged deletions (`gotcha.mp3`,
+`ProgressLine.tsx`), so `68dcadb`..`72470e5` don't build on their own; `21bbf6a` onwards does. The race bar
+covers the top of the far tower a little. Live-play files in `apps/web` (Lobby, live/session…) are someone
+else's uncommitted work and were left out of these commits.
+**Next / handoff:** none.
