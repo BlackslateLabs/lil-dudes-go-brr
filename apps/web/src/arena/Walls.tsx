@@ -7,11 +7,11 @@ import { WALL_HALF, wallsOf } from './columns';
 
 /** Pool size: more than any stage's wall count. */
 const MAX_WALLS = 8;
-/** Drawn a little thicker than the sim's 2·WALL_HALF, so it reads from the camera. */
-const RADIUS = WALL_HALF * S * 1.3;
-/** Squashed to about knee-to-waist height of a dude (~0.6). */
-const SQUASH = 0.82;
-const CREAM = '#fff3df';
+/** Drawn thicker than the sim's 2·WALL_HALF, so it reads from the high camera. */
+const RADIUS = WALL_HALF * S * 1.6;
+/** Stretched up to about 1.3 dudes tall (~1.5), so it reads as a wall, not a kerb. */
+const SQUASH = 1.9;
+const CREAM = '#fffaf2';
 
 /**
  * Divider walls between the lane's columns (rules v7, `stageDef(...).walls`): chunky rounded candy
@@ -46,7 +46,7 @@ function softShade(): CanvasTexture {
   const g = c.getContext('2d')!;
   const across = g.createLinearGradient(0, 0, 32, 0);
   across.addColorStop(0, 'rgba(120,60,20,0)');
-  across.addColorStop(0.5, 'rgba(120,60,20,0.34)');
+  across.addColorStop(0.5, 'rgba(120,60,20,0.5)');
   across.addColorStop(1, 'rgba(120,60,20,0)');
   g.fillStyle = across;
   g.fillRect(0, 4, 32, 56);
@@ -90,13 +90,13 @@ function Wall({ feed, index, parts }: { feed: MatchFeed; index: number; parts: P
       </group>
       <group position-y={RADIUS * SQUASH} scale-y={SQUASH}>
         <group ref={body}>
-          <mesh geometry={parts.body} material={parts.mat} receiveShadow />
+          <mesh geometry={parts.body} material={parts.mat} castShadow receiveShadow />
         </group>
         <group ref={capA}>
-          <mesh geometry={parts.cap} material={parts.mat} receiveShadow />
+          <mesh geometry={parts.cap} material={parts.mat} castShadow receiveShadow />
         </group>
         <group ref={capB}>
-          <mesh geometry={parts.cap} material={parts.mat} receiveShadow />
+          <mesh geometry={parts.cap} material={parts.mat} castShadow receiveShadow />
         </group>
       </group>
     </group>
