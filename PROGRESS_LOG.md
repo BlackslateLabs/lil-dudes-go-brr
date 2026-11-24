@@ -1369,3 +1369,38 @@ enemies only.
 - run MagicSVM (`tests-magicsvm`): positions near the tower line differ now;
 - redeploy the program for v9 (`RULES_VERSION` 9; no instruction, account or codec change, so
   the IDL should be identical).
+
+## 2026-11-24 19:07 IST · Suparno · web (arena v9 feel) · [DECISION]
+**Did:** (branch `v9-feel`; commits `e74f346`, `227eed3`, `28a82af`, `d2bf74d`)
+- **Real walk cycles (VAT).** `models/tools/bake-anim.mjs` skins the Mini Characters' `walk`
+  (16 frames) and `sprint` (12 frames) on exactly dudes.glb's vertices (418 knight, 368 robot; the
+  remap is found once in the idle pose, all exact) into `public/assets/models/dudes-anim.bin`
+  (199 KB: Int16 positions + Int8 normals). `models/vat.ts` turns it into one float texture per
+  piece and patches the crowd materials and their shadow depth materials to read the frame by
+  `gl_VertexID` (two frames blended, walk/sprint mixed per instance). Each dude has its own phase,
+  advanced by its speed (cruise ~2.2 loops/s, sprint once boosted); giants walk a slower loop. The
+  fake waddle is gone. Cost on an Intel UHD iGPU, 1,500 dudes at 1170×2532 with shadows: 8.8 ms
+  per frame without VAT, 8.7–9.1 ms with it (9.3 ms while blending into sprint).
+- **Death and impact effects.** Every crowd pop goes through a typed ring buffer
+  (`arena/popQueue.ts`) that Fx.tsx drains into pooled bursts: at a tower or the hall a puff,
+  a flash and 2–3 gold stars (a coin glint in the Rush); on a clash front a puff in the team
+  colour and white stars; at a crate wood chips and dust; at a bad gate a small dust puff. Budget:
+  18 pops a frame 1:1, then one burst per 3 (per 5 past 60), at most 30 a frame. Particles are now
+  flat typed arrays (900 per layer, no allocation). Towers flash and rattle and the hall jolts per
+  wave of pops; crate hits throw chips every hit and a break is a much bigger burst. Crowds wiped
+  by a stage ending vanish without bursts.
+- **Bigger:** dudes 1.8 (spacing 84, separation 120), Champions 5.5 (pairs 390 apart, rows 550,
+  the column never longer than 1,700; single file in a corridor too narrow for a pair), enemy
+  giants 3.2.
+- **Late turn:** the swarm blend toward a tower's (or the hall's) slots starts 1,250 out and eases
+  in (done 220 short), so crowds walk straight and bend at the end like the v9 rules.
+
+**Decided:** (Suparno) as above. `dudes-anim.bin` is precached by the PWA; if it fails to load
+the crowds just stay static.
+
+**Blocked / risks:**
+- Feet slide a little at cruise (a brisk loop reads better from the camera than a matched stride).
+- A big Champion (×8 and up) is still a tall purple column; tune on a real phone.
+- The robot troops walking through the thin pillar walls is old behaviour, unchanged.
+
+**Next / handoff:** none for Kai. If dudes.glb is rebuilt, rerun `bake-anim.mjs` (header has how).
