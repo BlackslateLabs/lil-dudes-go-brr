@@ -1,15 +1,14 @@
 //! One or more tests per rule (SPEC v4 / SPEC_V5 section in each test's comment). Most use
-//! layout 0 (Twin Lanes, no walls). Its Fight 1 has 2 columns: one tower at x 2,250, rows at
-//! 900 / 1,800 / 2,700 / 3,600, gates 0 (row 0, x 750), 1 (row 0, x 2,250), 2 (row 1, x 750),
-//! the timing gate 3 (row 1, x 2,250), 4 / 5 (row 2, x 750 / 2,250) and 6 / 7 (row 3); every
-//! cell holds a gate. Its Fight 2 has 3 columns: towers at 500 / 2,500, rows at 1,000 / 2,000 /
-//! 3,000, gates 0-2 (row 0), 3 (row 1, x 500), the big gate 4 (row 1, x 1,500) locked behind a
-//! crate at y 1,700, 5 (row 1, x 2,500), 6 (row 2, x 500) and the timing gate 7 (row 2, x 1,500);
-//! row 2's right column is empty. The wall rules (SPEC_V5 §12) use layout 2 (Long Shot): Fight 1
-//! has walls at x 1,000 and 2,000 for y 500..=3,700.
+//! layout 0 (Three Lanes): walls at x 1,000 and 2,000 for y 600..=4,400 in both fights. Its
+//! Fight 1 has one tower at x 1,500, rows at 1,000 / 3,400, gates 0-2 (row 0, x 500 / 1,500 /
+//! 2,500), 3 (row 1, x 500) and the timing gate 4 (row 1, x 2,500), and a stand-alone crate at
+//! (1,500, 2,600); row 1's middle lane is empty. Its Fight 2 has towers at 500 / 2,500, the same
+//! rows, gates 0-2 (row 0), 3 (row 1, x 500), the big gate 4 (row 1, x 1,500) locked behind a
+//! crate at y 3,100 and the timing gate 5 (row 1, x 2,500). The v8 tests (SPEC_V5 §13) use the
+//! obstacle layouts.
 
 use super::*;
-use crate::constants::GATE_GRACE;
+use crate::constants::{GATE_GRACE, SLIDE_STEP};
 use crate::events::Events;
 use crate::layouts::LAYOUTS;
 use crate::state::{MatchOptions, SideInput};
@@ -359,24 +358,19 @@ fn a_full_lane_merges_waves_into_that_towers_newest_cohort() {
 // --- movement and homing -----------------------------------------------------------------------
 
 #[test]
-fn enemies_walk_down_and_home_in_on_cohorts_ahead() {
-    // SPEC §4: steer STEER_STEP toward the nearest cohort below within DETECT_Y, else straight.
+fn enemies_walk_straight_down_and_ignore_my_cohorts() {
+    // SPEC_V5 §13 (rules v8): no homing; straight down at cruise speed, whoever is around.
     let mut m = new_match(0);
     let side = &mut m.public.sides[0];
-    side.cohorts[0] = cohort(1, 5, 1_000, 5_000, 3);
+    side.cohorts[0] = cohort(1, 5, 2_400, 5_000, 3);
     side.cohort_len = 1;
     side.enemies[0] = enemy(2, 5, 2_000, 8_000);
-    side.enemies[1] = enemy(3, 5, 2_000, 10_500); // 5,500 above: too far to see it
-    side.enemies[2] = enemy(4, 5, 1_010, 8_000); // closer than a step: lands on it
-    side.enemy_len = 3;
+    side.enemies[1] = enemy(3, 5, 2_390, 5_200);
+    side.enemy_len = 2;
     move_enemies(side, layouts::stage(0, 0));
     let e = side.enemies();
-    assert_eq!(
-        (e[0].x, e[0].y),
-        (2_000 - STEER_STEP as i16, 8_000 - CRUISE_SPEED as i16)
-    );
-    assert_eq!((e[1].x, e[1].y), (2_000, 10_500 - CRUISE_SPEED as i16));
-    assert_eq!(e[2].x, 1_000);
+    assert_eq!((e[0].x, e[0].y), (2_000, 8_000 - CRUISE_SPEED as i16));
+    assert_eq!((e[1].x, e[1].y), (2_390, 5_200 - CRUISE_SPEED as i16));
 }
 
 #[test]
@@ -469,17 +463,17 @@ fn front_most_pairs_resolve_first() {
 
 // --- divider walls (SPEC_V5 §12) ---------------------------------------------------------------
 
-/// Layout 2 (Long Shot), Fight 1: walls at x 1,000 and 2,000, standing for y 500..=3,700.
+/// Layout 0 (Three Lanes), Fight 1: walls at x 1,000 and 2,000, standing for y 600..=4,400.
 fn walled() -> (MatchState, &'static StageDef) {
-    let st = layouts::stage(2, 0);
+    let st = layouts::stage(0, 0);
     assert_eq!(
         st.walls
             .iter()
             .map(|w| (w.x, w.y0, w.y1))
             .collect::<Vec<_>>(),
-        [(1_000, 500, 3_700), (2_000, 500, 3_700)]
+        [(1_000, 600, 4_400), (2_000, 600, 4_400)]
     );
-    (new_match(2), st)
+    (new_match(0), st)
 }
 
 #[test]
@@ -488,62 +482,51 @@ fn walls_keep_homing_cohorts_in_their_column_until_they_end() {
     // walks past the wall's end it is free again.
     let (m, st) = walled();
     let mut side = m.public.sides[0];
-    side.cohorts[0] = cohort(1, 5, 930, 3_200, 3); // homing toward x 1,500: stops at the wall
-    side.cohorts[1] = cohort(2, 5, 930, 3_650, 3); // walks past y 3,700 this tick: free
+    side.cohorts[0] = cohort(1, 5, 930, 3_600, 3); // homing toward x 1,500: stops at the wall
+    side.cohorts[1] = cohort(2, 5, 930, 4_350, 3); // walks past y 4,400 this tick: free
     side.cohort_len = 2;
-    side.enemies[0] = enemy(9, 5, 1_500, 4_000);
+    side.enemies[0] = enemy(9, 5, 1_500, 5_000);
     side.enemy_len = 1;
     move_cohorts(&mut side, st, &m.secret, 0, 0, &mut Events::<64>::new());
     let c = side.cohorts();
-    assert_eq!((c[0].x, c[0].y), (939, 3_260));
-    assert_eq!((c[1].x, c[1].y), (930 + STEER_STEP as i16, 3_710));
+    assert_eq!((c[0].x, c[0].y), (939, 3_660));
+    assert_eq!((c[1].x, c[1].y), (930 + STEER_STEP as i16, 4_410));
 }
 
 #[test]
-fn walls_keep_enemies_in_their_column_and_push_them_out_as_they_enter() {
-    // (a) an enemy inside the span steers only within its column; (b) one entering the span
-    // inside a wall's thickness is pushed to the nearer side; (d) above the span it steers
-    // freely.
+fn walls_push_enemies_out_as_they_enter_and_keep_them_in_their_column() {
+    // (b) one entering the span inside a wall's thickness is pushed to the nearer side; then it
+    // walks straight down its column (rules v8: no steering at all).
     let (m, st) = walled();
     let mut side = m.public.sides[0];
-    side.cohorts[0] = cohort(1, 5, 500, 1_000, 1);
-    side.cohort_len = 1;
-    side.enemies[0] = enemy(2, 5, 1_080, 3_000); // inside the span: clamped at x 1,061
-    side.enemies[1] = enemy(3, 5, 1_080, 3_820); // above it: steers into the wall's line
+    side.enemies[0] = enemy(2, 5, 1_040, 4_420); // into the span this tick, inside the wall
+    side.enemies[1] = enemy(3, 5, 1_080, 3_000); // inside the span already
     side.enemy_len = 2;
     move_enemies(&mut side, st);
     let e = side.enemies();
-    assert_eq!((e[0].x, e[0].y), (1_061, 3_000 - CRUISE_SPEED as i16));
-    assert_eq!((e[1].x, e[1].y), (1_040, 3_760));
-    // Next tick (nothing to chase) it walks straight into the span at x 1,040, inside the
-    // wall (1,000 ± 60): pushed right.
-    side.cohort_len = 0;
+    assert_eq!((e[0].x, e[0].y), (1_061, 4_360));
+    assert_eq!((e[1].x, e[1].y), (1_080, 3_000 - CRUISE_SPEED as i16));
     move_enemies(&mut side, st);
-    let e = side.enemies();
-    assert_eq!((e[1].x, e[1].y), (1_061, 3_700));
-    // Then, chasing the cohort again, it stays in its column, pressed against the wall.
-    side.cohort_len = 1;
-    move_enemies(&mut side, st);
-    assert_eq!(side.enemies()[1].x, 1_061);
+    assert_eq!(side.enemies()[0].x, 1_061);
 }
 
 #[test]
 fn a_volley_entering_the_walls_inside_one_is_pushed_to_the_nearer_side() {
-    // (b) ties (dead on the wall's line) go left; the cannon below y 500 moves freely.
+    // (b) ties (dead on the wall's line) go left; the cannon below y 600 moves freely.
     let (mut m, _) = walled();
     enter(&mut m, 0, 0, Phase::Fight);
     sturdy(&mut m);
     m.public.sides[0].phase_ticks = 1; // not a fire tick
-    place(&mut m, 0, cohort(900, 1, 1_000, 450, 0));
-    place(&mut m, 0, cohort(901, 1, 1_030, 450, 0));
-    place(&mut m, 0, cohort(902, 1, 1_990, 450, 0));
-    place(&mut m, 0, cohort(903, 1, 1_000, 380, 0));
+    place(&mut m, 0, cohort(900, 1, 1_000, 550, 0));
+    place(&mut m, 0, cohort(901, 1, 1_030, 550, 0));
+    place(&mut m, 0, cohort(902, 1, 1_990, 550, 0));
+    place(&mut m, 0, cohort(903, 1, 1_000, 480, 0));
     idle(&mut m);
     let xs: Vec<i16> = [900, 901, 902, 903]
         .iter()
         .map(|&id| find(&m, 0, id).unwrap().x)
         .collect();
-    // 903 is at y 440 (< 500): still on the wall's line, not yet pushed.
+    // 903 is at y 540 (< 600): still on the wall's line, not yet pushed.
     assert_eq!(xs, [939, 1_061, 1_939, 1_000]);
     idle(&mut m);
     assert_eq!(find(&m, 0, 903).unwrap().x, 939);
@@ -557,7 +540,7 @@ fn no_clash_through_a_standing_wall() {
     for (mine, foe, y, met) in [
         (939, 1_061, 2_000, false),
         (1_939, 2_061, 3_600, false),
-        (939, 1_061, 4_000, true),
+        (939, 1_061, 4_800, true),
         (1_061, 1_300, 2_000, true),
     ] {
         let mut side = m.public.sides[0];
@@ -683,8 +666,8 @@ fn first_pass_reveals_and_every_pass_applies() {
     // SPEC §6: hidden until the first cohort passes, then shown; ×k on every pass.
     let mut m = fight(0);
     let v = m.secret.values[0][0];
-    place(&mut m, 0, cohort(900, 3, 700, 880, 0));
-    place(&mut m, 0, cohort(901, 2, 700 + 290, 830, 0));
+    place(&mut m, 0, cohort(900, 3, 700, 950, 0));
+    place(&mut m, 0, cohort(901, 2, 700 + 290, 900, 0));
     assert_eq!(m.public.sides[0].gates[0].revealed, None);
     let ev = idle(&mut m);
     assert!(ev.contains(&Event::Gate {
@@ -713,15 +696,15 @@ fn first_pass_reveals_and_every_pass_applies() {
 #[test]
 fn gate_and_crate_edges_count() {
     // SPEC §6: |x − gate x| · 2 ≤ width + 2 · GATE_GRACE goes through; one unit further misses.
-    // Crates use the same grace.
-    let mut m = new_match(0);
-    enter(&mut m, 0, 1, Phase::Fight);
+    // Crates use the same grace. Funnel's timing gate (row 1, alone at x 1,500, y 4,100), and
+    // Speed Comb's stand-alone crate (x 2,250, 700 wide, y 2,000, in the open half).
+    let mut m = fight(1);
     sturdy(&mut m);
-    let def = LAYOUTS[0].stages[1].gates[7];
-    assert_eq!((def.row, def.slot), (2, Slot::Timing));
+    let def = LAYOUTS[1].stages[0].gates[3];
+    assert_eq!((def.row, def.slot), (1, Slot::Timing));
     let edge = def.x + (i32::from(def.width) / 2 + GATE_GRACE) as i16;
-    place(&mut m, 0, cohort(900, 3, edge, 2_990, 2));
-    place(&mut m, 0, cohort(901, 3, edge + 1, 2_990, 2));
+    place(&mut m, 0, cohort(900, 3, edge, 4_090, 1));
+    place(&mut m, 0, cohort(901, 3, edge + 1, 4_090, 1));
     let ev = idle(&mut m);
     let passed: Vec<u32> = ev
         .iter()
@@ -731,31 +714,29 @@ fn gate_and_crate_edges_count() {
         })
         .collect();
     assert_eq!(passed, vec![900]);
-    let mut m = new_match(0);
-    enter(&mut m, 0, 1, Phase::Fight);
+    let mut m = fight(2);
     sturdy(&mut m);
-    let lock = LAYOUTS[0].stages[1].crates[0];
-    let edge = lock.x - (i32::from(lock.width) / 2 + GATE_GRACE) as i16;
-    place(&mut m, 0, cohort(902, 4, edge, lock.y - 10, 1));
-    place(&mut m, 0, cohort(903, 4, edge - 1, lock.y - 10, 1));
+    let block = LAYOUTS[2].stages[0].crates[0];
+    let edge = block.x - (i32::from(block.width) / 2 + GATE_GRACE) as i16;
+    place(&mut m, 0, cohort(902, 4, edge, block.y - 10, 1));
+    place(&mut m, 0, cohort(903, 4, edge - 1, block.y - 10, 1));
     idle(&mut m);
     assert!(find(&m, 0, 902).is_none());
     assert_eq!(find(&m, 0, 903).unwrap().count, 4);
-    assert_eq!(m.public.sides[0].crates[0], lock.hp - 4);
+    assert_eq!(m.public.sides[0].crates[0], block.hp - 4);
 }
 
 #[test]
 fn a_cohort_in_the_gap_passes_unchanged() {
-    // SPEC §6: in an empty cell nothing happens; the row still counts as passed (Fight 2 of
-    // layout 0: row 2's right column).
-    let mut m = new_match(0);
-    enter(&mut m, 0, 1, Phase::Fight);
+    // SPEC §6: in an empty cell nothing happens; the row still counts as passed (Fight 1 of
+    // layout 0: row 1's middle lane).
+    let mut m = fight(0);
     sturdy(&mut m);
-    place(&mut m, 0, cohort(900, 3, 2_500, 2_990, 2));
+    place(&mut m, 0, cohort(900, 3, 1_500, 3_390, 1));
     let ev = idle(&mut m);
     assert!(ev.iter().all(|e| !matches!(e, Event::Gate { .. })));
     let c = find(&m, 0, 900).unwrap();
-    assert_eq!((c.count, c.last_row), (3, 3));
+    assert_eq!((c.count, c.last_row), (3, 2));
 }
 
 #[test]
@@ -798,18 +779,18 @@ fn a_row_applies_once_per_cohort() {
 fn peek_shows_my_true_value_once_per_stage() {
     // SPEC §6: during my Fight/Rush, one own unrevealed gate; refused in Plant.
     let mut m = new_match(0);
-    tick(&mut m, input(0, peek(4)));
+    tick(&mut m, input(0, peek(3)));
     assert!(!m.public.sides[0].peek_used);
     run_to(&mut m, PLANT_TICKS);
-    tick(&mut m, input(0, peek(4)));
+    tick(&mut m, input(0, peek(3)));
     let want = Peek {
-        slot: 4,
-        op: m.secret.values[0][4],
+        slot: 3,
+        op: m.secret.values[0][3],
     };
     assert_eq!(m.private_view(0).peek, Some(want));
     assert!(m.public.sides[0].peek_used);
     assert_eq!(m.private_view(1).peek, None);
-    tick(&mut m, input(0, peek(3)));
+    tick(&mut m, input(0, peek(2)));
     assert_eq!(m.private_view(0).peek, Some(want));
 }
 
@@ -821,15 +802,15 @@ fn peek_refusals() {
     m.public.sides[0].gates[1].revealed = Some(GateOp::Mul(3));
     tick(&mut m, input(0, peek(1)));
     tick(&mut m, input(0, peek(8)));
-    assert_eq!(LAYOUTS[0].stages[0].gates[3].slot, Slot::Timing);
-    tick(&mut m, input(0, peek(3)));
-    assert!(!m.public.sides[0].peek_used);
+    assert_eq!(LAYOUTS[0].stages[0].gates[4].slot, Slot::Timing);
     tick(&mut m, input(0, peek(4)));
+    assert!(!m.public.sides[0].peek_used);
+    tick(&mut m, input(0, peek(3)));
     assert_eq!(
         m.private_view(0).peek,
         Some(Peek {
-            slot: 4,
-            op: m.secret.values[0][4]
+            slot: 3,
+            op: m.secret.values[0][3]
         })
     );
 }
@@ -1040,7 +1021,7 @@ fn the_rush_fires_for_rush_ticks_and_counts_what_reaches_the_hall() {
         cohort(9_001, 5, 1_500, (VAULT_Y - 3_600) as i16, 4),
     );
     // Far back: still on the lane when the Rush ends.
-    place(&mut m, 0, cohort(9_002, 3, 1_500, 1_500, 1));
+    place(&mut m, 0, cohort(9_002, 3, 500, 1_500, 1));
     let ev = run_safe(&mut m, t0 + RUSH_TICKS + 5, Inputs::default());
     assert!(ev.iter().any(|(t, e)| *t == t0
         && *e
@@ -1363,19 +1344,19 @@ fn the_timing_gate_applies_its_value_on_the_crossing_tick_and_never_flips() {
     let row_y = LAYOUTS[0].stages[0].rows[1];
     for fight_tick in [0u32, 25, 47, 80, 99] {
         m.public.sides[0].phase_ticks = fight_tick as u16;
-        place(&mut m, 0, cohort(800 + fight_tick, 3, 2_250, row_y - 10, 1));
+        place(&mut m, 0, cohort(800 + fight_tick, 3, 2_500, row_y - 10, 1));
         let ev = idle(&mut m);
         let want = timing_value(fight_tick);
         assert!(ev.contains(&Event::Gate {
             side: 0,
-            slot: 3,
+            slot: 4,
             cohort_id: 800 + fight_tick,
             op: GateOp::Mul(want),
             before: 3,
             after: 3 * u32::from(want),
             reveal: false
         }));
-        assert_eq!(m.public.sides[0].gates[3].revealed, None);
+        assert_eq!(m.public.sides[0].gates[4].revealed, None);
     }
 }
 
@@ -1533,4 +1514,235 @@ fn apply_input_between_ticks_equals_passing_it_to_step() {
     apply_input(&mut b, 1, &i);
     idle(&mut b);
     assert_eq!(a.digest(), b.digest());
+}
+
+// --- rules v8 levels (SPEC_V5 §13): paths ------------------------------------------------------
+
+/// A lone dude fired at `x` in `stage` of `layout` (Fight, crates already broken, the towers in
+/// `alive`, no enemies): the tick it hits a tower and which one, or None if it never does.
+fn fly(layout: u8, stage: u8, x: i16, alive: [bool; 2]) -> Option<(u32, usize)> {
+    let mut m = new_match(layout);
+    enter(&mut m, 0, stage, Phase::Fight);
+    let st = layouts::stage(layout, stage);
+    let side = &mut m.public.sides[0];
+    side.crates = [0; crate::constants::CRATES_MAX];
+    for (i, hp) in side.towers.iter_mut().enumerate() {
+        *hp = if i < st.towers.len() && alive[i] {
+            u16::MAX
+        } else {
+            0
+        };
+    }
+    let mut c = cohort(1, 1, x, 0, 0);
+    c.age = 0;
+    side.cohorts[0] = c;
+    side.cohort_len = 1;
+    for t in 1..=600 {
+        let before = side.towers;
+        move_cohorts(side, st, &m.secret, 0, 0, &mut Events::<64>::new());
+        // Gates may wipe the dude (÷): keep one alive to follow the path.
+        side.cohorts[0].count = 1;
+        hits(side, st, 0, &mut Events::<64>::new());
+        if let Some(i) = (0..TOWERS_MAX).find(|&i| side.towers[i] < before[i]) {
+            return Some((t, i));
+        }
+        if side.cohorts[0].count == 0 {
+            return None;
+        }
+    }
+    None
+}
+
+#[test]
+fn every_launch_x_reaches_a_tower() {
+    // SPEC_V5 §13: no sealed pocket. From every x on the cannon line a dude gets to a tower
+    // (each tower of Fight 2 on its own too), through the real movement rules.
+    for layout in 0..LAYOUTS.len() as u8 {
+        for stage in 0..STAGES as u8 {
+            let st = layouts::stage(layout, stage);
+            let sets: &[[bool; 2]] = if st.towers.len() == 2 {
+                &[[true, true], [true, false], [false, true]]
+            } else {
+                &[[true, false]]
+            };
+            for &alive in sets {
+                let mut slowest = 0;
+                for x in (0..LANE_WIDTH as i16).step_by(25) {
+                    let hit = fly(layout, stage, x, alive);
+                    let ctx = format!("layout {layout} stage {stage} x {x} towers {alive:?}");
+                    let (t, i) = hit.unwrap_or_else(|| panic!("{ctx}: never hits a tower"));
+                    assert!(alive[i], "{ctx}");
+                    slowest = slowest.max(t);
+                }
+                assert!(
+                    slowest <= 300,
+                    "layout {layout} stage {stage}: {slowest} ticks"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn enemies_from_every_tower_reach_the_cannon_line() {
+    // SPEC_V5 §13: obstacles deflect enemies; they never get stuck (giants too).
+    for layout in 0..LAYOUTS.len() as u8 {
+        for stage in 0..STAGES as u8 {
+            let st = layouts::stage(layout, stage);
+            for t in st.towers {
+                for giant in [false, true] {
+                    let mut m = new_match(layout);
+                    enter(&mut m, 0, stage, Phase::Fight);
+                    let side = &mut m.public.sides[0];
+                    side.enemies[0] = Enemy {
+                        giant,
+                        ..enemy(1, 5, t.x, TOWER_Y as i16)
+                    };
+                    side.enemy_len = 1;
+                    let mut ticks = 0;
+                    while side.enemies[0].y > 0 {
+                        move_enemies(side, st);
+                        ticks += 1;
+                        assert!(ticks < 400, "layout {layout} stage {stage} tower {}", t.x);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- rules v8 levels (SPEC_V5 §13): obstacles, pads, pipes ------------------------------------
+
+/// Moves side 0's lone cohort `n` ticks through `stage` of `layout` (no enemies, no waves);
+/// returns its (x, y, age) after every tick and the events.
+fn walk(layout: u8, stage: u8, c: Cohort, n: u32) -> (Vec<(i16, i16, u8)>, Vec<Event>) {
+    let mut m = new_match(layout);
+    enter(&mut m, 0, stage, Phase::Fight);
+    let st = layouts::stage(layout, stage);
+    let side = &mut m.public.sides[0];
+    side.cohorts[0] = c;
+    side.cohort_len = 1;
+    let mut ev = Events::<256>::new();
+    let mut out = vec![];
+    for _ in 0..n {
+        move_cohorts(side, st, &m.secret, 0, 0, &mut ev);
+        side.cohorts[0].count = 5;
+        let c = side.cohorts[0];
+        out.push((c.x, c.y, c.age));
+    }
+    (out, ev.as_slice().to_vec())
+}
+
+/// Never inside any obstacle's own box (no grace).
+fn clear_of_obstacles(st: &StageDef, path: &[(i16, i16, u8)]) {
+    for &(x, y, _) in path {
+        assert!(
+            st.obstacles
+                .iter()
+                .all(|o| !layouts::inside_obstacle(o, x.into(), y.into(), 0)),
+            "({x}, {y}) inside an obstacle"
+        );
+    }
+}
+
+#[test]
+fn a_cohort_slides_round_a_block_and_moves_on() {
+    // Island: blocked under the block it stops climbing and slides to the nearer side (a tie
+    // from the middle: left), then walks up past it.
+    let (path, _) = walk(5, 0, cohort(1, 5, 1_500, 2_000, 1), 80);
+    assert_eq!(path[0], (1_500 - SLIDE_STEP as i16, 2_000, 101));
+    assert!(path.iter().any(|&(x, y, _)| x == 889 && y > 3_460));
+    clear_of_obstacles(layouts::stage(5, 0), &path);
+}
+
+#[test]
+fn edge_wedges_funnel_a_cohort_into_the_middle() {
+    // Funnel: from the left edge, the wedge pushes it right as it climbs; at the top of the
+    // wedges it is in the middle opening.
+    let (path, _) = walk(1, 0, cohort(1, 5, 300, 1_500, 1), 120);
+    let top = path.iter().find(|p| p.1 > 3_560).unwrap();
+    assert!((1_061..=1_939).contains(&top.0), "{top:?}");
+    clear_of_obstacles(layouts::stage(1, 0), &path);
+}
+
+#[test]
+fn a_comb_makes_the_crowd_zigzag_and_its_pads_boost_it() {
+    // Speed Comb, Fight 1: the arms alternate edge / wall, so it passes each arm on the other
+    // side; on a pad its age goes back to 0 (launch speed).
+    let st = layouts::stage(2, 0);
+    let (path, _) = walk(2, 0, cohort(1, 5, 750, 1_100, 1), 200);
+    let x_at = |y: i16| path.iter().find(|p| p.1 >= y).unwrap().0;
+    assert!(x_at(1_660) > 850, "arm 1");
+    assert!(x_at(2_360) < 600, "arm 2");
+    assert!(x_at(3_060) > 850, "arm 3");
+    assert!(x_at(3_760) < 600, "arm 4");
+    assert!(path
+        .iter()
+        .any(|&(x, y, age)| age == 0 && st.on_pad(x.into(), y.into())));
+    clear_of_obstacles(st, &path);
+}
+
+#[test]
+fn a_speed_pad_renews_the_launch_boost() {
+    // Island's pad (x 100–800, y 2,300–2,900): a cruising cohort that steps onto it moves at
+    // LAUNCH_SPEED from the next tick.
+    let (path, _) = walk(5, 0, cohort(1, 5, 500, 2_250, 1), 3);
+    assert_eq!(path[0], (500, 2_310, 0));
+    assert_eq!(path[1].1 - path[0].1, LAUNCH_SPEED as i16);
+    // Enemies ignore pads (they walk at cruise speed across it).
+    let mut m = new_match(5);
+    enter(&mut m, 0, 0, Phase::Fight);
+    let side = &mut m.public.sides[0];
+    side.enemies[0] = enemy(2, 5, 500, 2_600);
+    side.enemy_len = 1;
+    move_enemies(side, layouts::stage(5, 0));
+    assert_eq!(side.enemies[0].y, 2_600 - CRUISE_SPEED as i16);
+}
+
+#[test]
+fn a_pipe_pops_the_cohort_out_near_the_towers_past_the_rows() {
+    // Pipes, Fight 1: the left lane's pipe (y 3,000–3,400) → (500, 5,600) with a fresh boost,
+    // past every row up to there (the corridor's timing gate at 4,000 never applies).
+    let st = layouts::stage(3, 0);
+    let (path, ev) = walk(3, 0, cohort(7, 5, 500, 2_990, 2), 2);
+    assert_eq!(path[0], (500, 5_600, 0));
+    assert_eq!(
+        ev,
+        [Event::Pipe {
+            side: 0,
+            cohort_id: 7,
+            pipe_ix: 0
+        }]
+    );
+    // Next tick: launch speed, and (past every row) homing on the tower.
+    assert_eq!(path[1].1, 5_600 + LAUNCH_SPEED as i16);
+    assert_eq!(path[1].0, 500 + STEER_STEP as i16);
+    assert_eq!(usize::from(st.rows_through(5_600)), st.rows.len());
+    // Enemies walk past a pipe's entrance.
+    let mut m = new_match(3);
+    enter(&mut m, 0, 0, Phase::Fight);
+    let side = &mut m.public.sides[0];
+    side.enemies[0] = enemy(2, 5, 500, 3_200);
+    side.enemy_len = 1;
+    move_enemies(side, st);
+    assert_eq!((side.enemies[0].x, side.enemies[0].y), (500, 3_140));
+}
+
+#[test]
+fn enemies_slide_round_obstacles_on_their_way_down() {
+    // Island: an enemy from the middle tower lands on the block's top, slides to the nearer
+    // side (a tie: left) and walks down the left path.
+    let mut m = new_match(5);
+    enter(&mut m, 0, 0, Phase::Fight);
+    let st = layouts::stage(5, 0);
+    let side = &mut m.public.sides[0];
+    side.enemies[0] = enemy(2, 5, 1_500, 3_500);
+    side.enemy_len = 1;
+    move_enemies(side, st);
+    assert_eq!((side.enemies[0].x, side.enemies[0].y), (1_350, 3_500));
+    for _ in 0..60 {
+        move_enemies(side, st);
+    }
+    let e = side.enemies[0];
+    assert!(e.x == 889 && e.y < 2_100, "{e:?}");
 }
