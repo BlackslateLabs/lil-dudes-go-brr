@@ -18,7 +18,7 @@ const COHORT_FULL = 250;
 const UNIT_SCALE = 1.3;
 /** Sunflower packing step: a dude's footprint is ~π·SPACING², a little under its width squared, so
  *  neighbours touch and a crowd reads as one solid blob. */
-const SPACING = 0.36;
+const SPACING = 0.33;
 /** Keep a dude's middle this far (world) inside a wall or the lane edge. */
 const EDGE = 0.34;
 /** A blob squeezed into its column grows along the lane, at most this much; past that it packs tighter. */
