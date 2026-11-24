@@ -3,7 +3,7 @@ export * from './types';
 export * from './source';
 export {
   layoutDef, stageDef, gateXAt, gateMoving, covers, gateAt, crateOfGate, fightGold, applyOp, opBad, opLabel, opFromByte, timingValue,
-  insideObstacle, wallPush, columnAt, obstacleAt, slideX, advance, onPad, pipeAt, rowsThrough,
+  insideObstacle, wallPush, columnAt, obstacleAt, slideX, advance, onPad, pipeAt, rowsThrough, turnDue, homing, steerX,
 } from './layout';
 export { laneView, lanePhase, matchView, resultOf, firstOf } from './view';
 export type { LaneState, EnemyState, CohortRecord, RawResult } from './view';
