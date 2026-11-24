@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { LAYOUTS } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
+import { layoutOfSeed, peekSeed } from '../match/nextSeed';
+import { LanePreview } from './LanePreview';
 import { tierLamports, useApp } from '../store';
 import { sol } from './format';
 import './flow.css';
@@ -22,6 +25,8 @@ export interface VsProps {
   steps?: string[];
   /** The step in progress (`steps.length` = all done). Omit to step through on a timer (demo). */
   step?: number;
+  /** The level both players play (LAYOUTS index): its name and a little map under the cards. */
+  layout?: number;
   onDone: () => void;
 }
 
@@ -29,11 +34,11 @@ export interface VsProps {
 const MIN_MS = 1000;
 const DEMO_STEP_MS = 700;
 const VS_AT = 450;
-/** Free play: VS lands, then a beat, then go. */
-const FREE_DONE_AT = 1700;
+/** Free play: VS lands, then a beat to read the level card, then go. */
+const FREE_DONE_AT = 2600;
 /** Staked: VS → LIVE → go. */
 const LIVE_AT = VS_AT + 650;
-const STAKED_DONE_AT = LIVE_AT + 750;
+const STAKED_DONE_AT = LIVE_AT + 1300;
 
 type Beat = 'steps' | 'cards' | 'vs' | 'live';
 
@@ -41,7 +46,7 @@ type Beat = 'steps' | 'cards' | 'vs' | 'live';
  * VS / matchmaking (SPEC v5 §8). Free play: both cards slide in, VS hits, then `onDone`. Staked:
  * the chain steps tick off first (driven by `step`), then cards with stakes → VS → LIVE → `onDone`.
  */
-export function Vs({ me, them, steps, step, onDone }: VsProps) {
+export function Vs({ me, them, steps, step, layout, onDone }: VsProps) {
   const staked = !!steps && steps.length > 0;
   const [demoStep, setDemoStep] = useState(0);
   const current = staked ? (step ?? demoStep) : 0;
@@ -107,22 +112,37 @@ export function Vs({ me, them, steps, step, onDone }: VsProps) {
         </div>
       )}
 
+      {showCards && layout !== undefined && (
+        <div className="vs-map">
+          <LanePreview layout={layout} className="vs-map-svg" />
+          <div className="vs-map-text">
+            <span className="vs-map-label">Level</span>
+            <b className="vs-map-name">{LAYOUTS[layout]?.name ?? 'Arena'}</b>
+            <span className="vs-map-line">Same map. Same gates. First to break the towers wins.</span>
+          </div>
+        </div>
+      )}
+
       {beat === 'live' && <div className="vs-live">LIVE</div>}
       {!staked && showCards && <p className="vs-note">Free match · no stakes</p>}
     </div>
   );
 }
 
+/** Mascot heads (public/brand, drawn by us): our blue knight, the red Bot, a human rival's red knight. */
+const HEAD = { me: '/brand/head-you.webp', bot: '/brand/head-bot.webp', rival: '/brand/head-rival.webp' } as const;
+
 function VsCard({ p, side }: { p: VsPlayer; side: 'me' | 'them' }) {
+  const head = side === 'me' ? HEAD.me : p.isBot ? HEAD.bot : HEAD.rival;
+  const name = p.isBot ? 'Bot' : p.name;
   return (
     <div className={`vs-card ${side}`}>
       <div className={`vs-avatar ${p.isBot ? 'bot' : ''}`} aria-hidden>
-        <i className="eye l" />
-        <i className="eye r" />
-        <i className="mouth" />
-        {p.isBot && <i className="antenna" />}
+        <img src={head} alt="" draggable={false} />
       </div>
-      <b className="vs-name">{p.isBot ? 'Bot' : p.name}</b>
+      <b className="vs-name" title={name}>
+        {name}
+      </b>
       {p.stake !== undefined && p.stake > 0 && <span className="vs-stake">{sol(p.stake)} SOL</span>}
     </div>
   );
@@ -135,10 +155,16 @@ function VsCard({ p, side }: { p: VsPlayer; side: 'me' | 'them' }) {
 export function VsScreen() {
   const go = useApp((s) => s.go);
   const stakeTier = useApp((s) => s.stake);
-  const demoStaked = new URLSearchParams(window.location.search).get('staked') === '1';
+  const params = new URLSearchParams(window.location.search);
+  const demoStaked = params.get('staked') === '1';
+  // The match's seed is picked now, so this screen can show the level it will be played on.
+  const [layout] = useState(() => layoutOfSeed(peekSeed()));
+  // `?name=` previews a long opponent name (layout testing).
+  const rivalName = params.get('name');
+  if (rivalName) return <Vs me={{ name: 'You' }} them={{ name: rivalName }} layout={layout} onDone={() => go('match')} />;
   if (demoStaked) {
     const stake = tierLamports(stakeTier === 'free' ? '0.1' : stakeTier);
-    return <Vs me={{ name: 'You', stake }} them={{ name: 'Rival', stake }} steps={STAKED_STEPS} onDone={() => go('match')} />;
+    return <Vs me={{ name: 'You', stake }} them={{ name: 'Rival', stake }} steps={STAKED_STEPS} layout={layout} onDone={() => go('match')} />;
   }
-  return <Vs me={{ name: 'You' }} them={{ name: 'Bot', isBot: true }} onDone={() => go('match')} />;
+  return <Vs me={{ name: 'You' }} them={{ name: 'Bot', isBot: true }} layout={layout} onDone={() => go('match')} />;
 }
