@@ -24,6 +24,7 @@ import { Gates } from './Gates';
 import { Post } from './Post';
 import { fxTier } from './quality';
 import { Scenery } from './Scenery';
+import { Walls } from './Walls';
 import { CAM_FOV, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, solveCamera, wz } from './layout';
 
 interface ArenaProps {
@@ -63,6 +64,7 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       <Ground />
       <Scenery />
       <Base feed={feed} />
+      <Walls feed={feed} />
       <Gates feed={feed} interactive={interactive} />
       <Cannon feed={feed} />
       <Crowds feed={feed} />
