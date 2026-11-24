@@ -73,19 +73,20 @@ export function obstacleCorners(o: ObstacleDef): [number, number][] {
 }
 
 /**
- * Local copy of the client's `insideObstacle` (same meaning): (x, y) is inside the obstacle grown
- * by `grace` on every side. Used until `@lil-dudes/client` exports its own.
+ * Local copy of the client's `insideObstacle` (same meaning as crates/sim `inside_obstacle`):
+ * inside the box grown by `grace` on every side and, for a wedge, on the inner side of its
+ * hypotenuse moved `grace` toward the open side along x. Used until `@lil-dudes/client` exports it.
  */
 function localInsideObstacle(o: ObstacleDef, x: number, y: number, grace: number): boolean {
   if (x < o.x0 - grace || x > o.x1 + grace || y < o.y0 - grace || y > o.y1 + grace) return false;
   if (o.shape === 'rect') return true;
   const w = o.x1 - o.x0;
   const h = o.y1 - o.y0;
-  if (w <= 0 || h <= 0) return false;
-  // Distance-free test against the hypotenuse, grown by grace along its normal.
-  const u = o.shape === 'wedgeBL' || o.shape === 'wedgeTL' ? (x - o.x0) / w : (o.x1 - x) / w;
-  const v = o.shape === 'wedgeBL' || o.shape === 'wedgeBR' ? (y - o.y0) / h : (o.y1 - y) / h;
-  return (u + v - 1) * ((w * h) / Math.hypot(w, h)) <= grace;
+  const left = o.shape === 'wedgeBL' || o.shape === 'wedgeTL';
+  const bottom = o.shape === 'wedgeBL' || o.shape === 'wedgeBR';
+  const ax = left ? x - grace - o.x0 : o.x1 - x - grace;
+  const ay = bottom ? y - o.y0 : o.y1 - y;
+  return ax * h + ay * w <= w * h;
 }
 
 /** The client's helper when it exists, else the local copy. */
