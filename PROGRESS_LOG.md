@@ -1422,3 +1422,39 @@ frozen at v9 for the deploy**; visual changes only from here unless Kai agrees. 
 
 **Next / handoff:** Kai: deploy v9, live check. Suparno: wire Quick Match / Room Code to `LiveSource` (the server
 already serves `/rooms`, `/queue`, `/topup`, `/settle`, and the online bot), profile page, feel fixes.
+
+## 2026-11-24 20:40 IST · Kai · who does what to the end · [DECISION] [HANDOFF]
+**Decided (Kai):**
+- **Suparno does the heavy lifting from here: everything except Solana.** Kai (and Kai's Claude) owns the chain:
+  program builds, MagicSVM, bench, the devnet deploy, the server on Render and the web hosting. Suparno never needs the
+  SBF toolchain, keys or deploy wallet. If something on-chain looks wrong, write it here and Kai picks it up.
+- **Rules: Suparno has today to review the whole game and change rules if needed** (v10 or anything). After that the
+  rules freeze for the one deploy.
+  - When the rules are final, add a log entry tagged **[RULES FINAL]** with the commit. Kai then rebuilds, runs
+    MagicSVM + bench, and deploys once. Rule changes after [RULES FINAL] need Kai's OK (each one is a redeploy).
+  - **On-chain budget:** v9's worst tick is 44,249 CU (no bot; the program never runs the sim bot). The crank's
+    8-tick catch-up must stay under 400k, so the worst tick must stay **under ~45k CU**. Anything that adds work per
+    cohort per tick (more obstacle tests, pair-wise checks, path tracing in the sim step) risks it. The WASM bot and
+    anything in the web are free (off-chain). If unsure, say so in the entry and Kai benches it.
+  - Keep `RULES_VERSION`, goldens, `PARITY_DIGEST`, the WASM pkg and `packages/client` in step as before.
+
+**Suparno's list (priority order):**
+1. Rules review / changes (today), then [RULES FINAL].
+2. **Multiplayer in the web:** Quick Match and Room Code → `LiveSource` (the StakeSheet still says "Live play isn't
+   wired yet"). Server routes already exist and work locally: `/rooms`, `/rooms/:code`, `/queue`, `/queue/:ticket`,
+   `/topup`, `/faucet`, `/settle`, plus the online bot when the queue is empty. Needs waiting / matched / error /
+   reconnect states and the live Result (payout, Verify, explorer links). Develop against `pnpm dev:server`;
+   switch to the deployed URL when Kai posts it.
+3. **Profile page:** burner address + balance, top-up, withdraw to Phantom (client has `withdraw`), match history
+   and stats.
+4. **Feel fixes (visual only):** giants' movement; Champion-ready shown on the cannon (colour/glow/pulse) instead of
+   the ring meter; anything else from playtests.
+5. **Load speed (no quality loss):** lazy-load the live/Solana client and non-Home screens (one 1.76 MB JS chunk,
+   517 KB gzip today); preload the GLBs + `dudes-anim.bin` while Home shows; start music after the first tap;
+   optionally meshopt-compress the GLBs (visually lossless). Test on a phone with `pnpm --filter web build &&
+   pnpm --filter web preview --host` (the dev server is much slower than what players get).
+6. README in the winners' shape (banner, Play button, "why MagicBlock" table, program link) and the 2-min demo
+   video. Kai reviews.
+
+**Next / handoff:** Kai: wait for [RULES FINAL], then build → MagicSVM → bench → deploy → live match + privacy check;
+host server and web, post the URLs here.
