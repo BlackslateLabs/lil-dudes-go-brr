@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   BackSide,
@@ -24,7 +24,7 @@ import { Gates } from './Gates';
 import { Post } from './Post';
 import { fxTier } from './quality';
 import { Scenery } from './Scenery';
-import { CAM_FOV, CAM_POS, CAM_TARGET, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, wz } from './layout';
+import { CAM_FOV, HALF_L, HALF_W, LANE_L, LANE_W, PALETTE, solveCamera, wz } from './layout';
 
 interface ArenaProps {
   feed: MatchFeed;
@@ -32,7 +32,8 @@ interface ArenaProps {
   interactive?: boolean;
 }
 
-const camBase = new Vector3(...CAM_POS);
+/** The camera's resting position (Fx shakes around it). Re-solved whenever the viewport changes. */
+const camBase = new Vector3(...solveCamera(9 / 19.5).position);
 
 /** Your lane in 3D. It only draws what the MatchSource says; it never decides outcomes. */
 export function Arena({ feed, interactive = false }: ArenaProps) {
@@ -42,9 +43,8 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       dpr={[1, 2]}
       shadows="percentage"
       flat={tier === 'high'}
-      camera={{ position: [...CAM_POS], fov: CAM_FOV, near: 1, far: 400 }}
-      onCreated={({ camera, gl }) => {
-        camera.lookAt(...CAM_TARGET);
+      camera={{ position: camBase.toArray(), fov: CAM_FOV, near: 1, far: 400 }}
+      onCreated={({ gl }) => {
         // High tier tone-maps in the post pass; low tier lets the renderer do it.
         gl.toneMapping = tier === 'high' ? NoToneMapping : NeutralToneMapping;
         gl.toneMappingExposure = 1;
@@ -58,6 +58,7 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       <ShadowCasters />
       <Sky />
 
+      <CameraRig />
       <Predictor feed={feed} />
       <Ground />
       <Scenery />
@@ -69,6 +70,25 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       {tier === 'high' && <Post />}
     </Canvas>
   );
+}
+
+/**
+ * Fits the static camera to the viewport: same FOV and pitch everywhere, but its height and
+ * distance (and on tall phones a little more pitch) come from the aspect, so the lane always fits
+ * across the screen and the towers stay below the HUD.
+ */
+function CameraRig() {
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  useLayoutEffect(() => {
+    const pose = solveCamera(width / Math.max(1, height));
+    camBase.set(...pose.position);
+    camera.position.copy(camBase);
+    camera.lookAt(...pose.target);
+    camera.updateMatrixWorld();
+  }, [camera, width, height]);
+  return null;
 }
 
 /** Moves your predicted cannon every frame, before anything renders. */
@@ -86,10 +106,10 @@ function Lights({ high }: { high: boolean }) {
   const key = useRef<DirectionalLight>(null!);
   useEffect(() => {
     const cam = key.current.shadow.camera;
-    cam.left = -17;
-    cam.right = 17;
-    cam.top = 32;
-    cam.bottom = -30;
+    cam.left = -(HALF_W + 9);
+    cam.right = HALF_W + 9;
+    cam.top = HALF_L + 4;
+    cam.bottom = -(HALF_L + 2);
     cam.near = 10;
     cam.far = 90;
     cam.updateProjectionMatrix();
