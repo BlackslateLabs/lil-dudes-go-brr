@@ -1168,7 +1168,7 @@ picks page. Lilita One stays the in-game display font.
 **Next / handoff:** none for Kai. The VS screen still uses the old blob avatars; the mascot heads
 could replace them.
 
-## 2026-11-24 10:30 IST · Suparno · web / art
+## 2026-11-24 12:00 IST · Suparno · web / art
 **Did:**
 - Logo v2: the wordmark is bigger and sits higher; the cards, knight, bot and bolt are ~20% smaller;
   the image is cropped to its content. Shown smaller in game (Home `min(76vw, 330px)`, wipe
@@ -1181,7 +1181,7 @@ could replace them.
 
 **Next / handoff:** PR `web/logo` → `main` (includes `web/champion-giants` and `v5-hold-fire`).
 
-## 2026-11-24 07:01 IST · Suparno · web / art · [DECISION]
+## 2026-11-24 12:31 IST · Suparno · web / art · [DECISION]
 **Did:** (branch `v7-lane-feel`, web only; arena look after the side-by-side playtest with the genre)
 - **World and camera:** the lane is drawn at true sim proportions (same scale on x and y, 15 units
   wide; the old 1.5× x-stretch is gone). The static camera keeps FOV 30° and is solved per
