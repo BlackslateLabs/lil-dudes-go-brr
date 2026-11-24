@@ -5,7 +5,7 @@ import { CHAMP_COUNT, TOWER_Y, type CohortView } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { HALF_W, PALETTE, wx, wz } from './layout';
 import { preloadPacks, usePack, useTintedMaterial, type TintRule } from './models/assets';
-import { columnWidth, spanAt, wallsOf } from './walls';
+import { columnWidth, spanAt, wallsOf } from './columns';
 
 /** Instance cap per crowd mesh (TECH §5: ~1,500 on a phone). Above it, units are culled at random. */
 const MAX_UNITS = 1500;
