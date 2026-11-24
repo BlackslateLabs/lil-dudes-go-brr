@@ -374,25 +374,66 @@ fn enemies_walk_straight_down_and_ignore_my_cohorts() {
 }
 
 #[test]
-fn cohorts_walk_straight_among_rows_then_home_in() {
-    // SPEC §4: straight while among the gate rows; past the last row, toward the nearest enemy
-    // ahead within DETECT_Y, else the nearest live tower.
+fn cohorts_walk_straight_among_rows_and_past_far_enemies() {
+    // SPEC §4: straight while among the gate rows. SPEC_V5 §14 (rules v9): past the last row,
+    // an enemy is engaged only when ahead by at most ENGAGE_Y and at most ENGAGE_X sideways.
     let m = new_match(0);
     let st = layouts::stage(0, 0);
     let mut side = m.public.sides[0];
-    side.cohorts[0] = cohort(1, 5, 1_000, 500, 0); // among the rows
-    side.cohorts[1] = cohort(2, 5, 1_000, 6_000, 4); // past the last row, enemy ahead
-    side.cohorts[2] = cohort(3, 5, 2_900, 6_000, 4); // past the last row, enemy out of sight
-    side.cohort_len = 3;
-    side.enemies[0] = enemy(9, 5, 600, 8_000);
-    side.enemies[1] = enemy(10, 5, 2_900, 11_500);
-    side.enemy_len = 2;
+    side.cohorts[0] = cohort(1, 5, 1_000, 500, 0); // among the rows, enemy right ahead
+    side.cohorts[1] = cohort(2, 5, 500, 3_500, 2); // past the rows, enemy 3,000 ahead: ignored
+    side.cohorts[2] = cohort(3, 5, 2_500, 3_500, 2); // past the rows, enemy 800 ahead: engaged
+    side.cohorts[3] = cohort(4, 5, 1_500, 5_000, 2); // enemy 800 ahead but too far sideways
+    side.cohort_len = 4;
+    side.enemies[0] = enemy(9, 5, 900, 900);
+    side.enemies[1] = enemy(10, 5, 800, 3_560 + 3_000);
+    side.enemies[2] = enemy(11, 5, 2_800, 3_560 + 800);
+    side.enemies[3] = enemy(12, 5, 1_500 + ENGAGE_X as i16 + 1, 5_060 + 800);
+    side.enemy_len = 4;
     move_cohorts(&mut side, st, &m.secret, 0, 0, &mut Events::<64>::new());
     let c = side.cohorts();
     assert_eq!(c[0].x, 1_000);
-    assert_eq!(c[1].x, 1_000 - STEER_STEP as i16);
-    // Enemy 10 is out of sight (> DETECT_Y ahead); enemy 9 is the nearest one ahead.
-    assert_eq!(c[2].x, 2_900 - STEER_STEP as i16);
+    assert_eq!((c[1].x, c[1].y), (500, 3_560));
+    assert_eq!(c[2].x, 2_500 + STEER_STEP as i16);
+    // Right under the tower (x 1,500) already: nothing to turn for.
+    assert_eq!(c[3].x, 1_500);
+}
+
+#[test]
+fn a_side_cohort_walks_straight_then_turns_late_and_hits_the_tower() {
+    // SPEC_V5 §14 (rules v9): from x 500 toward the tower at 1,500 a cohort keeps its x until
+    // TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN, then steers TOWER_STEER a
+    // tick and reaches the tower line at the tower's x.
+    let m = new_match(0);
+    let st = layouts::stage(0, 0);
+    let tx = st.towers[0].x;
+    assert_eq!(tx, 1_500);
+    let mut side = m.public.sides[0];
+    side.towers[0] = 1_000;
+    side.cohorts[0] = cohort(1, 5, 500, 3_500, 2);
+    side.cohort_len = 1;
+    let turn_y = TOWER_Y - (1_000 * CRUISE_SPEED / TOWER_STEER + TURN_MARGIN);
+    let mut last = (500, 3_500);
+    for _ in 0..200 {
+        move_cohorts(&mut side, st, &m.secret, 0, 0, &mut Events::<64>::new());
+        let Some(&c) = side.cohorts().first() else {
+            break;
+        };
+        if i32::from(c.y) < turn_y {
+            assert_eq!(c.x, 500, "straight at y {}", c.y);
+        } else {
+            assert!(c.x > last.0 || c.x == tx, "turning at y {}", c.y);
+            assert!(c.x - last.0 <= TOWER_STEER as i16);
+        }
+        last = (c.x, c.y);
+        hits(&mut side, st, 0, &mut Events::<64>::new());
+        compact(&mut side);
+    }
+    assert_eq!(side.cohort_len, 0);
+    assert_eq!(side.towers[0], 1_000 - 5);
+    // It reached the tower line square on the tower, having closed the gap TURN_MARGIN early.
+    assert_eq!(last.0, tx);
+    assert!((TOWER_Y..TOWER_Y + CRUISE_SPEED).contains(&i32::from(last.1)));
 }
 
 // --- clash -------------------------------------------------------------------------------------
@@ -482,10 +523,10 @@ fn walls_keep_homing_cohorts_in_their_column_until_they_end() {
     // walks past the wall's end it is free again.
     let (m, st) = walled();
     let mut side = m.public.sides[0];
-    side.cohorts[0] = cohort(1, 5, 930, 3_600, 3); // homing toward x 1,500: stops at the wall
+    side.cohorts[0] = cohort(1, 5, 930, 3_600, 3); // engaging x 1,500: stops at the wall
     side.cohorts[1] = cohort(2, 5, 930, 4_350, 3); // walks past y 4,400 this tick: free
     side.cohort_len = 2;
-    side.enemies[0] = enemy(9, 5, 1_500, 5_000);
+    side.enemies[0] = enemy(9, 5, 1_500, 4_500);
     side.enemy_len = 1;
     move_cohorts(&mut side, st, &m.secret, 0, 0, &mut Events::<64>::new());
     let c = side.cohorts();
@@ -572,14 +613,20 @@ fn tower_hits_deal_damage_and_earn_gold() {
     place(
         &mut m,
         0,
-        cohort(901, 7, tx - reach - 50, (TOWER_Y - 10) as i16, 4),
+        cohort(
+            901,
+            7,
+            tx - reach - TOWER_STEER as i16 - 10,
+            (TOWER_Y - 10) as i16,
+            4,
+        ),
     );
     let ev = idle(&mut m);
     let s = &m.public.sides[0];
     assert_eq!(s.towers[0], 18);
     assert_eq!(s.gold, 12);
     assert!(find(&m, 0, 900).is_none());
-    // Out of reach: it steered 40 closer but still misses this tick, and keeps walking.
+    // Out of reach: it steered TOWER_STEER closer but still misses this tick, and keeps walking.
     assert!(find(&m, 0, 901).is_some());
     assert!(ev.contains(&Event::TowerHit {
         side: 0,
@@ -941,18 +988,22 @@ fn the_final_stages_plant_leads_to_a_fight() {
 
 #[test]
 fn rush_cohorts_home_in_on_the_town_hall_and_loot_anywhere() {
-    // SPEC §4/§5: past the last row, the nearest enemy ahead first, else the hall's centre;
-    // loot on reaching VAULT_Y anywhere across the lane.
+    // SPEC §4/§5: past the last row, a close enemy ahead first, else the hall's centre once the
+    // late turn is due (SPEC_V5 §14); loot on reaching VAULT_Y anywhere across the lane.
     let mut m = rushing(0);
     place(&mut m, 0, cohort(900, 3, 500, 6_000, 4));
     place(&mut m, 0, cohort(901, 3, 2_900, 6_000, 4));
     place(&mut m, 0, cohort(902, 3, 1_000, 7_000, 4));
     place(&mut m, 0, cohort(903, 4, 60, (VAULT_Y - 10) as i16, 4));
-    place_enemy(&mut m, 0, enemy(904, 1, 300, 9_000));
+    place(&mut m, 0, cohort(905, 3, 2_900, 4_500, 4));
+    place_enemy(&mut m, 0, enemy(904, 1, 300, 6_900));
     let ev = idle(&mut m);
+    // 900 engages the enemy 840 ahead; 901 and 902 are too far from it sideways (or past it)
+    // and turn for the hall; 905 is too far from the hall line to turn yet.
     assert_eq!(find(&m, 0, 900).unwrap().x, 500 - STEER_STEP as i16);
-    assert_eq!(find(&m, 0, 901).unwrap().x, 2_900 - STEER_STEP as i16);
-    assert_eq!(find(&m, 0, 902).unwrap().x, 1_000 - STEER_STEP as i16);
+    assert_eq!(find(&m, 0, 901).unwrap().x, 2_900 - TOWER_STEER as i16);
+    assert_eq!(find(&m, 0, 902).unwrap().x, 1_000 + TOWER_STEER as i16);
+    assert_eq!(find(&m, 0, 905).unwrap().x, 2_900);
     assert!(find(&m, 0, 903).is_none());
     assert!(ev.contains(&Event::Loot {
         side: 0,
@@ -960,13 +1011,15 @@ fn rush_cohorts_home_in_on_the_town_hall_and_loot_anywhere() {
         units: 4,
         gold: 4 * LOOT_PER_UNIT
     }));
-    // No enemy left ahead: straight for the hall.
+    // No enemy left ahead: for the hall once the turn is due (a small gap turns late).
     let mut m = rushing(0);
     place(&mut m, 0, cohort(900, 3, 500, 6_000, 4));
-    place(&mut m, 0, cohort(901, 3, (HALL_X + 20) as i16, 6_000, 4));
+    place(&mut m, 0, cohort(901, 3, (HALL_X + 20) as i16, 6_900, 4));
+    place(&mut m, 0, cohort(902, 3, (HALL_X + 20) as i16, 6_000, 4));
     idle(&mut m);
-    assert_eq!(find(&m, 0, 900).unwrap().x, 500 + STEER_STEP as i16);
+    assert_eq!(find(&m, 0, 900).unwrap().x, 500 + TOWER_STEER as i16);
     assert_eq!(find(&m, 0, 901).unwrap().x, HALL_X as i16);
+    assert_eq!(find(&m, 0, 902).unwrap().x, (HALL_X + 20) as i16);
 }
 
 #[test]
@@ -1704,7 +1757,7 @@ fn a_pipe_pops_the_cohort_out_near_the_towers_past_the_rows() {
     // Pipes, Fight 1: the left lane's pipe (y 3,000–3,400) → (500, 5,600) with a fresh boost,
     // past every row up to there (the corridor's timing gate at 4,000 never applies).
     let st = layouts::stage(3, 0);
-    let (path, ev) = walk(3, 0, cohort(7, 5, 500, 2_990, 2), 2);
+    let (path, ev) = walk(3, 0, cohort(7, 5, 500, 2_990, 2), 3);
     assert_eq!(path[0], (500, 5_600, 0));
     assert_eq!(
         ev,
@@ -1714,9 +1767,14 @@ fn a_pipe_pops_the_cohort_out_near_the_towers_past_the_rows() {
             pipe_ix: 0
         }]
     );
-    // Next tick: launch speed, and (past every row) homing on the tower.
+    // Next tick: launch speed, past every row; straight on until the late turn toward the tower
+    // (x 1,500) is due at TOWER_Y − 1,250 (SPEC_V5 §14).
     assert_eq!(path[1].1, 5_600 + LAUNCH_SPEED as i16);
-    assert_eq!(path[1].0, 500 + STEER_STEP as i16);
+    assert_eq!(path[1].0, 500);
+    assert_eq!(
+        path[2],
+        (500 + TOWER_STEER as i16, 5_600 + 2 * LAUNCH_SPEED as i16, 2)
+    );
     assert_eq!(usize::from(st.rows_through(5_600)), st.rows.len());
     // Enemies walk past a pipe's entrance.
     let mut m = new_match(3);

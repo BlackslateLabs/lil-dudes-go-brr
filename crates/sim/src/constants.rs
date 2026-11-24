@@ -67,10 +67,18 @@ pub const CLASH_REACH: i32 = 400;
 /// (impl) ...and only while they are at most this far past each other in y. Larger than the
 /// fastest closing speed per tick (launch + cruise), so no crossing pair can skip the window.
 pub const CLASH_BAND: i32 = 400;
-/// SPEC §4: sideways homing per tick, and how far ahead (in y) units look for a target.
+/// SPEC §4: sideways homing per tick on an enemy.
 pub const STEER_STEP: i32 = 40;
-/// SPEC_V5 §12: enemies notice crowds over most of the lane.
-pub const DETECT_Y: i32 = 5_000;
+/// SPEC_V5 §14 (rules v9): my cohorts engage an enemy only when it is close, ahead by at most
+/// ENGAGE_Y and at most ENGAGE_X sideways; otherwise they walk straight.
+pub const ENGAGE_Y: i32 = 1_200;
+pub const ENGAGE_X: i32 = 900;
+/// SPEC_V5 §14 (rules v9) late turn: toward a tower (the town hall's centre in the Rush) a
+/// cohort walks straight until `TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN`,
+/// then steers by TOWER_STEER per tick (at cruise 60, a ~45° approach that closes the gap
+/// TURN_MARGIN before the tower line).
+pub const TOWER_STEER: i32 = 60;
+pub const TURN_MARGIN: i32 = 250;
 /// SPEC §2: the cannon chases the aim by at most this per tick (crosses the lane in 5 ticks).
 pub const CANNON_STEP: i32 = LANE_WIDTH / 5;
 /// SPEC_V5 §12 divider walls: a wall is a line `x` (on a column boundary) active for y in
@@ -134,8 +142,10 @@ const _: () = {
     // The Champion meter is a u8.
     assert!(CHAMP_TICKS <= u8::MAX as u32);
     assert!(GIANT_SPEED > 0 && GIANT_SPEED < CRUISE_SPEED);
-    // v7: the bot defends well inside the lane and enemies see most of it.
-    assert!(DEFEND_Y < DETECT_Y && DETECT_Y < TOWER_Y);
+    // v7: the bot defends well inside the lane. v9: engaging is short-range, and the late
+    // turn has room to close any gap a tower's reach doesn't forgive.
+    assert!(DEFEND_Y < TOWER_Y && ENGAGE_Y < TOWER_Y && ENGAGE_X < LANE_WIDTH);
+    assert!(TOWER_STEER > 0 && TURN_MARGIN >= 0 && TURN_MARGIN < TOWER_Y);
     // A wall is thinner than the clash reach (two crowds pressed to either side of it would
     // clash without SPEC_V5 §12 rule (c)).
     assert!(WALL_HALF > 0 && 2 * WALL_HALF < CLASH_REACH);

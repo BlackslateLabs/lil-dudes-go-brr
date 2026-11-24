@@ -8,7 +8,8 @@
 //!      the Fight's clock, as does the timing gate)                       SPEC §6, V5 §3
 //!    - Fight/Rush only: cohorts move (launch boost; speed pads renew
 //!      it), slide around obstacles, hit crates, cross gate rows, drop
-//!      into pipes, and home in past the last row; enemy cohorts (giants
+//!      into pipes, and past the last row engage a close enemy or turn
+//!      late toward the tower (SPEC_V5 §14); enemy cohorts (giants
 //!      slower) walk straight down, sliding around obstacles; divider
 //!      walls keep both in their column while they stand; clash (never
 //!      through a wall); tower hits, gold, Rush loot, losses at the base
@@ -23,11 +24,11 @@
 
 use crate::constants::{
     CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED,
-    DETECT_Y, ENEMY_CAP, FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE, FIRE_TICKS,
-    FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT, GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH,
-    LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES,
-    STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_Y, TRANSIT_TICKS, TUTORIAL_WAVE_PCT,
-    VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
+    ENEMY_CAP, ENGAGE_X, ENGAGE_Y, FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE,
+    FIRE_TICKS, FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT, GIANT_SPEED, HALL_X, LANE_LENGTH,
+    LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS,
+    STAGES, STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_STEER, TOWER_Y, TRANSIT_TICKS,
+    TURN_MARGIN, TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
 use crate::layouts::{self, covers, timing_value, Slot, StageDef};
@@ -350,13 +351,13 @@ fn move_cohorts(
             continue;
         }
 
-        // SPEC §4: past the last row, home in on the nearest enemy ahead, else the nearest tower
-        // (in the Rush: the town hall's centre). SPEC_V5 §13: not on a tick it slid round an
-        // obstacle (the slide is its move), and never into an obstacle.
+        // SPEC §4: past the last row, home in on a close enemy ahead, else turn late toward the
+        // nearest tower (in the Rush: the town hall's centre; SPEC_V5 §14). SPEC_V5 §13: not on
+        // a tick it slid round an obstacle (the slide is its move), and never into an obstacle.
         let slid = y == prev_y;
         if usize::from(c.last_row) >= st.rows.len() && c.count > 0 && !slid {
-            if let Some(tx) = cohort_target(c, enemies, towers, st, rush) {
-                let to = steer(st, c.x, tx, y);
+            if let Some((tx, step)) = cohort_target(c, enemies, towers, st, rush) {
+                let to = steer(st, c.x, tx, step, y);
                 if !near(band, y, y) || st.blocked(i32::from(to), y).is_none() {
                     c.x = to;
                 }
@@ -380,10 +381,10 @@ fn travel(st: &StageDef, band: (i32, i32), x: i32, y: i32, dy: i32) -> (i32, i32
     }
 }
 
-/// SPEC §4 homing by at most STEER_STEP toward `target`, kept inside the column (SPEC_V5 §12
-/// (a)) while a wall stands at `y`.
-fn steer(st: &StageDef, x: i16, target: i16, y: i32) -> i16 {
-    let to = toward(x, target, STEER_STEP);
+/// SPEC §4 homing by at most `step` toward `target`, kept inside the column (SPEC_V5 §12 (a))
+/// while a wall stands at `y`.
+fn steer(st: &StageDef, x: i16, target: i16, step: i32, y: i32) -> i16 {
+    let to = toward(x, target, step);
     st.wall_clamp(i32::from(x), i32::from(to), y) as i16
 }
 
@@ -429,19 +430,23 @@ fn dist2(ax: i16, ay: i16, bx: i16, by: i16) -> i64 {
     dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))
 }
 
-/// SPEC §4 homing for my cohort: the nearest enemy ahead within DETECT_Y, else the nearest live
-/// tower, or in the Rush the town hall's centre (HALL_X). Ties go to the lower index.
+/// SPEC §4 homing for my cohort, rules v9 (SPEC_V5 §14): the target x and the step to steer
+/// by this tick, or `None` to walk straight. The nearest enemy ahead by at most ENGAGE_Y and at
+/// most ENGAGE_X sideways (STEER_STEP); else the nearest live tower, or in the Rush the town
+/// hall's centre (HALL_X), once its late turn is due (`turn_due`; TOWER_STEER). Ties go to the
+/// lower index.
 fn cohort_target(
     c: &Cohort,
     enemies: &[Enemy],
     towers: &[u16; TOWERS_MAX],
     st: &StageDef,
     rush: bool,
-) -> Option<i16> {
+) -> Option<(i16, i32)> {
     let mut best: Option<(i64, i16)> = None;
     for e in enemies {
         let ahead = i32::from(e.y).saturating_sub(i32::from(c.y));
-        if e.count == 0 || ahead <= 0 || ahead > DETECT_Y {
+        let side = i32::from(e.x).abs_diff(i32::from(c.x));
+        if e.count == 0 || ahead <= 0 || ahead > ENGAGE_Y || side > ENGAGE_X as u32 {
             continue;
         }
         let d = dist2(c.x, c.y, e.x, e.y);
@@ -450,19 +455,39 @@ fn cohort_target(
         }
     }
     if let Some((_, x)) = best {
-        return Some(x);
+        return Some((x, STEER_STEP));
     }
-    if rush {
-        return Some(HALL_X as i16);
-    }
-    let mut tower: Option<(u32, i16)> = None;
-    for (&hp, def) in towers.iter().zip(st.towers) {
-        let d = i32::from(def.x).abs_diff(i32::from(c.x));
-        if hp > 0 && tower.is_none_or(|(bd, _)| d < bd) {
-            tower = Some((d, def.x));
+    let target = if rush {
+        Some(HALL_X as i16)
+    } else {
+        let mut tower: Option<(u32, i16)> = None;
+        for (&hp, def) in towers.iter().zip(st.towers) {
+            let d = i32::from(def.x).abs_diff(i32::from(c.x));
+            if hp > 0 && tower.is_none_or(|(bd, _)| d < bd) {
+                tower = Some((d, def.x));
+            }
         }
-    }
-    tower.map(|(_, x)| x)
+        tower.map(|(_, x)| x)
+    };
+    target
+        .filter(|&tx| turn_due(c.x, c.y, tx))
+        .map(|tx| (tx, TOWER_STEER))
+}
+
+/// SPEC_V5 §14 (rules v9) late turn: a cohort at (`x`, `y`) heading for a tower (or the hall) at
+/// `tx` keeps walking straight until the distance left to the tower line is just enough to close
+/// the x gap at TOWER_STEER per cruise step, plus TURN_MARGIN:
+/// `TOWER_Y − y ≤ |tx − x| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN`. Once due it stays due
+/// (each step shrinks both sides alike), and past the tower line it always is.
+fn turn_due(x: i16, y: i16, tx: i16) -> bool {
+    let left = TOWER_Y.saturating_sub(i32::from(y));
+    let gap = i32::from(tx).saturating_sub(i32::from(x)).saturating_abs();
+    let need = gap
+        .saturating_mul(CRUISE_SPEED)
+        .checked_div(TOWER_STEER)
+        .unwrap_or(i32::MAX)
+        .saturating_add(TURN_MARGIN);
+    left <= need
 }
 
 // --- enemies -----------------------------------------------------------------------------------
