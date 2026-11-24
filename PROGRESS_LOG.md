@@ -1342,11 +1342,11 @@ either side) instead of squeezing into half a column.
   pipes and straight-walking enemies unchanged; the bot's trace stops at the last row, so it is
   unchanged. New tests: a cohort from x 500 keeps its x to y 5,950, then turns and hits the
   tower square at 1,500; an enemy 3,000 ahead is ignored, one 800 ahead in the column engaged.
-- **Balance** (3,000 bot matches per layout, `TUNE` unchanged): 8.3% deaths (v8 5.6%), 64.0 s
-  (65.2), Fight 1 22.1 s, Fight 2 33.3 s; caps unchanged (~9, Speed Comb). Inside the band, so
-  `TUNE` stays, but Island jumped 10.3% → 25.6% (its waves slide down a side path round the
-  block and far crowds no longer converge on them). `(218, 11, 423, 5)` for Island gives 11.1%
-  (5.9% overall); not applied. SPEC_V5 §14 has the table.
+- **Balance** (3,000 bot matches per layout): the rules alone gave 8.3% deaths and 64.0 s, with
+  Island at 25.6% (its waves slide down a side path round the block and far crowds no longer
+  converge on them). Island re-tuned to `(218, 11, 423, 5)` (`wave_base` 12 / 6 → 11 / 5):
+  now 5.9% deaths (v8 5.6%), 64.8 s (65.2), Fight 1 22.0 s, Fight 2 33.4 s, Island 11.1%;
+  caps unchanged (~9, Speed Comb). Client LAYOUTS regenerated. SPEC_V5 §14 has the table.
 - **Tests:** sim 106 + integration (goldens re-recorded), sim-wasm 11, client 24, server 17
   green; client and server typecheck; clippy `-D warnings` and fmt clean; `programs/lil_dudes`
   and `tests-magicsvm` pass `cargo check --tests`. WASM pkg rebuilt, `PARITY_DIGEST` updated.
@@ -1357,13 +1357,13 @@ either side) instead of squeezing into half a column.
 (1,200), `ENGAGE_X` (900), `TOWER_STEER` (60), `TURN_MARGIN` (250); new pure helpers
 `turnDue(x, y, tx)`, `homing(st, x, y, enemies, towerHp, rush)` → `[targetX, step] | null` and
 `steerX(st, x, target, step, y)`. The live feed's re-run uses them, so gate/crate/pipe events
-stay exact. WASM `constants_json` exports the new constants; codec and layouts unchanged.
+stay exact. WASM `constants_json` exports the new constants; codec unchanged; Island's
+`waveBase` in LAYOUTS is 11 / 5.
 
 **Decided:** (Suparno) SPEC_V5 §14 and §11.9: crowds keep their lane and bend in late; close
 enemies only.
 
-**Blocked / risks:** Island's deaths (25.6%) are well above the other layouts; one-line
-`TUNE` fix above if wanted.
+**Blocked / risks:** none new.
 
 **Next / handoff (Kai):**
 - run MagicSVM (`tests-magicsvm`): positions near the tower line differ now;
