@@ -19,6 +19,8 @@ export {
 } from './verify';
 export type { Deals, PeekLog, StageLog, MatchReveal, PayoutInfo, PayoutOptions, TxRecord, SettlementInfo } from './verify';
 export { LiveSource } from './live/source';
+export { peekAttempts, classifyRead, peekLine } from './live/peek';
+export type { PeekAttempt, PeekOutcome, PeekOptions } from './live/peek';
 export type { LiveOptions, LiveStage } from './live/source';
 export * as chain from './live/chain';
 export {

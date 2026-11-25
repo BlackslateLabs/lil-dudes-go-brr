@@ -233,6 +233,16 @@ export class LiveSource implements MatchSource {
   // --- extras ------------------------------------------------------------------------------
 
   /** The latest view handed to listeners. */
+  /** The rollup RPC URL with this player's TEE login (for the "try to cheat" reads in peek.ts). */
+  get teeRpcUrl(): string {
+    return this.conn.rpcEndpoint;
+  }
+
+  /** The base-layer RPC this source tracks settlement on (undefined = the default). */
+  get baseRpcUrl(): string | undefined {
+    return this.opts.baseRpc;
+  }
+
   get view(): MatchView {
     return this.played.view;
   }
