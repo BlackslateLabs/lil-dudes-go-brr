@@ -1544,3 +1544,55 @@ the bottom progress line is gone.
 covers the top of the far tower a little. Live-play files in `apps/web` (Lobby, live/session…) are someone
 else's uncommitted work and were left out of these commits.
 **Next / handoff:** none.
+
+## 2026-11-25 10:28 IST · Suparno · sim + client + WASM (rules v10) · [CONTRACT] [DECISION] [HANDOFF]
+**Did:** (branch `v10-final`; commits `0039d21`, `d051712`, `f1a1b9b`, `047d190`, `a1b467a`)
+- **Crate hold (rules):** an enemy whose next step would cross a live crate's line inside its span (`covers`)
+  stops at `crate.y + CRATE_HOLD` (80) and waits until my dudes break it; enemies never damage crates; no clash
+  through a live crate (`StageDef::crate_hold`, `crate_between`). It bites on Three Lanes F1 and Speed Comb F2.
+  Tests: enemies wait (edges count, giants too) and walk on once it breaks; the breaking crowd clashes with the
+  held stack (45 of 60 dudes kill 45 enemies); no clash through a live crate.
+- **Slower crowds:** `CRUISE_SPEED` 60 → 48 (launch 144, giants 28), `TOWER_STEER` = cruise (45° late turn, still
+  due at y 5,950 from x 500). ENGAGE / CLASH_BAND / TURN_MARGIN unchanged; every compile-time assert holds.
+- **Speed Comb:** the caps came from ÷2 on the comb path + ÷3 behind the block (lone dudes, any HP). Fight 2's top
+  row now has the timing gate on the comb half and the `?` on the open half. Caps 0.
+- **Human bot (off-chain):** `Warlord::new` = `Skill::Human` (re-target 6–8 ticks, aim ±120, 22% second-best path
+  for 20–60 ticks, Champion 0.5–1.5 s late, 0.3–0.6 s firing pauses every 4–8 s, none with a full meter or an
+  enemy within DEFEND_Y), all from its own seed; `Warlord::perfect` is the v9 bot. WASM `Bot`, `SimMatch` and the
+  server bot use `new` (no API change). **Calibration: human wins 31.9% of decisive matches vs perfect.**
+- **TUNE on human vs human** (3,000/layout): Three Lanes (239, 8, 320, 4) 6.3%, Funnel (312, 5, 251, 6) 6.1%,
+  Speed Comb (212, 8, 290, 2) 5.8%, Pipes (260, 11, 280, 5) 6.0%, Pillars (320, 6, 705, 4) 4.2%, Island
+  (178, 8, 293, 4) 4.4%. **All 5.5% deaths, 65.0 s, 0 caps**, draws 1.2%; peak live cohorts 22/40, enemies 9/16.
+  Balance runner: `-- N [human|perfect|calibrate]`, new `A win%` column. SPEC_V5 §15 has it all.
+- **Leftovers:** `scripts/privacy-check.ts` still probed `plant_rig` and required "A rigged and peeked" (it could
+  never pass) and waited for a stage 2; fixed. `chain.ts` only documents the reserved bytes (kept).
+- **Tests:** sim 115 + integration (goldens re-recorded), sim-wasm 11, client 24, server 26 green; client typecheck;
+  clippy `-D warnings` and fmt clean; `programs/lil_dudes` and `tests-magicsvm` pass `cargo check --tests`. WASM
+  pkg rebuilt, `PARITY_DIGEST` updated.
+
+**CONTRACT (packages/client v10):** `RULES_VERSION` 10; `CRUISE_SPEED` 48, `GIANT_SPEED` 28, `TOWER_STEER` =
+`CRUISE_SPEED`; new `CRATE_HOLD` (80) and pure helpers `crateHold(st, crates, x, y, to)`,
+`crateBetween(st, crates, x, myY, foeY)`, `enemyStep(st, crates, x, y, giant)` → `[x, y]`. LAYOUTS regenerated (new
+TUNE; Speed Comb F2 gates: slot 3 is `?` at 750, slot 4 timing at 2,250). Codec, events and account layout unchanged.
+
+**Decided:** (Suparno) SPEC_V5 §15 and §11.10. Caps stay 40 / 16: lowering them changes `PUBLIC_LEN` (asserted
+1,484 in `programs/lil_dudes/src/state.rs`), so the crate hold is made near-free instead.
+
+**Compute estimate (please bench):** v9's worst tick (44,249 CU) is `crowded(7, …)`, layout 1 Funnel F1, which has
+no crates. There v10 adds a `live_crates` pass over 0 crates (~10 CU) and a not-taken branch per enemy (~2 CU × 16)
+per lane, plus a not-taken `is_some_and` per clashing pair, and saves one `obstacle_band` fold per lane (2 wedges,
+~30–40 CU). Net ≈ 0 (±60 CU per tick). The speed change and the bot add nothing on-chain. Not yet measured on a
+layout with crates: the worst there is a stack of 16 enemies held at a crate plus 40 cohorts (each held enemy runs
+≤ 2 crate tests, ~30–35 CU → up to ~1.1k CU per tick). If that state goes over budget, the fallback is
+`ENEMY_CAP` 14 (a codec + `PUBLIC_LEN` change in the program, your call).
+
+**Blocked / risks:** Pillars sits at 4.2% deaths (cliffs: F1 wave 7 → ~11%, F2 wave 5 → ~37%).
+
+**Next / handoff (Kai):**
+- bench v10: the usual `crowded(7, 450)` / `(7, 200)` / busiest, plus a crowded state on Three Lanes F1 with all 16
+  enemies held at the middle block (y 2,680) and 40 cohorts;
+- program leftovers (not touched): `Match` still has the 8 reserved "GOTCHA" bytes (`state.rs` ~127) and `Peek`
+  the 2 reserved rig bytes (`state.rs` ~165); no rig instruction remains. They only hold offsets; drop them only
+  with a layout change;
+- the `STAKE_TIERS` → any-amount change is a separate program item (see the 23:01 entry);
+- MagicSVM + redeploy for v10 after review. Not posting [RULES FINAL]: Suparno decides after review.
