@@ -290,11 +290,11 @@ export const needFor = (stake: number) => stake + STAKE_RESERVE;
 
 /** Checks before any signature: the program takes this stake, and the burner can pay for it. */
 async function preflight(r: number, stake: number): Promise<boolean> {
-  if (stake !== 0 && (stake < STAKE_MIN || !stakeOnChain(stake))) {
+  if (!stakeOnChain(stake)) {
     fail(r, {
       kind: 'stake',
-      title: 'This amount isn’t live yet',
-      message: `The program takes 0.05, 0.1 or 0.25 SOL today. Any amount from ${sol(STAKE_MIN)} SOL comes with the next program update.`,
+      title: 'Pick another amount',
+      message: `Stakes run from ${sol(STAKE_MIN)} to 5 SOL, or play free.`,
       retry: null,
     });
     return false;

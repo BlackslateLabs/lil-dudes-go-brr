@@ -16,14 +16,21 @@ pub const SECRETS_SEED: &[u8] = b"secrets";
 pub const PEEK_SEED: &[u8] = b"peek";
 pub const VAULT_SEED: &[u8] = b"vault";
 
-/// Stake tiers in lamports (MVP §2): Free, 0.05, 0.1, 0.25 devnet SOL.
-pub const STAKE_TIERS: [u64; 4] = [0, 50_000_000, 100_000_000, 250_000_000];
+/// Stakes in lamports: 0 (free) or any amount in [STAKE_MIN, STAKE_MAX] (0.01 to 5 devnet SOL).
+/// The web offers 0.05 / 0.1 / 0.25 as quick picks; the server and client use the same range.
+pub const STAKE_MIN: u64 = 10_000_000;
+pub const STAKE_MAX: u64 = 5_000_000_000;
+
+pub fn stake_ok(pick: u64) -> bool {
+    pick == 0 || (STAKE_MIN..=STAKE_MAX).contains(&pick)
+}
 
 /// TECH §4: 1 tick = 5 ER slots (~50 ms on the TEE's ~10 ms slots).
 pub const SLOTS_PER_TICK: u64 = 5;
-/// Catch-up cap per tx (TECH §4, re-measured in M3: worst tick 38k CU, codec 6k). The crank gets
-/// 400k CU per call; player txs run with the default 200k.
-pub const CRANK_CATCH_UP: u32 = 8;
+/// Catch-up cap per tx. Re-measured on v10/v11: the worst possible tick (every slot full) is 48.6k
+/// CU, the codec ~8k, so 3 ticks ≈ 160k stays under the ER's default 200k CU per instruction. A
+/// crank call on time runs one tick; the cap only matters when the crank has fallen behind.
+pub const CRANK_CATCH_UP: u32 = 3;
 pub const PLAYER_CATCH_UP: u32 = 2;
 /// Crank: one `advance` every 50 ms of wall time. The tick follows ER slots, so if slots run
 /// slower than 10 ms a match outlasts MATCH_TICKS crank runs: schedule 1.5× (covers slots up to

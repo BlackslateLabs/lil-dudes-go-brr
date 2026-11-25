@@ -47,7 +47,7 @@ pub fn handle_create_match(
     burner: Pubkey,
     name: [u8; 16],
 ) -> Result<()> {
-    require!(STAKE_TIERS.contains(&pick), GameError::BadStake);
+    require!(stake_ok(pick), GameError::BadStake);
     require!(burner != Pubkey::default(), GameError::BadBurner);
     let a = &ctx.accounts;
     let sys = a.system_program.to_account_info();
@@ -117,7 +117,7 @@ pub fn handle_join_match(
     burner: Pubkey,
     name: [u8; 16],
 ) -> Result<()> {
-    require!(STAKE_TIERS.contains(&pick), GameError::BadStake);
+    require!(stake_ok(pick), GameError::BadStake);
     let a = &ctx.accounts;
     let sys = a.system_program.to_account_info();
     let mut g = a.game.load_mut()?;

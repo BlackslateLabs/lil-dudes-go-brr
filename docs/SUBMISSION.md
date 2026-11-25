@@ -125,8 +125,9 @@ Backup: the match account's page (its history shows create, join, delegate and s
 - **One rules engine everywhere.** The same deterministic, integer-only Rust crate runs in the
   program, in the browser (offline play and Verify) and in the server bot, kept identical by golden
   tests and a WASM parity digest.
-- **Built to the compute budget.** The full rules run on chain every 50 ms; the worst tick is ~44k CU,
-  and the 8-tick crank catch-up fits in 400k. We measured it and froze the rules around it.
+- **Built to the compute budget.** The full rules run on chain every 50 ms; the worst possible tick is
+  ~49k CU (every slot full; a real match peaks near 15k), and the crank's 3-tick catch-up stays under
+  the ER's 200k CU per instruction. We measured it and froze the rules around it.
 - **Zero-friction onboarding, honest limits.** Play the bot in seconds with no wallet; stakes are
   devnet only; the README states the TEE trust assumption (Intel hardware) and what is still in
   progress.

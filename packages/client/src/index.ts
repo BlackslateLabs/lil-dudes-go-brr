@@ -33,6 +33,6 @@ export {
   queueStats, resumeInfo, reportMatch, matchHistory, playerStats,
 } from './live/server';
 export type { Room, RoomState, QuickMatch, TopUp, QueueTicket, QueueStats, Resume, HistoryEntry, PlayerStats } from './live/server';
-export { deviceBurner, stakeOnChain, maxStake, STAKE_MIN, STAKE_RESERVE, BURNER_KEY } from './live/player';
+export { deviceBurner, stakeOnChain, maxStake, STAKE_MIN, STAKE_MAX, STAKE_RESERVE, BURNER_KEY } from './live/player';
 export type { KeyStore } from './live/player';
 export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from './live/chain';

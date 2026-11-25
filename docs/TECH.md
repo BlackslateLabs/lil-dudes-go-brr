@@ -141,7 +141,7 @@ permission is public.
   requests the ER VRF; retry allowed after 300 slots), `callback_seed(randomness)` (`const`
   VRF identity, infallible, seed = sha256(vrf ‖ salt0 ‖ salt1)[..8], writes the start state: the
   seed's layout, both players in the Plant of Fight 1, every stage's values in Secrets),
-  `start` (tick 0 = now, schedules the crank; any player), `advance` (anyone; catch-up ≤ 8),
+  `start` (tick 0 = now, schedules the crank; any player), `advance` (anyone; catch-up ≤ 3 since v10),
   `set_aim(x)` (public, writes the aim byte-wise, ~3.3k CU), `plant_rig(cell)` / `peek_cell(cell)`
   (`cell` is a **gate slot** 0..8 of the stage; catch up ≤ 2, apply with the sim's
   rules, write Secrets + my Peek from the sim's private view; refused = error, nothing spent.

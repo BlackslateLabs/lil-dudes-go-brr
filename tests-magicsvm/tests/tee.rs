@@ -117,11 +117,11 @@ fn start_advance_caps_and_set_aim() {
     let t0 = g.public(Ephemeral).tick;
     let logs = g.er(g.advance_ix(), &[&a]).unwrap();
     let t1 = g.public(Ephemeral).tick;
-    assert_eq!(t1 - t0, 8, "crank catch-up cap");
-    println!("advance, 8-tick catch-up: {} CU", consumed(&logs, PID));
+    assert_eq!(t1 - t0, 3, "crank catch-up cap");
+    println!("advance, 3-tick catch-up: {} CU", consumed(&logs, PID));
     // A second advance in the same slot keeps catching up; when current it is a cheap no-op.
     g.er(g.advance_ix(), &[&a]).unwrap();
-    assert_eq!(g.public(Ephemeral).tick - t1, 8);
+    assert_eq!(g.public(Ephemeral).tick - t1, 3);
 
     // set_aim: players only, clamped, public, and the cannon follows.
     let b = g.burner(1);

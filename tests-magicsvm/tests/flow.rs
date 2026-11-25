@@ -119,6 +119,10 @@ fn cancel_refunds_before_the_tee() {
         g.base(g.join_ix(7, b1), &[&w1]).is_err(),
         "odd stake accepted"
     );
+    // The range is 0.01 to 5 SOL: just under and just over are refused.
+    for bad in [9_999_999u64, 5_000_000_001] {
+        assert!(g.base(g.join_ix(bad, b1), &[&w1]).is_err(), "{bad} accepted");
+    }
     let b0 = g.players[0].burner.pubkey();
     assert!(
         g.base(g.join_ix(100_000_000, b0), &[&w1]).is_err(),

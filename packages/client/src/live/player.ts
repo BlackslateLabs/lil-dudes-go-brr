@@ -2,7 +2,6 @@
 // the app checks before it signs anything.
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { STAKE_TIERS } from './chain';
 
 /** Where the burner lives (the browser's localStorage, or a Map-backed fake in tests). */
 export interface KeyStore {
@@ -38,18 +37,17 @@ export function deviceBurner(store: KeyStore, key = BURNER_KEY): Keypair {
 
 /** The smallest stake the app offers: 0.01 devnet SOL. */
 export const STAKE_MIN = 10_000_000;
+/** Program STAKE_MAX (state.rs). */
+export const STAKE_MAX = 5_000_000_000;
 
 /** What a burner keeps beyond its stake: create rent ~0.0153 (back at close) + delegation and
  *  commit ~0.012 + fees. The same number as the server's top-up reserve (TOPUP_POLICY.reserve). */
 export const STAKE_RESERVE = 35_000_000;
 
-/**
- * Can a match be opened on-chain at this stake today? GAP (program): `create_match` / `join_match`
- * take only STAKE_TIERS (programs/lil_dudes base.rs, `BadStake`), so any other amount is refused
- * before signing. When the program takes any amount in [min, max], change this one function.
- */
+/** Can a match be opened on-chain at this stake? The program (state.rs `stake_ok`) takes 0 or any
+ *  amount in [STAKE_MIN, STAKE_MAX]; anything else is refused with `BadStake`. */
 export function stakeOnChain(lamports: number): boolean {
-  return (STAKE_TIERS as readonly number[]).includes(lamports);
+  return Number.isSafeInteger(lamports) && (lamports === 0 || (lamports >= STAKE_MIN && lamports <= STAKE_MAX));
 }
 
 /** The most a burner holding `balance` lamports can stake (it keeps STAKE_RESERVE for the rest). */
