@@ -2,10 +2,10 @@
 // A free live match, bot vs bot through two LiveSources (A = side 0, B = side 1). While it runs,
 // the opponent B (its own TEE token) and a stranger C (a third token) and a token-less client try
 // every read path on A's secrets: Secrets, A's Peek, and the tx data of A's request_seed /
-// plant_rig / peek_cell (getAccountInfo, getMultipleAccounts, getProgramAccounts,
+// peek_cell (getAccountInfo, getMultipleAccounts, getProgramAccounts,
 // getTransaction, getSignaturesForAddress, accountSubscribe, programSubscribe, logsSubscribe).
 // Every payload they receive is decoded (base64 / base58 → hex) and searched for A's salt, the
-// rig/peek instruction data, A's Peek bytes and (after the match, from base) the VRF output and
+// peek instruction data, A's Peek bytes and (after the match, from base) the VRF output and
 // both salts. Positive controls make sure each channel is alive. Public-state invariants are
 // checked on every Match snapshot (no seed / history before finish, no revealed gate in a plant or transit).
 //   pnpm --filter @lil-dudes/client exec tsx scripts/privacy-check.ts
@@ -200,10 +200,9 @@ async function main() {
   sigs.push({ who: 'A', what: 'request_seed', sig: await chain.send(connA, [saltIx], [bA], { cu: 300_000 }), data: hex(saltIx.data) });
   log('A salt sent (tagged)');
 
-  // Two LiveSources + bots; each side rigs and peeks every stage (forced if the bot doesn't).
+  // Two LiveSources + bots; each side scouts (peeks) every stage (forced if the bot doesn't).
   const sources: LiveSource[] = [];
   const burners = [bA, bB];
-  const wantData = new Map<string, string>(); // sig → instruction data hex (rig/peek)
   for (const side of [0, 1] as const) {
     const who = side === 0 ? 'A' : 'B';
     const src = await LiveSource.connect({
@@ -277,7 +276,7 @@ async function main() {
   };
   const txReads = async (label: string) => {
     const out: Record<string, Record<string, string>> = {};
-    const secretSigs = sigs.filter((s) => ['request_seed', 'plant_rig', 'peek_cell'].includes(s.what));
+    const secretSigs = sigs.filter((s) => ['request_seed', 'peek_cell'].includes(s.what));
     for (const s of sigs.filter((x) => x.what !== 'set_aim').concat(sigs.filter((x) => x.what === 'set_aim').slice(0, 2))) {
       const row: Record<string, string> = {};
       for (const who of ['A', 'B', 'C', 'anon'] as Who[]) {
@@ -290,9 +289,6 @@ async function main() {
       out[`${s.who} ${s.what} ${s.sig.slice(0, 8)}`] = row;
     }
     probes[`getTransaction ${label}`] = out;
-    const aRig = secretSigs.find((s) => s.who === 'A' && s.what === 'plant_rig');
-    // Info, not a control: plant_rig also touches Secrets (no members), so it is redacted even for A.
-    if (aRig) probes[`A sees own plant_rig (${label})`] = out[`A plant_rig ${aRig.sig.slice(0, 8)}`]?.A;
     const aAim = sigs.find((s) => s.who === 'A' && s.what === 'set_aim');
     if (aAim) controls[`B reads A's public set_aim in full (${label})`] = out[`A set_aim ${aAim.sig.slice(0, 8)}`]?.B === 'full';
     // Listing: A's secret txs must not show up for B / C / anon.
@@ -327,7 +323,7 @@ async function main() {
   for (;;) {
     const v = sources[0]!.view;
     const done = sources.every((s) => s.currentStage === 'finished') || (sources.some((s) => s.currentStage !== 'playing' && s.currentStage !== 'setup') && (await isOnBase(base, id)));
-    // Probe once A has rigged and peeked in phase 0, and again in phase 2.
+    // Probe once A has scouted in Fight 1, and again in Fight 2.
     const aPeek = sigs.some((s) => s.who === 'A' && s.what === 'peek_cell');
     if (!probed && aPeek && v.status === 'playing') {
       probed = true;
@@ -337,10 +333,10 @@ async function main() {
       await txReads('mid-match');
       log('mid-match probes done at tick', sources[0]!.view.tick, 'fails so far', fails.length);
     }
-    if (probed && v.sides[0].stage === 2 && !probes['accounts phase 3'] && v.status === 'playing') {
-      log('probing in phase 3 at tick', v.tick);
-      await accountReads('phase 3');
-      await txReads('phase 3');
+    if (probed && v.sides[0].stage === 1 && !probes['accounts fight 2'] && v.status === 'playing') {
+      log('probing in Fight 2 at tick', v.tick);
+      await accountReads('fight 2');
+      await txReads('fight 2');
     }
     if (done) break;
     if (Date.now() - t0 > 8 * 60_000) throw new Error('timeout');
@@ -396,7 +392,7 @@ async function main() {
   controls['B accountSubscribe(own Peek1) > 0'] = listeners.B.counts['accountSubscribe(Peek1)']! > 0;
   controls['C accountSubscribe(Match) > 0'] = listeners.C.counts['accountSubscribe(Match)']! > 0;
   controls['public snapshots during a plant window seen'] = invariants.plantSnapshots > 0;
-  controls['A rigged and peeked'] = sigs.some((s) => s.who === 'A' && s.what === 'plant_rig') && sigs.some((s) => s.who === 'A' && s.what === 'peek_cell');
+  controls['A scouted (peek_cell)'] = sigs.some((s) => s.who === 'A' && s.what === 'peek_cell');
   const controlsOk = Object.values(controls).every(Boolean);
 
   // Cleanup (free match: nothing to pay; close returns the rent).
