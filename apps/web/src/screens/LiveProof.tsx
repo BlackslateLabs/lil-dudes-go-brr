@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { BASE_EXPLORER, dealsFor, matchResultOf, opLabel, payoutOf, trueOp, type GateOp, type LiveSource, type MatchReveal } from '@lil-dudes/client';
 import { refreshBalance, useLive, type FlipLog } from '../live/session';
 import { SERVER } from '../live/device';
+import { PeekConsole } from './PeekConsole';
 import { signedSol, sol } from './format';
 import './live.css';
 
@@ -204,6 +205,11 @@ function VerifySheet({ reveal, src, onClose }: { reveal: MatchReveal; src: LiveS
             </li>
           ))}
         </ol>
+        <section className="vf-cheat">
+          <h4>Try to cheat</h4>
+          <p className="sheet-fine">Your browser asks for the sealed accounts with your own login. During a match (menu ⚙ → Try to peek) they return nothing; after the end they’re public.</p>
+          <PeekConsole src={src} />
+        </section>
         <details className="vf-txs">
           <summary>Under the hood: {reveal.txs?.length ?? 0} transactions</summary>
           <ul>
