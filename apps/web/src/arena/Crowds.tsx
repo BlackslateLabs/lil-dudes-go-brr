@@ -13,9 +13,12 @@ import { Big, CrowdSim, POOL } from './crowdSim';
  * ~1.2 units wide and ~1.46 tall: the genre's chunky look (crowd spacing in crowdSim.ts matches).
  */
 const UNIT_SCALE = 1.8;
-/** A Champion giant is ~3× a dude (purple and gold), an enemy giant ~1.8× (red). */
+/**
+ * A Champion giant is ~3× a dude (purple and gold). An enemy giant is the base's Champion
+ * (SPEC_V5 §16): ~2.7× (crimson and gold), big enough to read as one at a glance.
+ */
 const CHAMP_SCALE = 5.5;
-const GIANT_SCALE = 3.2;
+const GIANT_SCALE = 4.8;
 /** Champion giants drawn at once (crowdSim.ts: at most MAX_GIANTS per Champion cohort). */
 const CHAMP_POOL = 48;
 
@@ -33,6 +36,11 @@ const TROOP_TINT: readonly TintRule[] = [
   { cells: [[5, 3], [3, 3]], ref: [5, 3], color: PALETTE.enemy },
   { cells: [[1, 3]], color: '#5a1f2a' },
 ];
+/** The enemy Champion: dark crimson metal with gold trim (mirrors our purple-and-gold Champion). */
+const FOE_CHAMP_TINT: readonly TintRule[] = [
+  { cells: [[5, 3], [3, 3]], ref: [5, 3], color: '#a5122a' },
+  { cells: [[1, 3]], color: '#ffc21a' },
+];
 
 preloadPacks('dudes');
 
@@ -41,7 +49,7 @@ const prof = typeof window !== 'undefined' && new URLSearchParams(window.locatio
 const sims: Record<string, CrowdSim> = {};
 if (prof) (window as unknown as { __crowd: typeof sims }).__crowd = sims;
 
-/** Your dudes (blue, Champions purple) and the base's troops (red) in your lane. */
+/** Your dudes (blue, Champions purple) and the base's troops (red, its Champions crimson and gold). */
 export function Crowds({ feed }: { feed: MatchFeed }) {
   return (
     <Suspense fallback={null}>
@@ -68,9 +76,9 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
   const vat = useVat();
   const piece = enemy ? 'troop' : 'dude';
   const baseMat = useTintedMaterial(pack, piece, enemy ? TROOP_TINT : DUDE_TINT, 0.5);
-  const champBase = useTintedMaterial(pack, 'champ', CHAMP_TINT, 0.35);
+  const champBase = useTintedMaterial(pack, enemy ? 'foe-champ' : 'champ', enemy ? FOE_CHAMP_TINT : CHAMP_TINT, 0.35);
   const crowd = useAnimated(pack, vat, piece, baseMat, POOL);
-  const champ = useAnimated(pack, vat, 'dude', champBase, CHAMP_POOL);
+  const champ = useAnimated(pack, vat, piece, champBase, CHAMP_POOL);
   useEffect(
     () => () => {
       for (const m of [crowd, champ]) {
@@ -107,12 +115,15 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
     sim.update({ lane, layout: view.layout, list, foes, prevById, alpha: a, time, dt });
     const anim = crowd.anim.array as Float32Array;
     const champAnim = champ.anim.array as Float32Array;
-    // Giants are agents in the crowd layer too (they collide, squeeze and die one at a time): a
-    // Champion's giants on their own purple mesh, an enemy giant in the red troop mesh.
-    let n = sim.write(mesh, 0, Big.Dude, UNIT_SCALE, time, dt, anim);
-    if (enemy) n = sim.write(mesh, n, Big.Troop, GIANT_SCALE, time, dt, anim);
+    // Giants are agents in the crowd layer too (they collide, squeeze and die one at a time), on
+    // their own mesh: a Champion's purple giants, or the base's crimson-and-gold Champions.
+    const n = sim.write(mesh, 0, Big.Dude, UNIT_SCALE, time, dt, anim);
     const champMesh = champRef.current;
-    const nc = champMesh ? sim.write(champMesh, 0, Big.Champ, CHAMP_SCALE, time, dt, champAnim) : 0;
+    const nc = champMesh
+      ? enemy
+        ? sim.write(champMesh, 0, Big.Troop, GIANT_SCALE, time, dt, champAnim)
+        : sim.write(champMesh, 0, Big.Champ, CHAMP_SCALE, time, dt, champAnim)
+      : 0;
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     flush(crowd.anim, n);
@@ -131,14 +142,12 @@ function Crowd({ feed, enemy }: { feed: MatchFeed; enemy: boolean }) {
         frustumCulled={false}
         customDepthMaterial={crowd.depth ?? undefined}
       />
-      {!enemy && (
-        <instancedMesh
-          ref={champRef}
-          args={[champ.geo, champ.material, CHAMP_POOL]}
-          frustumCulled={false}
-          customDepthMaterial={champ.depth ?? undefined}
-        />
-      )}
+      <instancedMesh
+        ref={champRef}
+        args={[champ.geo, champ.material, CHAMP_POOL]}
+        frustumCulled={false}
+        customDepthMaterial={champ.depth ?? undefined}
+      />
     </>
   );
 }
