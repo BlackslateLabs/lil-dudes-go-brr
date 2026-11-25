@@ -72,6 +72,17 @@ export function verifyText(pubkey: string, text: string, signature: string): boo
   }
 }
 
+/** A keypair as text (base58 secret key) for the browser's cache, and back (null if unreadable). */
+export const keyToText = (kp: Keypair): string => bs58.encode(kp.secretKey);
+export function keyFromText(s: string | null | undefined): Keypair | null {
+  if (!s) return null;
+  try {
+    return Keypair.fromSecretKey(bs58.decode(s));
+  } catch {
+    return null;
+  }
+}
+
 /** A Solana address, or null (base58, 32 bytes). Profile's withdraw field uses it. */
 export function parseAddress(s: string): PublicKey | null {
   try {
