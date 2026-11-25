@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -9,11 +10,21 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       // Precache everything the game needs offline: code, WASM, fonts, models, effects and sounds.
-      workbox: { globPatterns: ['**/*.{js,css,html,wasm,svg,png,webp,woff2,ttf,glb,bin,mp3}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
+      // Query strings (?room=CODE, ?seed=…) still hit the cached pages. Unknown paths fall back to
+      // the landing page.
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,wasm,svg,png,webp,woff2,ttf,glb,bin,mp3}'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        ignoreURLParametersMatching: [/.*/],
+        navigateFallback: 'index.html',
+      },
       manifest: {
         name: 'Lil Dudes Go Brr',
         short_name: 'Lil Dudes',
         description: '1v1 crowd-cannon duel with hidden gates, on Solana.',
+        // The landing page lives at /, the game at /play/: the installed app opens the game.
+        start_url: '/play/',
+        scope: '/',
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#1b1530',
@@ -28,5 +39,14 @@ export default defineConfig({
       },
     }),
   ],
+  // Two pages: the landing page (/) and the game (/play/).
+  build: {
+    rollupOptions: {
+      input: {
+        landing: fileURLToPath(new URL('index.html', import.meta.url)),
+        play: fileURLToPath(new URL('play/index.html', import.meta.url)),
+      },
+    },
+  },
   server: { host: false },
 });

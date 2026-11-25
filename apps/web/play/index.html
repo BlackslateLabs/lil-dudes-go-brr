@@ -12,6 +12,14 @@
     <link rel="preload" href="/fonts/LilitaOne-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="/fonts/Baloo2-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/assets/fx/particles.webp" as="image" type="image/webp" />
+    <!-- The arena's models and walk cycles download alongside the code, not after it (fetch mode
+         and credentials match the loaders', so the browser reuses these). -->
+    <link rel="preload" href="/assets/models/nature.glb" as="fetch" crossorigin />
+    <link rel="preload" href="/assets/models/hall.glb" as="fetch" crossorigin />
+    <link rel="preload" href="/assets/models/towers.glb" as="fetch" crossorigin />
+    <link rel="preload" href="/assets/models/blaster.glb" as="fetch" crossorigin />
+    <link rel="preload" href="/assets/models/dudes.glb" as="fetch" crossorigin />
+    <link rel="preload" href="/assets/models/dudes-anim.bin" as="fetch" crossorigin />
     <title>Lil Dudes Go Brr</title>
     <meta name="description" content="Live 1v1 crowd-cannon duels with hidden gates and real stakes on Solana." />
     <!-- Link previews. TODO: make og:image absolute once the hosted URL is known (some sites need it). -->
