@@ -6,9 +6,10 @@ services:
     runtime: docker
     dockerfilePath: ./apps/server/Dockerfile
     dockerContext: .
-    # Free instances sleep after 15 min idle (the bot and the sweeper stop, first request ~1 min).
-    # Starter keeps it awake for the demo.
-    plan: starter
+    # Free plan. A free instance sleeps after 15 min idle (the bot and the sweeper stop; the first
+    # request waits ~1 min). An uptime pinger on /healthz every 5-10 min keeps it awake (750 free
+    # hours a month covers one always-on service). Set the pinger up before judging starts.
+    plan: free
     numInstances: 1
     healthCheckPath: /healthz
     autoDeploy: false
@@ -25,9 +26,8 @@ services:
         sync: false
       - key: BOT_SECRET_KEY
         sync: false
-      # Match history (profile page). Needs the disk below; without it, leave HISTORY_FILE unset
-      # and history lives in memory until the next restart. Kai: review before enabling the disk
-      # (paid instance feature; the plan above is Starter).
+      # Match history (profile page). Needs the disk below, which free instances don't have, so
+      # HISTORY_FILE stays unset and history lives in memory until the next restart.
       # - key: HISTORY_FILE
       #   value: /data/history.jsonl
     # disk:
