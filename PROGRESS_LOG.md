@@ -1787,3 +1787,36 @@ export would be cleaner; no rush.
 - Secrets go into the host's secret store, never into git.
 
 **Next / handoff (Suparno):** host the server and the web app, then post [DEPLOYED] with both URLs and fill the README and `docs/SUBMISSION.md` links (Play URL, program ID `4QFSXrcG…9FDa`, explorer links). After that Kai and Suparno do the live test together: staked Quick Match, room + rematch, free match vs the bot, Profile withdraw.
+
+## 2026-11-25 19:57 IST · Suparno · playable: FIND MATCH, faucet UX, accounts (wallet connect, Neon) · [CONTRACT] [HANDOFF]
+**Did:**
+- Web (Part 1):
+  - FIND MATCH is always the big button with a stake; a short balance is handled in its sheet.
+  - Top-up cooldown countdown; the faucet limits sit behind an "i" (or in the error toast), never inline on Home.
+  - "N online · M searching" in the Quick Match sheet and queue only.
+  - Profile has explorer links, and a withdraw says where it went.
+- Client (`src/live/account.ts`, additive): Wallet Standard connect.
+  - The game key = Keypair.fromSeed(sha256(wallet's signature of GAME_KEY_MESSAGE)), so the same wallet gives the same
+    key on any device.
+  - First-time link: wallet and game key both sign linkMessage with a server nonce.
+  - Game-key signed requests (`Authorization: LDGB key:ms:sig`).
+  - depositFromWallet, withdrawToWallet, migrateGuest, parseAddress, keyToText/keyFromText.
+  - New deps @wallet-standard/app and /base 1.1.0.
+- Server:
+  - Routes /auth/nonce, /account/link, /account/name, /account/merge-guest, /account/:wallet(/history).
+  - Accounts and history persist in Neon Postgres (DATABASE_URL; tables created on start, loaded into memory, written
+    through). Without it the server runs in memory as before.
+  - CORS allows `authorization`. The live Neon smoke test passed (test/db.test.ts; it cleans up after itself).
+- Web accounts:
+  - A Connect wallet sheet; staked play needs an account, free stays guest.
+  - myBurner() follows the account, and the Home chip shows it.
+  - Profile: name, Add SOL from wallet, withdraw to your own wallet, account history, Disconnect.
+  - On first connect, an offer to move a guest browser's SOL and matches into the account.
+
+**Decided:** the derived game key is cached in the browser (`ldgb.account`, the same trust as the guest burner);
+Disconnect or clearing site data drops it, and reconnecting rebuilds it. GAME_KEY_MESSAGE must never change.
+
+**Blocked / risks:** not tried with real wallet extensions yet (Phantom, Solflare, MetaMask): signature determinism,
+deposit popups. The derived-key phishing caveat is in README Limits.
+
+**Next / handoff (Kai):** review the packages/client additions (CONTRACT). Render: DATABASE_URL is set (Suparno).
