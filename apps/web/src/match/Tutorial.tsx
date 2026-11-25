@@ -11,7 +11,7 @@ const COPY: Record<StepId, string> = {
   aim: 'Keep holding and drag to aim',
   gates: 'Gates multiply your dudes',
   tower: 'Break the tower',
-  champ: 'Meter full! Let go to launch your Champion',
+  champ: 'Your cannon is glowing! Let go to launch your Champion',
   defend: "Don't let them reach you",
   breach: 'BREACH! Keep holding!',
 };

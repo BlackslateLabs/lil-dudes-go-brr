@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Color, Sprite, SpriteMaterial, Vector3 } from 'three';
-import { VAULT_Y } from '@lil-dudes/client';
+import { CHAMP_TICKS, VAULT_Y } from '@lil-dudes/client';
 import type { MatchFeed } from '../match/feed';
 import { labelTexture } from './labelTexture';
-import { GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
+import { CANNON_Z, GLASS, PALETTE, SX, opLabel, wx, wz } from './layout';
 import { Particles, burst, pop } from './particles';
 import { PopFlag, PopKind, hallPulse, pops as popQ, towerPulse } from './popQueue';
 
@@ -44,6 +44,7 @@ const COLOR = {
   dust: new Color('#fff4e2'),
   me: new Color(PALETTE.me),
   enemy: new Color(PALETTE.enemy),
+  grape: new Color('#7c5cff'),
 };
 
 /**
@@ -58,6 +59,7 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
   const shake = useRef(0);
   const lastShake = useRef(-10);
   const clock = useRef(0);
+  const champFull = useRef(false);
   const camera = useThree((s) => s.camera);
   const px = useMemo(() => new Particles(), []);
   useEffect(() => () => px.dispose(), [px]);
@@ -139,6 +141,15 @@ export function Fx({ feed, camBase }: { feed: MatchFeed; camBase: Vector3 }) {
   useFrame((_, dt) => {
     clock.current += dt;
     drainPops();
+    // Champion ready: a gold ring and sparkles off the cannon as the meter fills (Cannon.tsx glows).
+    const me = feed.me;
+    const full = !!me && me.phase === 'fight' && !me.champPending && me.champMeter >= CHAMP_TICKS;
+    if (full && !champFull.current) {
+      burst.reveal(px, wx(feed.myCannon), 3.2, CANNON_Z, COLOR.gold);
+      burst.reveal(px, wx(feed.myCannon), 4.4, CANNON_Z, COLOR.grape);
+      kick(0.12);
+    }
+    champFull.current = full;
     px.update(Math.min(dt, 0.05));
     for (let i = pops.current.length - 1; i >= 0; i--) {
       const p = pops.current[i]!;

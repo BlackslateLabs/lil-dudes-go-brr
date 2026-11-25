@@ -121,12 +121,12 @@
 }
 
 /* ---------- Race bar: you and the opponent on the same map, tower by tower ----------
-   Bottom left, beside the Champion meter (thumb column: 12px + 76px + a 12px gap), level with
+   Bottom left, beside the Champion meter (thumb column: 12px + 64px + a 12px gap), level with
    the meter's middle. Toasts pop above it. */
 .hud.race {
-  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 22px);
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 16px);
   left: 10px;
-  right: 100px;
+  right: 90px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -301,21 +301,19 @@
   font-size: 24px;
 }
 
+/* Quieter than it was: the cannon itself now glows when the Champion is ready (Cannon.tsx). */
 .champ {
   position: relative;
   display: grid;
   place-items: center;
-  width: 76px;
-  height: 76px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   border-radius: 50%;
-  border: var(--edge);
-  background: linear-gradient(#b49cff, var(--grape) 60%, var(--grape-dark));
-  box-shadow:
-    var(--gloss),
-    var(--ledge),
-    0 8px 14px #1b153044;
-  transition: transform 0.12s var(--bounce);
+  border: 2.5px solid var(--outline);
+  background: #1b1530b0;
+  box-shadow: 0 3px 0 var(--outline);
+  transition: transform 0.12s var(--bounce), background 0.2s;
 }
 
 .champ.idle {
@@ -333,10 +331,10 @@
   border: 2px solid var(--outline);
   background: var(--gold);
   color: var(--outline);
-  font: 15px/1 var(--display);
+  font: 13px/1 var(--display);
   white-space: nowrap;
-  box-shadow: 0 3px 0 var(--outline);
-  animation: champ-tag 0.5s ease-in-out infinite alternate;
+  box-shadow: 0 2px 0 var(--outline);
+  animation: champ-tag 0.6s ease-in-out infinite alternate;
 }
 
 @keyframes champ-tag {
@@ -355,7 +353,7 @@
 
 .champ-track {
   fill: none;
-  stroke: #1b153066;
+  stroke: #ffffff22;
   stroke-width: 7;
 }
 
@@ -369,7 +367,7 @@
 
 .champ-face {
   position: relative;
-  font-size: 30px;
+  font-size: 24px;
   line-height: 1;
   filter: grayscale(0.7);
   opacity: 0.75;
@@ -383,7 +381,6 @@
 
 .champ.charged {
   background: linear-gradient(var(--gold-light), var(--gold) 55%, var(--gold-dark));
-  animation: champ-glow 0.7s ease-in-out infinite alternate;
 }
 
 .champ.charged .champ-fill {
@@ -392,23 +389,6 @@
 
 .champ.pending {
   transform: scale(0.94);
-}
-
-
-@keyframes champ-glow {
-  from {
-    box-shadow:
-      var(--gloss),
-      var(--ledge),
-      0 0 0 0 #ffc21a00;
-  }
-  to {
-    box-shadow:
-      var(--gloss),
-      var(--ledge),
-      0 0 0 8px #ffc21a99,
-      0 0 26px 10px #ffd21f88;
-  }
 }
 
 /* ---------- Cog menu (no pause in PvP) ---------- */
