@@ -1649,3 +1649,22 @@ can take the free seat (the on-chain join is what counts).
 5. Web needs `VITE_SERVER_URL` set on Vercel (default is `<host>:8787`), and the server's `CORS_ORIGINS` to include
    the web URL.
 6. First live check on two phones: Quick Match 0.05, a room + rematch, a free Quick Match vs the online bot, Verify.
+
+## 2026-11-25 11:55 IST · Suparno · web: landing page, Home menu · [HANDOFF]
+**Did:**
+- **Landing page at `/`** (`apps/web/index.html` + `src/landing/landing.css`): static, responsive, no game code.
+  Hero, how a match works, same map vs a real opponent, why it's fair, the three modes, Play buttons.
+- **The game moved to `/play/`** (`apps/web/play/index.html`, a two-page Vite build). The PWA `start_url` is
+  `/play/`. Room links are now `/play/?room=CODE`, and old `/?room=` links and the installed app skip the landing.
+  The service worker matches cached pages with any query string.
+- Home menu: fits short screens (the logo shrinks, never clips), a Free / Stake switch, the wallet inside the stake
+  card, two-line secondary buttons. The background shows a painted lane at once and fades the 3D loop in; the game
+  page preloads its models alongside the code.
+
+**Decided:** none.
+
+**Blocked / risks:** not tested on a real phone yet (Suparno is testing).
+
+**Next / handoff (Kai):** on Vercel, `/` is the landing page and `/play/` is the game (plain static files, no
+rewrites needed). Use `https://<host>/play/` wherever a direct game link is wanted, and `https://<host>/` for the
+README "PLAY NOW" and the submission website field.
