@@ -180,10 +180,15 @@ cargo +stable test --manifest-path tests-magicsvm/Cargo.toml   # MagicSVM
 
 ## Credits
 
-Built for MagicBlock's Solana Blitz v10 ("Entertainment Finance") by a team of two:
-**Suparno** (front end and art direction) and **Kai** (program, rules engine, server).
+Built for MagicBlock's Solana Blitz v10 ("Entertainment Finance") by a team of two.
+
+### Built by
+
+- **Suparno Saha** ([suparno.me](https://suparno.me)): front end, game feel and art direction.
+- **Priyanshu Saha** ([github.com/Kai-972](https://github.com/Kai-972)): the Solana program, the rules engine and the server.
 
 Our own characters, world and code; we studied the genre's design patterns, not any one game.
 Models, particles and sounds are CC0 kits by [Kenney](https://kenney.nl); music is CC0 from
 OpenGameArt; fonts are Lilita One, Baloo 2 and Luckiest Guy (SIL OFL / Apache 2.0). Every asset,
-source and licence is listed in [apps/web/public/assets/CREDITS.md](apps/web/public/assets/CREDITS.md).
+source and licence is listed in [apps/web/public/assets/CREDITS.md](apps/web/public/assets/CREDITS.md)
+and on the website at `/credits/`.
