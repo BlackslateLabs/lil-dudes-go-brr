@@ -2,7 +2,7 @@ import { useHud, type RaceTrack } from '../hud';
 import './hud.css';
 
 /**
- * The race bar under the top bar: two thin tracks, you (blue) and your opponent (red), each with
+ * The race bar, bottom left beside the Champion meter: two thin tracks, you (blue) and your opponent (red), each with
  * the same icons (the towers of Fight 1, of Fight 2, then the town hall), because both play the
  * exact same map on their own lane. Icons tick as that side breaks towers; the fill also counts
  * damage on the live ones. A short toast under it says who cleared a fight first.

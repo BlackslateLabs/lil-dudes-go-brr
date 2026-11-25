@@ -120,11 +120,13 @@
   box-shadow: 0 2px 0 var(--outline);
 }
 
-/* ---------- Race bar: you and the opponent on the same map, tower by tower ---------- */
+/* ---------- Race bar: you and the opponent on the same map, tower by tower ----------
+   Bottom left, beside the Champion meter (thumb column: 12px + 76px + a 12px gap), level with
+   the meter's middle. Toasts pop above it. */
 .hud.race {
-  top: calc(max(6px, env(safe-area-inset-top)) + 44px);
-  left: 8px;
-  right: 8px;
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 22px);
+  left: 10px;
+  right: 100px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -262,8 +264,9 @@
 }
 
 .race-toast {
+  order: -1;
   align-self: center;
-  margin-top: 3px;
+  margin-bottom: 3px;
   padding: 2px 12px 4px;
   border-radius: 999px;
   border: 2.5px solid var(--outline);
