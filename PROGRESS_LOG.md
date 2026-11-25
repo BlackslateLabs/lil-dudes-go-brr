@@ -1928,3 +1928,22 @@ SUBMISSION. Prize wallet: decide. Demo video. After submitting: an uptime pinger
 **Blocked / risks:** not yet run against a live TEE match (what the TEE returns per path: error vs null).
 
 **Next / handoff (Kai):** review the additive client exports (CONTRACT).
+## 2026-11-26 01:36 IST · Suparno · web: load speed (code split) · [CONTRACT]
+**Did:**
+- /play/ initial JS went from 578.6 to 438.6 kB gzip (−24%; raw 1,966 → 1,482 kB).
+  - @solana/web3.js and every live flow (session, account, device), Lobby, Profile, the wallet sheet, the live VS and
+    Verify load on demand (live/actions.ts).
+  - Home and the offline bot match use a light store (live/store.ts, accountStore.ts, storage.ts).
+  - Home loads the live code at idle once the arena's models are in. account.ts loads before session.ts, so a
+    signed-in key is restored before any flow runs.
+- Post-processing (bloom/tone mapping) loads only on the high tier.
+- Client (additive): the stake rules and BURNER_KEY move to live/stakes.ts (no Solana imports; player.ts re-exports
+  them); "sideEffects": false; queueStats accepts a base58 string.
+
+**Decided:** no meshopt for the GLBs. Vercel serves them brotli, and lossless meshopt made them bigger on the wire
+(108 → 156 kB); position quantization would need geometry changes in assets.ts.
+
+**Blocked / risks:** wallet, faucet, Quick Match, rooms and resume haven't been re-checked in a browser after the
+split.
+
+**Next / handoff (Kai):** skim packages/client "sideEffects": false (CONTRACT).
