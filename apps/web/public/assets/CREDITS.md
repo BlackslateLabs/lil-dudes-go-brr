@@ -6,6 +6,7 @@ Nothing copied from any existing game.
 | Asset | Used for | Source (URL) | Author | Licence |
 |---|---|---|---|---|
 | Logo, mascot, app icons and link-preview card (`public/brand/logo.webp`, `public/brand/og.png`, `public/icon*.png`, `public/favicon.svg`, `public/apple-touch-icon.png`) | Home logo, screen wipe, PWA and favicon | drawn in code by us | ours | — |
+| Gameplay still (`public/brand/shot-match.webp`) | Landing page phone mock-up | captured from our own game | ours | — |
 | Mascot heads (`public/brand/head-you.webp`, `head-bot.webp`, `head-rival.webp`: the blue knight, the red Base Bot robot, the knight in team red) | VS screen avatars | drawn in code by us (same vector mascots as the logo) | ours | — |
 | Luckiest Guy (glyph outlines baked into the logo image; no font file shipped) | "LIL DUDES GO BRR!" wordmark in the logo | https://github.com/google/fonts/tree/main/apache/luckiestguy | Astigmatic | Apache 2.0 |
 | Lilita One (`public/fonts/LilitaOne-Regular.ttf`) | Display font: numbers, gate labels, buttons | https://github.com/google/fonts/tree/main/ofl/lilitaone | Juan Montoreano | SIL OFL 1.1 (`public/fonts/LilitaOne-OFL.txt`) |

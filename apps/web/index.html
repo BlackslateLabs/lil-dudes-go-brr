@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#3fa9ff" />
+    <!-- Room links (?room=CODE) and the installed app go straight to the game. -->
+    <script>
+      (function () {
+        var q = location.search;
+        if (/[?&]room=/.test(q) || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) {
+          location.replace('/play/' + q + location.hash);
+        }
+      })();
+    </script>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/brand/logo.webp" as="image" type="image/webp" />
+    <link rel="preload" href="/fonts/LilitaOne-Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Baloo2-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin />
+    <title>Lil Dudes Go Brr: live 1v1 crowd-cannon duels on Solana</title>
+    <meta name="description" content="Live 1v1 crowd-cannon duels with hidden gates and real stakes on Solana. Play the bot free in seconds: no wallet, no sign-up." />
+    <!-- Link previews. TODO: make og:image absolute once the hosted URL is known (some sites need it). -->
+    <meta property="og:title" content="Lil Dudes Go Brr" />
+    <meta property="og:description" content="Live 1v1 crowd-cannon duels with hidden gates and real stakes on Solana." />
+    <meta property="og:image" content="/brand/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/landing/landing.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="nav-brand" href="/" aria-label="Lil Dudes Go Brr home">
+        <img src="/favicon.svg" alt="" width="36" height="36" />
+        <span>Lil Dudes Go Brr</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#how">How it works</a>
+        <a href="#fair">Why it's fair</a>
+        <a href="#modes">Modes</a>
+      </nav>
+      <a class="btn btn-gold btn-sm" href="/play/">Play</a>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-copy">
+          <h1 class="hero-logo">
+            <img src="/brand/logo.webp" alt="Lil Dudes Go Brr!" width="1100" height="794" />
+          </h1>
+          <p class="hero-line">Fire a crowd. Multiply it. <b>Out-race a real opponent.</b></p>
+          <p class="hero-sub">
+            A live 1v1 crowd-cannon duel. Every gate is a hidden <span class="q">?</span> sealed on-chain until the match ends.
+            Play the bot free in seconds, or stake devnet SOL against a friend.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-gold btn-lg" href="/play/">
+              Play now
+              <small>free · no wallet</small>
+            </a>
+            <a class="btn btn-light" href="#how">How it works</a>
+          </div>
+          <ul class="hero-tags" aria-label="Highlights">
+            <li>Phone or desktop</li>
+            <li>Installable</li>
+            <li>Matches in about a minute</li>
+            <li>Solana devnet</li>
+          </ul>
+        </div>
+
+        <div class="hero-art" aria-hidden="true">
+          <div class="phone">
+            <img src="/brand/shot-match.webp" alt="" width="600" height="1298" loading="eager" />
+          </div>
+          <span class="float gate g-blue f1">×2</span>
+          <span class="float gate g-purple f2">?</span>
+          <span class="float gate g-gold f3">×5</span>
+          <img class="float head f4" src="/brand/head-you.webp" alt="" width="256" height="256" />
+          <img class="float head f5" src="/brand/head-bot.webp" alt="" width="256" height="256" />
+        </div>
+      </section>
+
+      <!-- How a match works -->
+      <section id="how" class="band band-cream">
+        <div class="wrap">
+          <h2 class="title">How a match works</h2>
+          <p class="lead">Two players. The same level. Whoever wrecks the base harder takes the pot.</p>
+          <ol class="steps">
+            <li class="card">
+              <span class="gate g-blue">HOLD</span>
+              <h3>Hold to fire, drag to aim</h3>
+              <p>Your cannon pours lil dudes down the lane while your thumb is down.</p>
+            </li>
+            <li class="card">
+              <span class="gate g-purple">?</span>
+              <h3>Hidden gates</h3>
+              <p>Most multiply (×2 to ×5, +N), some hurt. A gate flips face-up only when your dudes touch it.</p>
+            </li>
+            <li class="card">
+              <span class="gate g-gold">×8</span>
+              <h3>Champions</h3>
+              <p>Keep shooting to charge a giant worth 8 dudes. It multiplies through gates like any crowd.</p>
+            </li>
+            <li class="card">
+              <span class="gate g-red">BREACH</span>
+              <h3>Towers, then the hall</h3>
+              <p>Drop the towers, breach the town hall and rush it. Let one enemy reach your line and you're overrun.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Same map, real opponent -->
+      <section class="band band-sky">
+        <div class="wrap split">
+          <div class="vs" aria-hidden="true">
+            <img class="vs-head" src="/brand/head-you.webp" alt="" width="256" height="256" />
+            <span class="vs-bolt">VS</span>
+            <img class="vs-head" src="/brand/head-rival.webp" alt="" width="256" height="256" />
+          </div>
+          <div>
+            <h2 class="title on-sky">Same map. Real opponent.</h2>
+            <p class="lead on-sky">
+              You both fire at identical copies of the same level, dealt fresh every match. A race bar shows how far
+              they've got. The clock caps every match at 3:00.
+            </p>
+            <ul class="ticks on-sky">
+              <li>Score tower damage, breach first, rush the hall</li>
+              <li>Win by a lot, take a lot: payout scales with the margin</li>
+              <li>Draws give both stakes back</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Fair by construction -->
+      <section id="fair" class="band band-night">
+        <div class="wrap">
+          <h2 class="title on-night">Fair by construction</h2>
+          <p class="lead on-night">
+            No server you have to trust with the secrets. The match runs inside a MagicBlock Private Ephemeral Rollup
+            and settles on Solana.
+          </p>
+          <div class="grid4">
+            <div class="card card-night">
+              <span class="pip">1</span>
+              <h3>Sealed gates</h3>
+              <p>Unrevealed gate values live in private accounts. Nobody can read them until the match ends, not even your opponent's client.</p>
+            </div>
+            <div class="card card-night">
+              <span class="pip">2</span>
+              <h3>Dealt by VRF</h3>
+              <p>Verifiable randomness picks the level and the gates, so neither player can stack the deck.</p>
+            </div>
+            <div class="card card-night">
+              <span class="pip">3</span>
+              <h3>On-chain clock</h3>
+              <p>The match ticks 20 times a second on the rollup, free of gas, with one commit at the end.</p>
+            </div>
+            <div class="card card-night">
+              <span class="pip">4</span>
+              <h3>Pays out by itself</h3>
+              <p>The result settles on Solana automatically. Hit Verify to replay the match from its seed.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Modes -->
+      <section id="modes" class="band band-cream">
+        <div class="wrap">
+          <h2 class="title">Pick how you play</h2>
+          <div class="grid3">
+            <a class="card mode" href="/play/">
+              <img src="/brand/head-bot.webp" alt="" width="256" height="256" loading="lazy" />
+              <h3>vs Bot</h3>
+              <p>Instant and free. No wallet, no popups. Learn the gates.</p>
+              <span class="pill pill-mint">free</span>
+            </a>
+            <a class="card mode" href="/play/">
+              <img src="/brand/head-rival.webp" alt="" width="256" height="256" loading="lazy" />
+              <h3>Quick Match</h3>
+              <p>Pick a stake and get paired with someone at the same amount.</p>
+              <span class="pill pill-gold">devnet SOL</span>
+            </a>
+            <a class="card mode" href="/play/">
+              <img src="/brand/head-you.webp" alt="" width="256" height="256" loading="lazy" />
+              <h3>Play a Friend</h3>
+              <p>Make a room, send the link or the code, settle it on-chain.</p>
+              <span class="pill pill-grape">room code</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Final call -->
+      <section class="band band-grass final">
+        <div class="wrap final-inner">
+          <h2 class="title on-sky">Ready? Lil dudes go brr.</h2>
+          <a class="btn btn-gold btn-lg" href="/play/">
+            Play now
+            <small>free · no wallet</small>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>Built for MagicBlock Solana Blitz v10 · Devnet play money only</p>
+      <p>
+        <a href="https://github.com/BlackslateLabs/lil-dudes-go-brr">Source</a> ·
+        <a href="https://github.com/BlackslateLabs/lil-dudes-go-brr/blob/main/apps/web/public/assets/CREDITS.md">Credits</a>
+      </p>
+    </footer>
+  </body>
+</html>
