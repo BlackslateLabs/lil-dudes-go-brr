@@ -3,7 +3,7 @@ import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
 import { sfx, unlockSound } from '../feel/sound';
-import { signedIn, useAccount } from '../live/account';
+import { signedIn, sweepGuest, useAccount } from '../live/account';
 import { hasBurner } from '../live/device';
 import {
   checkResume,
@@ -115,8 +115,22 @@ export function Home() {
     loadFaucetPolicy();
     const had = hasBurner();
     void refreshBalance();
-    if (had) void recoverStale().then((t) => t && say(t));
+    // Signed in: refunds of guest-era matches land on the guest key; sweep them (and anything else
+    // it holds) into the account after the recovery.
+    if (had)
+      void recoverStale()
+        .then((t) => t && say(t))
+        .finally(() => {
+          if (signedIn()) void sweepGuest();
+        });
   }, [unlocked]);
+
+  // "Moved 0.17 SOL from this browser into your account" (and other account notices).
+  const notice = useAccount((a) => a.notice);
+  useEffect(() => {
+    if (notice && Date.now() - notice.at < 8000) say(notice.text, NOTE_LONG_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice]);
 
   const playBot = (tutorial: boolean) => {
     unlockSound();

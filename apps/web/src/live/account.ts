@@ -2,15 +2,21 @@
 // (packages/client src/live/account.ts), link it the first time, and play with it. A wallet is
 // needed for staked play only; guests keep their browser burner for the bot and free online play.
 //
-// What this browser keeps: `ldgb.account` = { wallet, walletName, name, key } where `key` is the
-// derived game key (base58). It's a cache with the same trust as the guest burner it replaces, so
-// a reload needs no popup. Clearing site data (or Disconnect) drops it, and nothing is lost:
-// connecting the same wallet signs the same message and rebuilds the same key. No wallet secret is
-// ever stored.
+// What this browser keeps:
+// - `ldgb.account` = { wallet, walletName, name, key }: `key` is the derived game key (base58), a
+//   cache with the same trust as the guest burner, so a reload needs no popup. Disconnect drops it;
+//   connecting the same wallet signs the same message and rebuilds the same key.
+// - The guest burner (`ldgb.burner`) is never deleted: refunds or late payouts of guest-era matches
+//   can still land on it, and every check sweeps them into the account.
+// - `ldgb.guestOwner`: the account that took this browser's guest key (the first to connect here).
+// - `ldgb.retiredKeys`: { wallet: key } game keys of accounts that disconnected here, so a wallet
+//   whose signature changed (a new game key) still gets its old SOL swept across.
+// No wallet secret is ever stored.
 import { create } from 'zustand';
 import {
   accountProfile,
   baseConnection,
+  BASE_FEE,
   connectWallet,
   depositFromWallet,
   disconnectWallet,
@@ -18,22 +24,26 @@ import {
   keyToText,
   linkAccount,
   listWallets,
-  migrateGuest,
-  playerStats,
-  RENT_EXEMPT_MIN,
-  BASE_FEE,
+  mergeGuestHistory,
+  PublicKey,
   ServerError,
   setAccountName as saveName,
   deriveBurner,
+  sweepable,
+  sweepKey,
   withdrawToWallet,
   type AccountProfile,
   type ConnectedWallet,
   type GameWallet,
 } from '@lil-dudes/client';
-import { guestBurner, myBurner, read, SERVER, setAccountKey, setAccountName, write } from './device';
-import { refreshBalance } from './session';
+import { sol } from '../screens/format';
+import { guestBurner, myBurner, read, savedMatch, SERVER, setAccountKey, setAccountName, write } from './device';
+import { refreshBalance, syncCooldown, useLive } from './session';
 
 const ACCOUNT_KEY = 'ldgb.account';
+const GUEST_OWNER = 'ldgb.guestOwner';
+const GUEST_MERGED = 'ldgb.guestMerged';
+const RETIRED = 'ldgb.retiredKeys';
 
 interface Cached {
   wallet: string;
@@ -45,6 +55,16 @@ interface Cached {
 /** Where the connect flow is: which popup the player is looking at. */
 export type ConnectStep = 'connect' | 'derive' | 'link' | 'move';
 
+/** SOL that couldn't move into the account yet (shown in Profile with a way to act on it). */
+export interface Stuck {
+  lamports: number;
+  /** guest: this browser's guest wallet (Move it); other: it belongs to another account; old: an older game key. */
+  from: 'guest' | 'other' | 'old';
+  address: string;
+  /** For `other`: the account (wallet) that owns this browser's guest wallet. */
+  owner?: string;
+}
+
 export interface AccountState {
   /** The connected account's wallet address (null = guest). */
   wallet: string | null;
@@ -53,15 +73,31 @@ export interface AccountState {
   profile: AccountProfile | null;
   step: ConnectStep | null;
   error: string | null;
-  /** This browser's guest key holds SOL or has matches: offer to move them into the account. */
-  offer: { lamports: number; matches: number } | null;
+  stuck: Stuck | null;
+  /** An older game key of this wallet that isn't cached here: shown so its SOL never silently vanishes. */
+  lost: { address: string; walletName: string } | null;
+  /** "Moved 0.17 SOL…": a toast for whichever screen is up. */
+  notice: { text: string; at: number } | null;
 }
 
-export const useAccount = create<AccountState>(() => ({ wallet: null, walletName: null, name: null, profile: null, step: null, error: null, offer: null }));
+export const useAccount = create<AccountState>(() => ({
+  wallet: null,
+  walletName: null,
+  name: null,
+  profile: null,
+  step: null,
+  error: null,
+  stuck: null,
+  lost: null,
+  notice: null,
+}));
 const set = (p: Partial<AccountState>) => useAccount.setState(p);
+const say = (text: string) => set({ notice: { text, at: Date.now() } });
 
 /** Signed in with a wallet? (Staked play needs it.) */
 export const signedIn = (): boolean => useAccount.getState().wallet !== null;
+
+const shortAddr = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 function readCache(): Cached | null {
   try {
@@ -72,6 +108,26 @@ function readCache(): Cached | null {
   }
 }
 
+function cache(c: Cached | null) {
+  write(ACCOUNT_KEY, c ? JSON.stringify(c) : null);
+}
+
+function retired(): Record<string, string> {
+  try {
+    const r = JSON.parse(read(RETIRED) ?? '{}') as Record<string, string> | null;
+    return r && typeof r === 'object' ? r : {};
+  } catch {
+    return {};
+  }
+}
+
+function setRetired(wallet: string, key: string | null) {
+  const r = retired();
+  if (key) r[wallet] = key;
+  else delete r[wallet];
+  write(RETIRED, Object.keys(r).length ? JSON.stringify(r) : null);
+}
+
 /** Restores a signed-in account from this browser's cache (no popup). Runs once, at start. */
 function restore() {
   const c = readCache();
@@ -80,13 +136,10 @@ function restore() {
   setAccountKey(kp);
   setAccountName(c.name);
   set({ wallet: c.wallet, walletName: c.walletName, name: c.name });
+  syncCooldown();
   void refreshProfile();
 }
 restore();
-
-function cache(c: Cached | null) {
-  write(ACCOUNT_KEY, c ? JSON.stringify(c) : null);
-}
 
 /** Re-reads the account from the server (stats, name). Keeps the last one if it can't. */
 export async function refreshProfile(): Promise<AccountProfile | null> {
@@ -104,8 +157,24 @@ const readable = (e: unknown): string => {
   if (e instanceof ServerError && e.status === 0) return "Can't reach the game server right now. Try again in a moment.";
   const m = String(e instanceof Error ? e.message : e);
   if (/reject|denied|declined|cancel/i.test(m)) return 'You closed the wallet prompt. Nothing was signed.';
-  return m.replace(/^POST \/account\/\w+: /, '').replace(/^\w/, (x) => x.toUpperCase());
+  return m.replace(/^POST \/account\/[\w-]+: /, '').replace(/^\w/, (x) => x.toUpperCase());
 };
+
+/**
+ * Why connecting (or switching key) right now would strand something, or null if it's safe. A
+ * queue ticket, an open room or a live match belongs to the key that started it: finish or leave
+ * it first (its refund paths stay on that key).
+ */
+export function connectBlocked(): string | null {
+  const s = useLive.getState();
+  if (s.phase === 'queue') return "You're in the queue. Leave it first, then connect.";
+  if (s.phase === 'host' || s.phase === 'join') return 'Your room is still open. Close it first, then connect.';
+  if (s.phase === 'starting' || s.phase === 'playing' || savedMatch()) return 'Your live match is still on. Finish it first, then connect.';
+  if (s.resume?.kind === 'queue') return "You're still in the queue. Leave it from Home first, then connect.";
+  if (s.resume?.kind === 'room') return 'Your room is still open. Close it from Home first, then connect.';
+  if (s.resume?.kind === 'match') return 'Your live match is still on. Finish it first, then connect.';
+  return null;
+}
 
 /** The connected wallet object (for deposits), reconnecting silently when the page was reloaded. */
 let live: ConnectedWallet | null = null;
@@ -122,17 +191,26 @@ async function wallet(): Promise<ConnectedWallet> {
 
 /**
  * Connect flow: approve the connection, sign to make the game key, and (first time only) sign
- * once more to link it. Returns true when signed in. `step` says which popup is up.
+ * once more to link it. Then everything this browser holds moves in before it returns, so the
+ * balance and stake checks right after (FIND MATCH) already see it. `step` says which popup is up.
  */
 export async function connect(w: GameWallet): Promise<boolean> {
-  set({ error: null, step: 'connect' });
+  const blocked = connectBlocked();
+  if (blocked) {
+    set({ error: blocked });
+    return false;
+  }
+  set({ error: null, step: 'connect', lost: null });
   try {
     const c = await connectWallet(w);
     set({ step: 'derive' });
     const kp = await deriveBurner(c);
     const pk = kp.publicKey.toBase58();
     let profile = await accountProfile(SERVER, c.address);
-    if (!profile || profile.burner !== pk) {
+    // A known account whose game key came out different: the wallet signed differently this time.
+    // The server keeps the old key as a guest link (its matches stay); its SOL must follow too.
+    const previous = profile && profile.burner !== pk ? profile.burner : null;
+    if (!profile || previous) {
       set({ step: 'link' });
       profile = await linkAccount(SERVER, c, kp);
     }
@@ -140,9 +218,15 @@ export async function connect(w: GameWallet): Promise<boolean> {
     setAccountKey(kp);
     setAccountName(profile.name);
     cache({ wallet: c.address, walletName: w.name, name: profile.name, key: keyToText(kp) });
-    set({ wallet: c.address, walletName: w.name, name: profile.name, profile, step: null });
+    set({ wallet: c.address, walletName: w.name, name: profile.name, profile, step: 'move' });
+    syncCooldown();
+    // Same key as last time here: no need to keep the retired copy.
+    const old = keyFromText(retired()[c.address]);
+    if (old && old.publicKey.toBase58() === pk) setRetired(c.address, null);
+    if (previous) await sweepOld(previous, w.name);
+    await sweepGuest();
+    set({ step: null });
     void refreshBalance();
-    void checkGuest();
     return true;
   } catch (e) {
     set({ step: null, error: readable(e) });
@@ -150,50 +234,107 @@ export async function connect(w: GameWallet): Promise<boolean> {
   }
 }
 
-/** Does this browser's old guest key hold SOL or matches worth moving into the account? */
-async function checkGuest() {
-  const g = guestBurner();
+/** An older game key of this wallet: sweep it if this browser still has it, else show it. */
+async function sweepOld(previous: string, walletName: string) {
   const s = useAccount.getState();
-  if (!g || !s.profile || s.profile.guests.includes(g.publicKey.toBase58()) || g.publicKey.toBase58() === s.profile.burner) return;
-  const [lamports, stats] = await Promise.all([
-    baseConnection()
-      .getBalance(g.publicKey, 'confirmed')
-      .catch(() => 0),
-    playerStats(SERVER, g.publicKey).catch(() => null),
-  ]);
-  const movable = lamports > BASE_FEE + RENT_EXEMPT_MIN ? lamports - BASE_FEE : 0;
-  const matches = stats?.played ?? 0;
-  if (movable > 0 || matches > 0) set({ offer: { lamports: movable, matches } });
-}
-
-/** Moves the guest key's SOL and matches into the account (silent: the guest key signs). */
-export async function moveGuest(): Promise<string> {
-  const g = guestBurner();
-  const s = useAccount.getState();
-  if (!g || !s.wallet) return 'Nothing to move';
-  set({ step: 'move', error: null });
+  if (!s.wallet) return;
+  const candidates = [keyFromText(retired()[s.wallet])].filter((k): k is NonNullable<typeof k> => !!k && k.publicKey.toBase58() === previous);
+  const kp = candidates[0];
+  if (!kp) {
+    const bal = await baseConnection()
+      .getBalance(new PublicKey(previous), 'confirmed')
+      .catch(() => null);
+    if (bal === null || bal > BASE_FEE) set({ lost: { address: previous, walletName } });
+    return;
+  }
   try {
-    const r = await migrateGuest(SERVER, g, myBurner(), s.wallet);
-    set({ step: null, offer: null });
-    void refreshBalance();
-    void refreshProfile();
-    return r.moved > 0 ? `Moved ${(r.moved / 1e9).toFixed(3).replace(/\.?0+$/, '')} SOL and your matches` : 'Your matches are in your account';
-  } catch (e) {
-    set({ step: null, error: readable(e) });
-    return readable(e);
+    const r = await sweepKey(kp, myBurner().publicKey);
+    if (r.moved > 0) say(`Moved ${sol(r.moved)} SOL from your previous game wallet`);
+    setRetired(s.wallet, null);
+  } catch {
+    set({ stuck: { lamports: 0, from: 'old', address: previous } });
   }
 }
 
-export const skipGuest = () => set({ offer: null });
+let sweeping: Promise<void> | null = null;
 
-/** Signs out on this browser: forgets the cached game key. Connecting again brings it all back. */
+/**
+ * Moves this browser's guest SOL (minus the fee) into the signed-in account, and folds the guest's
+ * matches in (once). Automatic, no question asked: same person, same device. Safe to call often
+ * (on connect, on Home, after a recovery): one sweep at a time, and a failure just leaves a note
+ * and retries next time. Never touches a guest key that another account took first, or one that
+ * is still in a live flow.
+ */
+export function sweepGuest(): Promise<void> {
+  sweeping ??= doSweep().finally(() => {
+    sweeping = null;
+  });
+  return sweeping;
+}
+
+async function doSweep() {
+  const s = useAccount.getState();
+  const g = guestBurner();
+  if (!s.wallet || !g) return;
+  const acct = myBurner();
+  if (g.publicKey.equals(acct.publicKey)) return;
+  const address = g.publicKey.toBase58();
+  const owner = read(GUEST_OWNER);
+  const base = baseConnection();
+  if (owner && owner !== s.wallet) {
+    // The first account to connect here took this guest wallet: its SOL waits for that account.
+    const bal = await base.getBalance(g.publicKey, 'confirmed').catch(() => 0);
+    set({ stuck: sweepable(bal, 1) > 0 ? { lamports: sweepable(bal, 1), from: 'other', address, owner } : null });
+    return;
+  }
+  // (Connecting is blocked while a guest-era ticket, room or match runs, and once signed in live
+  // play uses the account's key, so sweeping the guest key never pulls a stake out of a flow.)
+  try {
+    const r = await sweepKey(g, acct.publicKey, base);
+    write(GUEST_OWNER, s.wallet);
+    set({ stuck: null });
+    if (r.moved > 0) {
+      say(`Moved ${sol(r.moved)} SOL from this browser into your account`);
+      void refreshBalance();
+    }
+  } catch {
+    const bal = await base.getBalance(g.publicKey, 'confirmed').catch(() => null);
+    const left = bal === null ? 0 : sweepable(bal, 1);
+    if (left > 0) set({ stuck: { lamports: left, from: 'guest', address } });
+  }
+  if (read(GUEST_MERGED) !== s.wallet) {
+    try {
+      await mergeGuestHistory(SERVER, g, acct, s.wallet);
+      write(GUEST_MERGED, s.wallet);
+      write(GUEST_OWNER, s.wallet);
+      void refreshProfile();
+    } catch {
+      /* the server was down or busy: next check tries again */
+    }
+  }
+}
+
+/** Profile's "Move it" for a stuck guest balance: try the sweep again now. */
+export async function moveGuest(): Promise<string> {
+  await sweepGuest();
+  const st = useAccount.getState().stuck;
+  return st && st.from === 'guest' ? "Couldn't move it yet. Try again in a moment." : 'Moved into your account';
+}
+
+/**
+ * Signs out on this browser. The account's SOL stays on its game key and comes back on reconnect;
+ * the key is kept aside so a wallet that signs differently next time still gets its SOL swept.
+ */
 export async function disconnect() {
-  if (live) await disconnectWallet(live);
+  const c = readCache();
+  if (c) setRetired(c.wallet, c.key);
+  if (live) await disconnectWallet(live).catch(() => undefined);
   live = null;
   cache(null);
   setAccountKey(null);
   setAccountName(null);
-  set({ wallet: null, walletName: null, name: null, profile: null, offer: null, error: null, step: null });
+  set({ wallet: null, walletName: null, name: null, profile: null, stuck: null, lost: null, error: null, step: null });
+  syncCooldown();
   void refreshBalance();
 }
 
@@ -217,7 +358,7 @@ export async function addFromWallet(lamports: number): Promise<{ ok: boolean; te
     const c = await wallet();
     const signature = await depositFromWallet(c, myBurner().publicKey, lamports);
     void refreshBalance();
-    return { ok: true, text: `Added ${(lamports / 1e9).toFixed(3).replace(/\.?0+$/, '')} SOL`, signature };
+    return { ok: true, text: `Added ${sol(lamports)} SOL`, signature };
   } catch (e) {
     return { ok: false, text: readable(e) };
   }
@@ -231,3 +372,4 @@ export async function withdrawToMine(amount: number | 'all') {
 }
 
 export const accountWallets = listWallets;
+export { shortAddr };

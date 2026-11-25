@@ -40,7 +40,7 @@ import {
 } from '@lil-dudes/client';
 import { sol } from '../screens/format';
 import { useApp } from '../store';
-import { claimTab, hasBurner, myBurner, myName, myTeeToken, releaseTab, saveMatch, savedMatch, SERVER } from './device';
+import { claimTab, guestBurner, hasBurner, myBurner, myName, myTeeToken, releaseTab, saveMatch, savedMatch, SERVER } from './device';
 
 export type StepState = 'todo' | 'now' | 'ok' | 'fail';
 export interface Step {
@@ -294,11 +294,15 @@ const DEFAULT_POLICY: FaucetPolicy = {
   reserve: STAKE_RESERVE,
 };
 
-const UNTIL_KEY = 'ldgb.topupUntil';
+/** The faucet's cooldown is per game wallet (a fresh account key isn't cooling because the guest was). */
+const untilKey = (pk: string) => `ldgb.topupUntil:${pk}`;
+/** The key that plays now, without making a guest burner just to ask. */
+const currentPk = (): string | null => (hasBurner() ? myBurner().publicKey.toBase58() : null);
 
-function readUntil(): number | null {
+function readUntil(pk = currentPk()): number | null {
+  if (!pk) return null;
   try {
-    const v = Number(sessionStorage.getItem(UNTIL_KEY));
+    const v = Number(sessionStorage.getItem(untilKey(pk)));
     return Number.isFinite(v) && v > Date.now() ? v : null;
   } catch {
     return null;
@@ -310,12 +314,19 @@ export const useFaucet = create<{ policy: FaucetPolicy; until: number | null }>(
 
 function setUntil(until: number | null) {
   useFaucet.setState({ until });
+  const pk = currentPk();
+  if (!pk) return;
   try {
-    if (until) sessionStorage.setItem(UNTIL_KEY, String(until));
-    else sessionStorage.removeItem(UNTIL_KEY);
+    if (until) sessionStorage.setItem(untilKey(pk), String(until));
+    else sessionStorage.removeItem(untilKey(pk));
   } catch {
     /* private mode: the countdown just won't survive a reload */
   }
+}
+
+/** The playing key changed (signed in or out): show that key's cooldown, if any. */
+export function syncCooldown() {
+  useFaucet.setState({ until: readUntil() });
 }
 
 let policyAsked = false;
@@ -1012,7 +1023,10 @@ let recovered = false;
 export async function recoverStale(): Promise<string | null> {
   if (recovered || get().phase !== 'idle' || savedMatch()) return null;
   recovered = true;
-  const out = await recoverMatches(conn(), myBurner()).catch(() => []);
+  // Signed in: the guest key's old matches still get their refunds (account.ts sweeps them in after).
+  const guest = guestBurner();
+  const keys = guest && !guest.publicKey.equals(myBurner().publicKey) ? [myBurner(), guest] : [myBurner()];
+  const out = (await Promise.all(keys.map((k) => recoverMatches(conn(), k).catch(() => [])))).flat();
   const back = out.filter((x) => x.action === 'cancelled' || x.action === 'settled').length;
   if (back) void refreshBalance();
   return back ? `Refunded ${back} unfinished match${back > 1 ? 'es' : ''}` : null;
