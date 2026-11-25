@@ -1401,7 +1401,7 @@
   z-index: 3;
   left: 14px;
   right: 14px;
-  top: calc(max(6px, env(safe-area-inset-top)) + 96px);
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 96px);
   display: flex;
   justify-content: center;
   pointer-events: none;

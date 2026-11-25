@@ -28,7 +28,7 @@ const DEFEND_MS = 4000;
 const BREACH_MS = 2400;
 /** Finger travel that counts as a drag. */
 const DRAG_PX = 12;
-/** The "same lane" cut-in under the race bar stays up this long (once, as the first fight starts). */
+/** The "same lane" cut-in above the race bar stays up this long (once, as the first fight starts). */
 const RACE_MS = 4800;
 
 interface Bubble {
