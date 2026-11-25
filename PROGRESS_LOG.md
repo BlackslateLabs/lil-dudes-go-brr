@@ -1820,3 +1820,30 @@ Disconnect or clearing site data drops it, and reconnecting rebuilds it. GAME_KE
 deposit popups. The derived-key phishing caveat is in README Limits.
 
 **Next / handoff (Kai):** review the packages/client additions (CONTRACT). Render: DATABASE_URL is set (Suparno).
+
+## 2026-11-25 20:16 IST · Suparno · accounts: no stranded SOL, Profile card · [CONTRACT]
+**Did:**
+- Connecting a wallet moves this browser's guest SOL (minus the fee) and its matches into the account
+  automatically, before the sheet closes.
+- The guest key is kept: refunds from guest-era matches are recovered for it and swept in (on Home and Profile), one
+  sweep at a time. A failed sweep leaves a note with "Move it" and retries.
+- Edge cases:
+  - connecting is blocked while a guest queue ticket, room or match is running;
+  - the guest wallet belongs to the first account to connect on this device, and another account sees where its SOL
+    is;
+  - a wallet whose signature changed: the old game key is swept if this browser kept it (it's kept aside on
+    disconnect), otherwise shown with an explorer link;
+  - the top-up cooldown is per game wallet;
+  - Disconnect confirms that the SOL stays with the account.
+- Client (additive): `sweepable` (pure, tested), `sweepKey`, `mergeGuestHistory`; migrateGuest now uses them.
+- Profile card redesigned:
+  - the name with a pencil button;
+  - matching address rows with copy and explorer buttons;
+  - the balance with two equal buttons (Add from wallet; Top up free, with a countdown);
+  - the explainer behind an "i".
+
+**Decided:** moving guest funds is automatic (same person, same device), with no prompt.
+
+**Blocked / risks:** not tried with real wallet extensions or a real devnet sweep yet.
+
+**Next / handoff (Kai):** review the packages/client additions (CONTRACT).
