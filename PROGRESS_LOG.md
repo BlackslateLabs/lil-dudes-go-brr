@@ -1698,3 +1698,26 @@ visual-only version is free.
 - **Suparno:** landing page rework; UI changes; enemy Champions (see above); README Verify row + landing copy +
   `docs/IDEA.md` up to date (no rig/raid); gameplay GIF and demo video once [DEPLOYED] is up; join the two-phone
   live test.
+
+## 2026-11-25 12:57 IST · Suparno · web: landing redesign, credits, enemy Champion look, Champion pathing, docs · [HANDOFF]
+**Did:**
+- Landing page redesigned (`apps/web/index.html`, `src/landing/`): left-aligned, one main button per view, a
+  canvas hero (cannon → ? gate flips ×3 → tower down), scroll reveals, gate flips, race bars. Copy fixed per Kai:
+  a gate stays sealed until your dudes touch it.
+- Credits page at `/credits/` (third Vite input). Built by: Suparno Saha (suparno.me), Priyanshu Saha
+  (github.com/Kai-972), also in README and CREDITS.md.
+- Champions no longer stall in the Pillars field (`crowdSim.ts`: a smaller radius against obstacles, a sideways
+  slide on head-on hits, no gap-centring for giants).
+- Enemy giants (rules v10: Fight 2, every small wave) now look like the base's Champion: ×4.8, crimson and gold,
+  their own red-gold burst, an ENEMY CHAMPION! stamp. **Visual only**, no sim change.
+- Docs per Kai's list: `docs/IDEA.md` rewritten to the current game (no rig, Peek or raid); the README Verify row says
+  it's built.
+
+**Decided:** rules stay at v10 here, as Kai asked. The sim version of enemy Champions in Fight 1 (rules v11) is a
+separate PR (`rules-v11`) for Kai to accept or close.
+
+**Blocked / risks:** not checked on a real phone yet.
+
+**Next / handoff (Kai):** the deadline is **Fri** Nov 27, ~19:30 IST (thanks). Look at the `rules-v11` PR when you
+can: balance is unchanged, and the worst tick can't grow (giants are enemy cohorts under ENEMY_CAP), but it's your
+bench and your call. If it's a no, close it.
