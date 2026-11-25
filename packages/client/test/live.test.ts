@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decodePublic, type PublicState } from '../src/codec';
+import * as C from '../src/constants';
 import { decodePeek, PEEK_LEN, peekPrivateView } from '../src/live/chain';
 import { diffEvents } from '../src/live/events';
-import { OfflineSource } from '../src/index';
+import { enemyStep, OfflineSource, stageDef } from '../src/index';
 import type { MatchEvent, Side } from '../src/types';
 
 const opKey = (op: { kind: string; value: number }) => `${op.kind}${op.value}`;
@@ -72,6 +73,8 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
   let ticks = 0;
   let rushes = 0;
   let rushEnds = 0;
+  let enemySteps = 0;
+  let held = 0;
   const seen = new Set<string>();
   // Side 0 aims at an unbroken crate if its stage has one, else at the nearest enemy.
   const crateHunter = (src: OfflineSource) => {
@@ -145,6 +148,21 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
         }
         assert.equal(have[k] ?? 0, want[k] ?? 0, `${at}: ${k}`);
       }
+      // Rules v10: `enemyStep` (straight down, slides, crate hold, wall push) moves every enemy
+      // exactly as the sim did, given the crates after my cohorts moved (the next snapshot's).
+      for (const s of [0, 1] as Side[]) {
+        const [a, b] = [prev.sides[s], next.sides[s]];
+        if (a.stage !== b.stage || !(a.phase === FIGHT || a.phase === RUSH) || !(b.phase === FIGHT || b.phase === RUSH) || b.dead) continue;
+        const st = stageDef(prev.layout, a.stage);
+        const now = new Map(b.enemies.map((e) => [e.id, e]));
+        for (const e of a.enemies) {
+          const later = now.get(e.id);
+          if (!later) continue;
+          assert.deepEqual(enemyStep(st, b.crates, e.x, e.y, e.giant), [later.x, later.y], `${at}: enemy ${e.id}`);
+          enemySteps++;
+          if (later.y === e.y && st.crates.some((c) => later.y === c.y + C.CRATE_HOLD)) held++;
+        }
+      }
       for (const e of got) seen.add(e.type);
       prev = next;
       ticks++;
@@ -154,6 +172,7 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
   assert.ok(ticks > 3000, `${ticks} ticks`);
   assert.ok(rushes > 4, `${rushes} Rushes started`);
   assert.ok(rushEnds > 4, `${rushEnds} Rush ends compared`);
+  assert.ok(enemySteps > 1000 && held > 0, `${enemySteps} enemy steps compared, ${held} held at a crate`);
   for (const type of ['volley', 'reveal', 'gate', 'first', 'rushEnd', 'crate', 'pipe', 'wave', 'clash', 'towerHit', 'towerDown', 'loot', 'stage', 'death', 'end']) {
     assert.ok(seen.has(type), `no ${type} events to compare`);
   }
