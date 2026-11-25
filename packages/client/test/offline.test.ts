@@ -7,8 +7,8 @@ import { MockSource, OfflineSource, simConstants, simRulesVersion } from '../src
 import type { MatchEvent, MatchView, PrivateView } from '../src/types';
 
 /** Same match as `parity_match_digest` in crates/sim-wasm/src/lib.rs (PARITY_DIGEST): bot vs bot
- *  (since rules v6 an idle player never fires). Rules v10: both finish; side 0 wins on gold at tick 1,659. */
-const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, selfBot: true, digest: 13_575_074_804_793_296_806n, tick: 1659 };
+ *  (since rules v6 an idle player never fires). Rules v11: both finish; side 0 wins on gold at tick 1,787. */
+const PARITY = { seed: 42n, botSeed: 7n, stake: 100_000_000, selfBot: true, digest: 12_710_195_270_569_971_723n, tick: 1787 };
 
 function playOut(src: { view: MatchView; step(): void }, onTick?: (view: MatchView) => void) {
   let guard = 0;
@@ -37,13 +37,13 @@ test('TS constants and layouts equal the Rust ones in the WASM build', () => {
 });
 
 test('bundled WASM is built from the current sim (parity digest)', () => {
-  assert.equal(simRulesVersion(), 10);
+  assert.equal(simRulesVersion(), 11);
   const src = new OfflineSource(PARITY);
   playOut(src);
   assert.equal(src.view.tick, PARITY.tick);
   assert.equal(src.digest(), PARITY.digest, 'packages/sim-wasm/pkg is stale: run packages/sim-wasm/build.sh');
   const r = src.view.result!;
-  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [0, null, [1287, 1239], 3_800_000]);
+  assert.deepEqual([r.winner, r.died, r.gold, r.moved], [0, null, [1591, 1239], 24_870_000]);
   assert.equal(r.fee, Math.floor((r.moved * C.FEE_BPS) / 10_000));
   assert.deepEqual(src.view.sides.map((s) => s.phase), ['done', 'done']);
   src.dispose();
