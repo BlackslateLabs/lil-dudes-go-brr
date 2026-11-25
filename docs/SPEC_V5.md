@@ -272,6 +272,13 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
    and only turn toward the tower near the end, at a ~45° angle; they engage an enemy only when it
    is close (within 1,200 ahead and 900 sideways). `DETECT_Y` is gone. Island's waves are re-tuned
    (`wave_base` 12 / 6 → 11 / 5); the rest of `TUNE` is unchanged.
+10. (Suparno, 25 Nov, rules v10) The last rules before the freeze (§15): enemies wait behind a
+    live crate (`CRATE_HOLD` 80) until my dudes break it, and nothing clashes through a live crate;
+    crowds are 20% slower (`CRUISE_SPEED` 60 → 48, `TOWER_STEER` = cruise); Speed Comb's Fight 2
+    timing gate moves to the comb half (no more 3:00 caps); the bot players face is a human-strength
+    one (slower reactions, aim error, the odd second-best path, a late Champion, short firing
+    pauses) that wins ~32% of decisive matches against the old full-strength bot, and `TUNE` is
+    balanced on that human bot against itself.
 
 ---
 
@@ -531,6 +538,111 @@ its lane and only bends in at the end.
   move it (~24% at `ENGAGE_Y` 1,500 or `ENGAGE_X` 1,200), so Island's `TUNE` is now
   `(218, 11, 423, 5)` (`wave_base` 12 / 6 → 11 / 5), which restores its v8 numbers.
 - Caps unchanged (~9 of 18,000, all Speed Comb); draws 51.8%.
+
+## 15. v10 crate hold, slower crowds, a human bot (rules v10, Suparno, 25 Nov)
+
+The last rule changes before the freeze. Playtests: enemies walked straight through breakable
+blocks, the bot played perfectly and won almost every match, and crowds moved a little fast to
+read on a phone.
+
+**Crate hold** (integer, deterministic; `crates/sim/src/step.rs` `move_enemies`, `clash`;
+`StageDef::crate_hold`, `crate_between`)
+
+- An enemy cohort whose next step would take it across the line of a **live** crate (HP > 0)
+  inside the crate's span (`covers`, edges count, as for my cohorts) stops at
+  **`crate.y + CRATE_HOLD` (80)** instead. It does not slide around the crate; it waits there,
+  pressing toward the cannon, and walks on on the first tick after the crate breaks. An enemy
+  already inside the gap stays put (it never moves back up). Enemies are never absorbed by crates
+  and never damage them.
+- Order for an enemy: walk down (or slide round an obstacle) → crate hold → wall push. The live
+  crates are taken after my cohorts moved, so a crate my crowd breaks this tick holds nothing.
+- **No clash through a live crate:** a pair with a live crate's line between them
+  (`enemy y < line ≤ my y`) and the clash point's x inside its span does not clash (as through a
+  standing wall). With the hold this only matters in odd geometry, but it is the rule.
+- The meeting: my cohort crossing the crate line is absorbed first (as before). If it breaks the
+  crate with dudes to spare it is at most `LAUNCH_SPEED + CRUISE_SPEED` past the line, the held
+  enemies walk on into it, and the pair meets inside `CLASH_BAND` on the next tick or two (a
+  compile-time check keeps `CRATE_HOLD + LAUNCH_SPEED + CRUISE_SPEED < CLASH_BAND`).
+- Where it bites: Three Lanes Fight 1 (the middle lane's block holds every wave from the tower at
+  1,500 until the block breaks) and Speed Comb Fight 2 (the block on the 750 side holds that
+  tower's waves). Elsewhere the waves' straight paths miss the crates.
+- **Client:** `CRATE_HOLD`, `crateHold(st, crates, x, y, to)`, `crateBetween(st, crates, x, myY,
+  foeY)` and `enemyStep(st, crates, x, y, giant)` (one enemy tick) in `packages/client`. The live
+  feed takes enemies from the snapshots, so its events are unchanged; a test checks `enemyStep`
+  against every enemy move of whole WASM matches.
+- **Cost:** one pass over the stage's ≤ 2 crates per lane tick (`live_crates`: the y range of the
+  live crate lines, or none). An enemy runs the per-crate test only if a live crate exists and
+  its move goes from above the lowest live line to below the highest hold line; a clash pair runs
+  it only after passing every other test and only if it lies astride the live lines. A stage
+  without live crates pays a branch per enemy. In exchange, `obstacle_band` is now computed once
+  per lane tick instead of once for my cohorts and once for the enemies. (Kai benches it; §9.)
+
+**Slower crowds**
+
+| | v9 | v10 |
+|---|---|---|
+| `CRUISE_SPEED` (launch 3×, giants 3/5) | 60 (180, 36) | **48 (144, 28)** |
+| `TOWER_STEER` | 60 | **= `CRUISE_SPEED`** (48: the late turn stays a 45° approach; it is still due at `TOWER_Y − y ≤ \|dx\| + TURN_MARGIN`, so a crowd from x 500 still turns at y 5,950 and hits the tower square) |
+| Cannon → tower walk | ~5.4 s | ~6.6 s |
+| `ENGAGE_Y` / `ENGAGE_X` / `CLASH_BAND` / `TURN_MARGIN` | 1,200 / 900 / 400 / 250 | unchanged (distances; slower closing only gives homing more ticks) |
+
+Every compile-time check still holds (`LAUNCH_SPEED + CRUISE_SPEED` 192 < `CLASH_BAND` 400,
+`SLIDE_STEP` 150 > cruise, `OBSTACLE_GRACE` 60 < launch 144). The design-rule and path tests
+(every launch x reaches a tower within 300 ticks, enemies from every tower reach the cannon line
+once the crates are broken) pass unchanged. Peak live cohorts in the balance runs: 22 of 40,
+enemies 9 of 16.
+
+**Speed Comb** (the easy layout: v9 ~1% deaths and ~9 of 18,000 matches at the 3:00 cap). The
+caps came from one deal: `÷2` on the comb half's top gate and `÷3` on the open half's row 2,
+behind the block. Every path then delivered lone dudes and Fight 2 could not finish in time at any
+tower HP. **Fight 2's top row now has the timing gate on the comb half (x 2,250) and the hidden
+gate on the open half (x 750)**: the comb path is always ×1–×5 past row 1, and the open half
+carries the risk (block, `?`, `?`), as Fight 1's comb half does. Caps: 0.
+
+**The bot** (`crates/sim/src/bot.rs`, off-chain only: WASM and server)
+
+- `Warlord::new` is now the **human** bot (`Skill::Human`); the old one is `Warlord::perfect`
+  (`Skill::Perfect`), kept for tests and calibration. The WASM `Bot` and `SimMatch` and the
+  server's online bot use `new` (no API change). It still reads `PublicState` only; every
+  imperfection is drawn from its own seed (a separate stream, so the perfect bot draws exactly as
+  before).
+- **Slower reactions:** it re-targets, and re-checks for an enemy near its cannon, every 6–8
+  ticks (0.30–0.40 s) instead of every 2.
+- **Aim error:** each aim is off by up to ±120 (well inside a column, so it never picks the wrong
+  gate, but the volleys spread like a thumb's).
+- **Imperfect choices:** every 20–60 ticks it reconsiders, and 22% of the time takes the
+  second-best path (the best aim point outside the near-ties that still scores) for 20–60 ticks.
+- **Late Champion:** a full meter is released 10–30 ticks (0.5–1.5 s) after it fills.
+- **Firing pauses:** every 80–160 ticks (4–8 s) it lifts its finger for 6–12 ticks (0.3–0.6 s),
+  never with a full meter (letting go would release the Champion) or with an enemy within
+  `DEFEND_Y` (it keeps firing under pressure).
+- **Calibration** (`cargo run -p lil-dudes-sim --example balance --release -- 3000 calibrate`:
+  human vs perfect, sides swapped every match): the human bot wins **31.9%** of the decisive
+  matches (Three Lanes 37.6%, Funnel 26.9%, Speed Comb 52.5%, Pipes 21.3%, Pillars 27.1%, Island
+  26.2%). Two perfect bots on one deal are near-identical (53% draws), so steady handicaps (pauses,
+  a late Champion) lose almost every decisive match, while variance (a second-best path, aim
+  error) wins some; the numbers above balance the two.
+- **`TUNE` is balanced on human vs human** (the runner's default mode), since players face the
+  human bot. For reference, perfect vs perfect on the same `TUNE`: 0.2% deaths, 59.2 s.
+
+**Balance** (`TUNE` re-tuned with `tools/balance/tune_layouts.py --deaths 7`, then hand-picked at
+the `wave_base` cliffs; 3,000 human-vs-human matches per layout)
+
+| # | Layout | `TUNE` v9 → v10 (F1 HP / wave, F2 HP / wave) | Deaths (F1 / F2 / Rush) | Caps | Length | F1 / F2 |
+|---|---|---|---|---|---|---|
+| 0 | Three Lanes | 411 / 6, 400 / 5 → **239 / 8, 320 / 4** | 6.3% (178 / 12 / 0) | 0 | 64.3 s | 19.9 / 33.2 s |
+| 1 | Funnel | 372 / 13, 372 / 5 → **312 / 5, 251 / 6** | 6.1% (3 / 170 / 9) | 0 | 65.5 s | 19.8 / 33.6 s |
+| 2 | Speed Comb | 273 / 10, 250 / 5 → **212 / 8, 290 / 2** | 5.8% (142 / 27 / 9) | 0 | 64.6 s | 20.5 / 32.5 s |
+| 3 | Pipes | 407 / 26, 330 / 14 → **260 / 11, 280 / 5** | 6.0% (137 / 75 / 0) | 0 | 65.1 s | 20.4 / 33.3 s |
+| 4 | Pillars | 403 / 7, 1,119 / 4 → **320 / 6, 705 / 4** | 4.2% (94 / 31 / 1) | 0 | 66.3 s | 21.7 / 32.3 s |
+| 5 | Island | 218 / 11, 423 / 5 → **178 / 8, 293 / 4** | 4.4% (127 / 10 / 0) | 0 | 64.1 s | 20.5 / 32.1 s |
+| | **All** | | **5.5%** | **0** | **65.0 s** | 20.4 / 32.8 s |
+
+- Draws 1.2%, the Rush brings 17% of the gold, biggest cohort 1,000.
+- Pillars sits at 4.2% because of its cliffs: Fight 1 `wave_base` 7 gives ~10.8%, and Fight 2
+  `wave_base` 5 gives ~37% at any HP.
+- The balance runner takes a mode: `human` (default), `perfect` or `calibrate`, and prints
+  `A win%` (bot A's share of the decisive matches: the human bot in `calibrate`, else side 0).
 
 ## Status (23 Nov, Kai): v5 built end to end
 
