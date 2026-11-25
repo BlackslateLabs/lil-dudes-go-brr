@@ -14,7 +14,7 @@ import {
   type PlayerStats,
 } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
-import { addFromWallet, disconnect, rename, useAccount } from '../live/account';
+import { addFromWallet, disconnect, moveGuest, rename, sweepGuest, useAccount, type Stuck } from '../live/account';
 import { myBurner, myName, SERVER } from '../live/device';
 import { loadFaucetPolicy, refreshBalance, short, topUpFor, useCountdown, useFaucet, useLive } from '../live/session';
 import { useApp } from '../store';
@@ -26,6 +26,9 @@ import './profile.css';
 import './account.css';
 
 const PAGE = 15;
+
+const GAME_INFO = "The wallet you play with. It's made from your wallet's signature, so connecting the same wallet on any device brings it back.";
+const GUEST_INFO = 'Lives in this browser only: clearing site data loses it. Connect a wallet to keep it on any device (needed to play for SOL).';
 
 type Burner = ReturnType<typeof myBurner>;
 type Key = Burner['publicKey'];
@@ -96,11 +99,26 @@ export function Profile() {
   const [connecting, setConnecting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const walletName = useAccount((a) => a.walletName);
+  const stuck = useAccount((a) => a.stuck);
+  const lost = useAccount((a) => a.lost);
+  const notice = useAccount((a) => a.notice);
 
   useEffect(() => {
     loadFaucetPolicy();
     void refreshBalance().then((b) => setRpcDown(b === null));
   }, [wallet]);
+
+  // Signed in: anything this browser's guest wallet still holds moves in (a no-op when empty).
+  useEffect(() => {
+    if (wallet) void sweepGuest();
+  }, [wallet]);
+
+  useEffect(() => {
+    if (notice && Date.now() - notice.at < 8000) say(notice.text, 4500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice]);
 
   useEffect(() => {
     if (!note) return;
@@ -108,9 +126,9 @@ export function Profile() {
     return () => clearTimeout(t);
   }, [note]);
 
-  const copy = () => {
+  const copy = (text: string) => {
     void navigator.clipboard
-      ?.writeText(address)
+      ?.writeText(text)
       .then(() => say('Address copied'))
       .catch(() => say("Couldn't copy: select it instead"));
   };
@@ -137,10 +155,10 @@ export function Profile() {
         <h2 className="lobby-title pf-title">Profile</h2>
       </header>
 
-      <section className="pf-card">
+      <section className="pf-card pf-acct">
         <div className="pf-who">
           <img src="/brand/head-you.webp" alt="" width={56} height={56} />
-          <div>
+          <div className="pf-who-main">
             {editing && wallet ? (
               <NameEdit
                 initial={accountName ?? ''}
@@ -150,51 +168,47 @@ export function Profile() {
                 }}
               />
             ) : (
-              <b className="pf-name">
-                {wallet ? (accountName ?? short(wallet)) : myName()}
-                <span className={`pf-tag ${wallet ? '' : 'guest'}`}>{wallet ? 'Account' : 'Guest'}</span>
+              <div className="pf-name-row">
+                <b className="pf-name">{wallet ? (accountName ?? short(wallet)) : myName()}</b>
                 {wallet && (
-                  <button className="pf-mini" onClick={() => setEditing(true)}>
-                    {accountName ? 'Rename' : 'Set a name'}
+                  <button className="pf-icon" aria-label="Rename" title="Rename" onClick={() => setEditing(true)}>
+                    <PencilIcon />
                   </button>
                 )}
-              </b>
-            )}
-            {wallet && (
-              <div className="pf-addr">
-                <small>Wallet</small>
-                <code title={wallet}>{short(wallet)}</code>
-                <a className="pf-mini" href={ACCOUNT_EXPLORER(wallet)} target="_blank" rel="noreferrer">
-                  ↗
-                </a>
               </div>
             )}
-            <div className="pf-addr">
-              {wallet && <small>Game wallet</small>}
-              <code title={address}>{short(address)}</code>
-              <button className="pf-mini" onClick={copy}>
-                Copy
-              </button>
-              <a className="pf-mini" href={ACCOUNT_EXPLORER(address)} target="_blank" rel="noreferrer">
-                View on explorer (devnet) ↗
-              </a>
-            </div>
+            <span className={`pf-tag ${wallet ? '' : 'guest'}`}>{wallet ? `Account${walletName ? ` · ${walletName}` : ''}` : 'Guest'}</span>
           </div>
         </div>
-        <div className="pf-balance">
-          <div>
-            <small>Balance · devnet</small>
-            <b>{balance === null ? (rpcDown ? '—' : '…') : `${sol(balance)} SOL`}</b>
-            {rpcDown && balance === null && <em>Can't reach Solana right now</em>}
-          </div>
-          <button className={`ls-topup ${cooldown ? 'cooling' : ''}`} onClick={() => void doTopUp()} disabled={topping || !!cooldown} title={cooldown ? 'Next free top-up' : undefined}>
-            {topping ? 'Topping up…' : cooldown ?? '+ Top up'}
-          </button>
-          {wallet && (
-            <button className="ls-topup" onClick={() => setAdding((a) => !a)}>
-              + From wallet
+
+        <dl className="pf-keys">
+          {wallet && <KeyRow label="Your wallet" address={wallet} onCopy={() => copy(wallet)} />}
+          <KeyRow
+            label={wallet ? 'Game wallet' : 'Guest wallet'}
+            address={address}
+            onCopy={() => copy(address)}
+            info={wallet ? GAME_INFO : GUEST_INFO}
+          />
+        </dl>
+
+        <div className="pf-bal">
+          <small>Game wallet · devnet</small>
+          <b>{balance === null ? (rpcDown ? '—' : '…') : `${sol(balance)} SOL`}</b>
+          {rpcDown && balance === null && <em>Can't reach Solana right now</em>}
+          <div className="pf-bal-actions">
+            {wallet ? (
+              <button className={`pf-act primary ${adding ? 'on' : ''}`} onClick={() => setAdding((x) => !x)}>
+                + Add from wallet
+              </button>
+            ) : (
+              <button className="pf-act primary" onClick={() => setConnecting(true)}>
+                Connect wallet
+              </button>
+            )}
+            <button className="pf-act" onClick={() => void doTopUp()} disabled={topping || !!cooldown} title={cooldown ? 'Free devnet SOL: once every 10 min' : undefined}>
+              {topping ? 'Topping up…' : cooldown ? `Top up in ${cooldown}` : 'Top up free'}
             </button>
-          )}
+          </div>
         </div>
         {wallet && adding && (
           <AddFromWallet
@@ -204,15 +218,15 @@ export function Profile() {
             }}
           />
         )}
-        {wallet ? (
-          <p className="pf-note">Your game wallet comes from your wallet's signature: connect the same wallet on any device to get it back.</p>
-        ) : (
-          <>
-            <p className="pf-note">A guest wallet that lives in this browser. Clearing site data loses it. Connect a wallet to keep it on any device (needed to play for SOL).</p>
-            <button className="big primary pf-connect" onClick={() => setConnecting(true)}>
-              Connect wallet
-            </button>
-          </>
+        {wallet && stuck && <StuckNote stuck={stuck} onMove={async () => say(await moveGuest(), 4500)} />}
+        {wallet && lost && (
+          <p className="pf-stuck">
+            {lost.walletName} signed differently this time, so your game wallet changed. Your previous one,{' '}
+            <a href={ACCOUNT_EXPLORER(lost.address)} target="_blank" rel="noreferrer">
+              {short(lost.address)} ↗
+            </a>
+            , isn&apos;t in this browser. Its matches stay in your account; if it holds SOL, connect from the browser you used before to move it.
+          </p>
         )}
       </section>
 
@@ -221,15 +235,32 @@ export function Profile() {
 
       {wallet && (
         <div className="pf-foot">
-          <button
-            className="link"
-            onClick={() => {
-              void disconnect();
-              say('Disconnected. Connect the same wallet to come back.');
-            }}
-          >
-            Disconnect wallet
-          </button>
+          {leaving ? (
+            <div className="pf-leave">
+              <p>
+                {balance ? `Your ${sol(balance)} SOL stays with this account. ` : ''}Connect {walletName ?? 'the same wallet'} again, on any device, to get it all back.
+              </p>
+              <div className="pf-leave-row">
+                <button
+                  className="pf-act"
+                  onClick={() => {
+                    setLeaving(false);
+                    void disconnect();
+                    say('Disconnected. Connect the same wallet to come back.');
+                  }}
+                >
+                  Disconnect
+                </button>
+                <button className="link" onClick={() => setLeaving(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="link" onClick={() => setLeaving(true)}>
+              Disconnect wallet
+            </button>
+          )}
         </div>
       )}
 
@@ -607,6 +638,80 @@ function AddFromWallet({ onDone }: { onDone: (t: string) => void }) {
         </button>
       </div>
       <small className="pf-muted">From your connected wallet, on devnet. Your wallet asks you to approve it.</small>
+    </div>
+  );
+}
+
+const PencilIcon = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <path d="M11.2 1.8a1.6 1.6 0 0 1 2.3 0l.7.7a1.6 1.6 0 0 1 0 2.3L6 13l-3.6.9.9-3.6z" fill="currentColor" />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M3 11V4a2 2 0 0 1 2-2h6" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+
+/** One address row: a muted label, the short address, copy and explorer buttons (and an optional "i"). */
+function KeyRow({ label, address, onCopy, info }: { label: string; address: string; onCopy: () => void; info?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pf-key">
+      <dt>
+        {label}
+        {info && (
+          <button className={`pf-i ${open ? 'on' : ''}`} aria-label={`About the ${label.toLowerCase()}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            i
+          </button>
+        )}
+      </dt>
+      <dd>
+        <code title={address}>{short(address)}</code>
+        <button className="pf-icon" aria-label="Copy address" title="Copy" onClick={onCopy}>
+          <CopyIcon />
+        </button>
+        <a className="pf-icon" href={ACCOUNT_EXPLORER(address)} target="_blank" rel="noreferrer" aria-label="View on the explorer (devnet)" title="Explorer (devnet)">
+          ↗
+        </a>
+      </dd>
+      {open && info && <p className="pf-pop">{info}</p>}
+    </div>
+  );
+}
+
+/** SOL that couldn't move into the account yet: say where it is, and offer to move it. */
+function StuckNote({ stuck, onMove }: { stuck: Stuck; onMove: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  if (stuck.from === 'other') {
+    return (
+      <p className="pf-stuck">
+        {sol(stuck.lamports)} SOL in this browser&apos;s guest wallet belongs to the account {short(stuck.owner ?? '')}, which connected here first. Connect
+        that wallet to move it.
+      </p>
+    );
+  }
+  return (
+    <div className="pf-stuck">
+      <span>
+        {stuck.lamports > 0 ? `${sol(stuck.lamports)} SOL is` : 'Some SOL is'} still in{' '}
+        {stuck.from === 'old' ? 'your previous game wallet' : 'this browser\u2019s guest wallet'}.
+      </span>
+      {stuck.from === 'guest' && (
+        <button
+          className="pf-act primary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onMove();
+            setBusy(false);
+          }}
+        >
+          {busy ? 'Moving…' : 'Move it'}
+        </button>
+      )}
     </div>
   );
 }
