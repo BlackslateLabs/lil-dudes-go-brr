@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FEE_BPS } from '@lil-dudes/client';
 import { haptic, sfx } from '../feel/sound';
+import { leave, rematch, useLive } from '../live/session';
+import { LiveProof } from './LiveProof';
 import { bestScore, isDemoResult, setBestScore, useApp, type LastMatch, type ScoreParts } from '../store';
 import { bpsLabel, signedSol, sol } from './format';
 import './flow.css';
@@ -77,6 +79,9 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 export function Result() {
   const go = useApp((s) => s.go);
   const m = useApp((s) => s.lastMatch);
+  // A live match: the settlement, balance, Verify and links come from live/session.
+  const live = useLive((s) => (s.phase === 'playing' || s.phase === 'ended') && !!s.source);
+  const liveBot = useLive((s) => !!s.opp?.bot);
 
   const rows = useMemo(() => (m ? rowsOf(m) : []), [m]);
   const tl = useMemo(() => timeline(rows.length), [rows.length]);
@@ -156,7 +161,7 @@ export function Result() {
     );
   }
 
-  const oppName = m.opponentIsBot ? 'Bot' : m.names[1];
+  const oppName = m.opponentIsBot || (live && liveBot) ? 'Bot' : m.names[1];
   const died = m.result.died === null ? null : m.result.died === me ? 'me' : 'them';
   const banner = died === 'me' ? 'OVERRUN' : died === 'them' ? 'THEY FELL' : won === null ? 'DRAW' : won ? 'YOU WIN' : 'YOU LOSE';
   const tone = won === null ? 'draw' : won ? 'win' : 'lose';
@@ -248,14 +253,17 @@ export function Result() {
       </section>
 
       <div className={`actions row2 reveal ${t >= tl.buttonsAt ? 'on' : ''}`}>
-        <button className="big primary" onClick={() => go('vs')}>
-          Rematch
+        <button className="big primary" onClick={() => (live ? void rematch() : go('vs'))}>
+          {live && liveBot ? 'Play again' : 'Rematch'}
         </button>
-        <button className="big" onClick={() => go('home')}>
+        <button className="big" onClick={() => (live ? leave() : go('home'))}>
           Home
         </button>
       </div>
 
+      {live ? (
+        <LiveProof on={t >= tl.proofAt} />
+      ) : (
       <section className={`proof-row reveal ${t >= tl.proofAt ? 'on' : ''}`}>
         <button className="big" disabled title="Needs the revealed VRF seed from the chain">
           Verify
@@ -269,6 +277,7 @@ export function Result() {
           </a>
         </div>
       </section>
+      )}
 
       {!done && <p className="skip-hint">tap to skip</p>}
       {gain && payOn && !skipped.current && !reducedMotion() && <CoinShower />}
