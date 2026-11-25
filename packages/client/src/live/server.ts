@@ -178,10 +178,10 @@ export interface QueueStats {
 }
 
 /** Who's waiting where. `stake` adds `here` and `near`; `player` leaves the caller out. */
-export async function queueStats(server: string, opts: { stake?: number; player?: PublicKey } = {}, signal?: AbortSignal): Promise<QueueStats> {
+export async function queueStats(server: string, opts: { stake?: number; player?: PublicKey | string } = {}, signal?: AbortSignal): Promise<QueueStats> {
   const q = new URLSearchParams();
   if (opts.stake !== undefined) q.set('stake', String(opts.stake));
-  if (opts.player) q.set('player', opts.player.toBase58());
+  if (opts.player) q.set('player', typeof opts.player === 'string' ? opts.player : opts.player.toBase58());
   return call<QueueStats>(server, 'GET', `/queue/stats${q.toString() ? `?${q}` : ''}`, undefined, signal);
 }
 
