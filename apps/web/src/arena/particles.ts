@@ -326,7 +326,6 @@ const STAR = new Color('#ffd84a');
 const CHAMP_PURPLE = new Color('#8a5cff');
 const CHAMP_GOLD = new Color('#ffc21a');
 const TROOP_RED = new Color('#ff4a5a');
-const TROOP_DARK = new Color('#ffb0a0');
 const PUFF = new Color('#fffaf0');
 const GATE_DUST = new Color('#e9dfd2');
 
@@ -376,8 +375,9 @@ export const pop = {
    */
   giant(px: Particles, x: number, z: number, team: number, last: boolean) {
     const g = last ? 1.3 : 1;
+    // Ours purple and gold; the base's Champion (SPEC_V5 §16) red and gold.
     const a = team ? TROOP_RED : CHAMP_PURPLE;
-    const b = team ? TROOP_DARK : CHAMP_GOLD;
+    const b = CHAMP_GOLD;
     // Flash.
     px.glow.emit(Frame.Burst, x, 2.2, z + 0.3, 0, 0, 0, 0, 0, 0.2, 4.2 * g, 1.5, a.r * 2, a.g * 2, a.b * 2, 0.9, rand(0, 6.28), 0, 0, false);
     px.glow.emit(Frame.Burst, x, 2.4, z + 0.4, 0, 0, 0, 0, 0, 0.14, 2.6 * g, 1.3, b.r * 2.2, b.g * 2.2, b.b * 2.2, 0.9, rand(0, 6.28), 0, 0, false);

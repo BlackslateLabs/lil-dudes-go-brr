@@ -11,6 +11,8 @@ const END_HOLD_MS = 2400;
 const DANGER_Y = LANE_LENGTH * 0.25;
 /** The danger cue repeats at most this often. */
 const DANGER_COOLDOWN_MS = 2000;
+/** One ENEMY CHAMPION! stamp per wave (a wave from two towers brings two at once). */
+const FOE_CHAMP_COOLDOWN_MS = 1500;
 
 /** Length of the post-breach clock: the Rush (`RUSH_TICKS` = 70, 3.5 s). */
 export const RUSH_LEN: number = RUSH_TICKS;
@@ -77,6 +79,9 @@ export function useMatchHud(feed: MatchFeed) {
     const banner = (text: string, tone: 'good' | 'bad' | 'gold') => hud.set({ banner: { text, tone, at: performance.now() } });
     // Fights cleared per side (indexed by Side), for the race toasts; null until the first view.
     let clearedBy: [number, number] | null = null;
+    // Enemy giants ("enemy Champions", SPEC_V5 §16) already called out, by cohort id.
+    const foeChamps = new Set<number>();
+    let lastFoeChamp = -Infinity;
 
     /** TIME!: the Rush clock ran out (or the 3:00 cap). Once per match. */
     const stampTime = () => {
@@ -124,6 +129,18 @@ export function useMatchHud(feed: MatchFeed) {
         if (danger && now - lastDanger >= DANGER_COOLDOWN_MS) {
           lastDanger = now;
           sfx.danger();
+        }
+      }
+
+      // An enemy Champion (a giant cohort) just left a tower in my lane: stamp it once.
+      for (const c of a.enemies) {
+        if (!c.giant || foeChamps.has(c.id)) continue;
+        foeChamps.add(c.id);
+        if (alive && now - lastFoeChamp >= FOE_CHAMP_COOLDOWN_MS && s.breachAt === null) {
+          lastFoeChamp = now;
+          banner('ENEMY CHAMPION!', 'bad');
+          sfx.danger();
+          haptic('big');
         }
       }
 
