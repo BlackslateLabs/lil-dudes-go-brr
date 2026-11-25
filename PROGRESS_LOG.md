@@ -1847,3 +1847,26 @@ deposit popups. The derived-key phishing caveat is in README Limits.
 **Blocked / risks:** not tried with real wallet extensions or a real devnet sweep yet.
 
 **Next / handoff (Kai):** review the packages/client additions (CONTRACT).
+
+## 2026-11-25 20:32 IST · Suparno · Settings; any-stake Quick Match · [CONTRACT]
+**Did:**
+- Web Settings:
+  - a gear on Home with sound on/off, music and effects volume (saved on the device), vibration, and links (How to
+    play, About, Credits, Source, Report a bug);
+  - Home's footer moved into Settings;
+  - the in-match cog uses the same sound controls.
+- Quick Match, any stake against any stake: a staked ticket pairs with any other staked ticket (closest pick, then
+  longest wait), and both play for the LOWER pick.
+  - The server puts it in the matched ticket's `stake`, plus `picked` = your own; the client's `QueueTicket.picked`
+    is additive.
+  - Both create and join at that amount, so nothing extra is locked. Free pairs with free (the bot after ~5 s).
+  - Server tests 35/35.
+
+**Decided:**
+- Suparno: any-vs-any matching at the lower stake (the side-pot rule: you can only win what you risk).
+- Payout stays as SPEC_V5 §7 (winner keeps their stake + 2 × margin of the loser's; 5% of what moves to TREASURY).
+  A score-ratio split would be a program change and a redeploy; not now.
+
+**Blocked / risks:** none. No program change or redeploy needed.
+
+**Next / handoff:** none. Deploy: merge #14, then redeploy Render (server) and Vercel.
