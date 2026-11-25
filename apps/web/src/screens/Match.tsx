@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
-import { setBattleDuck, setSoundEnabled, soundEnabled } from '../feel/sound';
+import { setBattleDuck } from '../feel/sound';
 import { useHud } from '../hud';
 import { ChampionMeter } from '../match/ChampionMeter';
 import { EndSequence, GradText } from '../match/EndSequence';
@@ -14,14 +14,13 @@ import { isBreach, useMatchHud } from '../match/useMatchHud';
 import { clearSeed, peekSeed } from '../match/nextSeed';
 import { liveMatchSource } from '../live/session';
 import { LiveBadge } from './LiveBadge';
+import { SoundControls } from './Settings';
 import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
 const DRAG_SPAN = 0.7;
 const STAGE_LABELS = Array.from({ length: STAGES }, (_, i) => `Fight ${i + 1}`);
-/** The vibration preference (read by `haptic()` in feel/sound.ts): 'on' (default) or 'off'. */
-const VIBE_KEY = 'ldgb.vibe';
 /** "Done! Waiting…" waits until the TIME! stamp has had its moment. */
 const TIME_STAMP_MS = 2200;
 
@@ -242,22 +241,6 @@ function ThumbControls({ feed }: { feed: MatchFeed }) {
   );
 }
 
-function readVibe(): boolean {
-  try {
-    return localStorage.getItem(VIBE_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-function writeVibe(on: boolean) {
-  try {
-    localStorage.setItem(VIBE_KEY, on ? 'on' : 'off');
-  } catch {
-    /* private mode: the toggle still works for this screen */
-  }
-}
-
 /**
  * The cog (no pause in PvP, SPEC v5 §8): sound, vibration, and "Leave match (forfeit)" behind an
  * in-page confirm. The match keeps running while the sheet is open.
@@ -265,8 +248,6 @@ function writeVibe(on: boolean) {
 function CogMenu() {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [sound, setSound] = useState(soundEnabled());
-  const [vibe, setVibe] = useState(readVibe());
   const stake = useHud((s) => s.stake);
   const close = () => {
     setOpen(false);
@@ -284,26 +265,7 @@ function CogMenu() {
               <>
                 <h3>Menu</h3>
                 <p className="cog-note">The match keeps going.</p>
-                <button
-                  className={`cog-row ${sound ? 'on' : ''}`}
-                  onClick={() => {
-                    setSoundEnabled(!sound);
-                    setSound(!sound);
-                  }}
-                >
-                  <span>Sound</span>
-                  <i>{sound ? 'On' : 'Off'}</i>
-                </button>
-                <button
-                  className={`cog-row ${vibe ? 'on' : ''}`}
-                  onClick={() => {
-                    writeVibe(!vibe);
-                    setVibe(!vibe);
-                  }}
-                >
-                  <span>Vibration</span>
-                  <i>{vibe ? 'On' : 'Off'}</i>
-                </button>
+                <SoundControls />
                 <button className="cog-leave" onClick={() => setConfirming(true)}>
                   Leave match (forfeit)
                 </button>
