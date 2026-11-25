@@ -1,31 +1,14 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
 import { sfx, unlockSound } from '../feel/sound';
-import { signedIn, sweepGuest, useAccount } from '../live/account';
-import { hasBurner } from '../live/device';
-import {
-  checkResume,
-  faucetCovers,
-  hostRoom,
-  loadFaucetPolicy,
-  lookupRoom,
-  needFor,
-  quickMatch,
-  recoverStale,
-  refreshBalance,
-  resume,
-  short,
-  topUpFor,
-  useCountdown,
-  useFaucet,
-  useLive,
-  useWhosAround,
-} from '../live/session';
+import { signedIn, useAccount } from '../live/accountStore';
+import { checkResume, hostRoom, lookupRoom, prefetchLive, quickMatch, recoverStale, refreshBalance, resume, sweepGuest, topUpFor } from '../live/actions';
+import { hasStoredKey as hasBurner } from '../live/storage';
+import { faucetCovers, loadFaucetPolicy, needFor, short, useCountdown, useFaucet, useLive, useWhosAround } from '../live/store';
 import { useFeed } from '../match/useFeed';
 import { setTutorialDone, tutorialDone, useApp } from '../store';
-import { AccountSheet } from './AccountSheet';
 import { FriendSheet } from './FriendSheet';
 import { StakePicker, checkStake } from './StakePicker';
 import { SettingsSheet } from './Settings';
@@ -34,6 +17,9 @@ import { sol } from './format';
 import './flow.css';
 import './live.css';
 import './profile.css';
+
+// The wallet sheet needs the live code: it loads when it opens (prefetched once Home is idle).
+const AccountSheet = lazy(() => import('./AccountSheet').then((m) => ({ default: m.AccountSheet })));
 
 const NOTE_MS = 2600;
 /** Refused top-ups and other errors stay up longer (they say when to try again). */
@@ -105,15 +91,21 @@ export function Home() {
     return () => clearTimeout(t);
   }, [note]);
 
+  // The live code (Solana, wallets) loads after the arena's models, at idle: the first screen and
+  // the offline bot match never wait for it, and FIND MATCH finds it already there.
+  useEffect(() => {
+    if (bgReady) prefetchLive();
+  }, [bgReady]);
+
   // A reloaded tab (or one left mid-match): offer to go back (this device's match, else /me).
   useEffect(() => {
-    void checkResume();
-  }, []);
+    if (bgReady) void checkResume();
+  }, [bgReady]);
 
   // The burner is made on first live use; once it exists, show its balance and refund anything a
   // crashed tab left behind (MVP §4).
   useEffect(() => {
-    if (!unlocked) return;
+    if (!unlocked || !bgReady) return;
     loadFaucetPolicy();
     const had = hasBurner();
     void refreshBalance();
@@ -125,7 +117,7 @@ export function Home() {
         .finally(() => {
           if (signedIn()) void sweepGuest();
         });
-  }, [unlocked]);
+  }, [unlocked, bgReady]);
 
   // "Moved 0.17 SOL from this browser into your account" (and other account notices).
   const notice = useAccount((a) => a.notice);
@@ -295,18 +287,20 @@ export function Home() {
       )}
 
       {sheet === 'account' && (
+<Suspense fallback={null}>
         <AccountSheet
-          onClose={() => {
-            setSheet(null);
-            setThen(null);
-          }}
-          onDone={() => {
-            const next = then;
-            setThen(null);
-            setSheet(null);
-            next?.();
-          }}
-        />
+            onClose={() => {
+              setSheet(null);
+              setThen(null);
+            }}
+            onDone={() => {
+              const next = then;
+              setThen(null);
+              setSheet(null);
+              next?.();
+            }}
+          />
+        </Suspense>
       )}
 
       {sheet === 'friend' && (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { STAKE_MIN, maxStake, stakeOnChain } from '@lil-dudes/client';
-import { clock, useFaucet } from '../live/session';
+import { clock, useFaucet } from '../live/store';
 import { STAKE_PRESETS, useApp } from '../store';
 import { sol } from './format';
 import './live.css';

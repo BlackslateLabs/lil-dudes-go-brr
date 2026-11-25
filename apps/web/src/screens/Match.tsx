@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { LANE_WIDTH, MATCH_TICKS, OfflineSource, PLANT_TICKS, STAGES, TICKS_PER_SEC } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
@@ -12,12 +12,14 @@ import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
 import { isBreach, useMatchHud } from '../match/useMatchHud';
 import { clearSeed, peekSeed } from '../match/nextSeed';
-import { liveMatchSource, useLive } from '../live/session';
+import { liveMatchSource, useLive } from '../live/store';
 import { LiveBadge } from './LiveBadge';
-import { PeekSheet } from './PeekConsole';
 import { SoundControls } from './Settings';
 import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
+
+/** The try-to-cheat console (live matches only): loaded on demand, it pulls the Solana client. */
+const PeekSheet = lazy(() => import('./PeekConsole').then((m) => ({ default: m.PeekSheet })));
 
 /** Finger travel (fraction of screen width) that sweeps the cannon across the whole lane. */
 const DRAG_SPAN = 0.7;
@@ -262,7 +264,11 @@ function CogMenu() {
       <button className="cog" onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(true)} title="Menu" aria-label="Menu">
         ⚙
       </button>
-      {peek && live && <PeekSheet src={live} onClose={() => setPeek(false)} />}
+      {peek && live && (
+        <Suspense fallback={null}>
+          <PeekSheet src={live} onClose={() => setPeek(false)} />
+        </Suspense>
+      )}
       {open && (
         <div className="cog-veil" onPointerDown={(e) => e.stopPropagation()} onClick={close}>
           <div className="cog-sheet" role="dialog" aria-label="Match menu" onClick={(e) => e.stopPropagation()}>

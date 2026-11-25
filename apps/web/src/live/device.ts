@@ -2,29 +2,10 @@
 // §3.1), the player's name, the TEE session token, the match to rejoin after a reload, and the
 // one-tab-at-a-time lock. Everything in localStorage is guarded (private windows can throw).
 import { BURNER_KEY, deviceBurner, teeToken, type KeyStore } from '@lil-dudes/client';
+import { read, SERVER, write } from './storage';
 
-/** The matchmaking server (apps/server). `VITE_SERVER_URL` in production; in dev the same host on
- *  :8787, so a phone on the LAN reaches `pnpm dev:server` on the laptop. */
-export const SERVER: string =
-  (import.meta.env.VITE_SERVER_URL as string | undefined)?.replace(/\/$/, '') ??
-  `${window.location.protocol}//${window.location.hostname}:8787`;
-
-export function read(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-export function write(key: string, value: string | null) {
-  try {
-    if (value === null) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, value);
-  } catch {
-    /* storage blocked */
-  }
-}
+// The server URL and storage helpers live in ./storage (light); re-exported for the live code.
+export { read, SERVER, write };
 
 const store: KeyStore = { getItem: read, setItem: (k, v) => write(k, v) };
 

@@ -1,14 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { playMusic, setBattleDuck } from './feel/sound';
 import { useApp, type Screen } from './store';
-import { lookupRoom } from './live/session';
+import { lookupRoom } from './live/actions';
 import { Home } from './screens/Home';
-import { Lobby } from './screens/Lobby';
 import { Match } from './screens/Match';
-import { Profile } from './screens/Profile';
 import { Result } from './screens/Result';
 import { VsScreen } from './screens/Vs';
 import { Wipe } from './screens/Wipe';
+
+// The live screens load with the live code (Solana, wallets): never on the first screen.
+const Lobby = lazy(() => import('./screens/Lobby').then((m) => ({ default: m.Lobby })));
+const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
 
 type Track = Parameters<typeof playMusic>[0];
 
@@ -53,11 +55,11 @@ export function App() {
   return (
     <div className="frame">
       {screen === 'home' && <Home />}
-      {screen === 'lobby' && <Lobby />}
+      <Suspense fallback={null}>{screen === 'lobby' && <Lobby />}</Suspense>
       {screen === 'vs' && <VsScreen />}
       {screen === 'match' && <Match />}
       {screen === 'result' && <Result />}
-      {screen === 'profile' && <Profile />}
+      <Suspense fallback={null}>{screen === 'profile' && <Profile />}</Suspense>
       <Wipe />
     </div>
   );

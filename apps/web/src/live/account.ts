@@ -12,7 +12,6 @@
 // - `ldgb.retiredKeys`: { wallet: key } game keys of accounts that disconnected here, so a wallet
 //   whose signature changed (a new game key) still gets its old SOL swept across.
 // No wallet secret is ever stored.
-import { create } from 'zustand';
 import {
   accountProfile,
   baseConnection,
@@ -38,9 +37,9 @@ import {
 } from '@lil-dudes/client';
 import { sol } from '../screens/format';
 import { guestBurner, myBurner, read, savedMatch, SERVER, setAccountKey, setAccountName, write } from './device';
+import { ACCOUNT_KEY } from './storage';
 import { refreshBalance, syncCooldown, useLive } from './session';
 
-const ACCOUNT_KEY = 'ldgb.account';
 const GUEST_OWNER = 'ldgb.guestOwner';
 const GUEST_MERGED = 'ldgb.guestMerged';
 const RETIRED = 'ldgb.retiredKeys';
@@ -52,50 +51,15 @@ interface Cached {
   key: string;
 }
 
-/** Where the connect flow is: which popup the player is looking at. */
-export type ConnectStep = 'connect' | 'derive' | 'link' | 'move';
+import { useAccount, type AccountState } from './accountStore';
 
-/** SOL that couldn't move into the account yet (shown in Profile with a way to act on it). */
-export interface Stuck {
-  lamports: number;
-  /** guest: this browser's guest wallet (Move it); other: it belongs to another account; old: an older game key. */
-  from: 'guest' | 'other' | 'old';
-  address: string;
-  /** For `other`: the account (wallet) that owns this browser's guest wallet. */
-  owner?: string;
-}
+// The store and its types live in ./accountStore (light); re-exported for the screens.
+export { signedIn, useAccount } from './accountStore';
+export type { AccountState, ConnectStep, Stuck } from './accountStore';
 
-export interface AccountState {
-  /** The connected account's wallet address (null = guest). */
-  wallet: string | null;
-  walletName: string | null;
-  name: string | null;
-  profile: AccountProfile | null;
-  step: ConnectStep | null;
-  error: string | null;
-  stuck: Stuck | null;
-  /** An older game key of this wallet that isn't cached here: shown so its SOL never silently vanishes. */
-  lost: { address: string; walletName: string } | null;
-  /** "Moved 0.17 SOL…": a toast for whichever screen is up. */
-  notice: { text: string; at: number } | null;
-}
-
-export const useAccount = create<AccountState>(() => ({
-  wallet: null,
-  walletName: null,
-  name: null,
-  profile: null,
-  step: null,
-  error: null,
-  stuck: null,
-  lost: null,
-  notice: null,
-}));
 const set = (p: Partial<AccountState>) => useAccount.setState(p);
 const say = (text: string) => set({ notice: { text, at: Date.now() } });
 
-/** Signed in with a wallet? (Staked play needs it.) */
-export const signedIn = (): boolean => useAccount.getState().wallet !== null;
 
 const shortAddr = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
