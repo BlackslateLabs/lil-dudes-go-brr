@@ -1738,3 +1738,20 @@ bench and your call. If it's a no, close it.
 **Next / handoff (Kai, small):** `@lil-dudes/client` doesn't export `PublicKey` or an address parser, so Profile
 builds the destination key from the burner key's own class after a base58 check. A `parseAddress` (or `PublicKey`)
 export would be cleaner; no rush.
+
+## 2026-11-25 13:31 IST · Suparno · web: arcade landing, tutorial bubbles removed
+**Did:**
+- **Landing page (`/`) is now an arcade cabinet in attract mode** (`index.html`, `src/landing/arcade.{css,ts}`).
+  The CRT loops a 25 s bot-vs-bot match recorded from the game (`public/arcade/attract.mp4`, 1.4 MB, not
+  precached), then the title, then a four-line how to play. The deck's 1P / 2P START buttons open `/play/`. Two
+  stickers (fair play, stakes) sit below on phones and beside it on desktop. Credits uses the same look. New font:
+  Press Start 2P (OFL, unmodified; credited).
+- **The tutorial's to-do bubbles are gone** (Suparno: they got in the way). The first bot match keeps the one
+  "same lane" cut-in.
+
+**Decided:** arcade attract mode over the four other landing ideas (Suparno's pick).
+
+**Blocked / risks:** none.
+
+**Next / handoff:** none for Kai. To refresh the attract video after a visual change, re-record with
+`?screen=match&autoplay=1&seed=3` (CDP virtual time, 15 fps) and crop the HUD (`crop=540:690:0:70`).
