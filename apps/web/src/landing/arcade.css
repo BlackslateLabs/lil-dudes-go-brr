@@ -1,0 +1,832 @@
+/* Landing (/) and credits (/credits/): an arcade cabinet in a dark room. The cabinet wears the
+   logo's face-off (blue left, red right); the screen runs attract mode; the deck's 1P / 2P START
+   buttons are the call to action. Mobile first: the whole cabinet fits the first screen. */
+
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lilita One';
+  src: url('/fonts/LilitaOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-Latin-Variable.woff2') format('woff2');
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+:root {
+  --room: #17122e;
+  --floor: #211a42;
+  --ink: #1b1530;
+  --cream: #fff6e8;
+  --peach: #ffd9a0;
+  --me: #2a7bff;
+  --me-dark: #1550c9;
+  --them: #f2404f;
+  --them-dark: #b21f34;
+  --gold: #ffc21a;
+  --gold-light: #ffe27a;
+  --gold-dark: #e08600;
+  --mint: #36d08f;
+  --lilac: #cfc6ff;
+  --px: 'Press Start 2P', ui-monospace, monospace;
+  --display: 'Lilita One', 'Arial Black', sans-serif;
+  --ui: 'Baloo 2', system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--room);
+  color: #fff;
+  font-family: var(--ui);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.px {
+  font-family: var(--px);
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+/* ---------- The room ---------- */
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 100svh;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+/* The floor, and a soft overhead light on the cabinet. */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 22%;
+  background: var(--floor);
+  border-top: 3px solid #2c2457;
+  z-index: -1;
+}
+
+.stage::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: min(900px, 160vw);
+  height: 100%;
+  transform: translateX(-50%);
+  background: radial-gradient(50% 60% at 50% 30%, #ffffff12, #ffffff00 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ---------- Cabinet ---------- */
+.cab {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: min(100%, 440px);
+  height: calc(100svh - 64px);
+  min-height: 540px;
+  max-height: 900px;
+  padding: 10px 10px 0;
+  border: 4px solid var(--ink);
+  border-bottom: 0;
+  border-radius: 26px 26px 8px 8px;
+  background:
+    linear-gradient(#ffffff26, #ffffff00 40%),
+    linear-gradient(90deg, var(--me) 0 50%, var(--them) 50% 100%);
+  box-shadow:
+    inset 0 4px 0 #ffffff40,
+    inset 6px 0 0 #00000022,
+    inset -6px 0 0 #00000022,
+    0 24px 40px #0008;
+}
+
+.marquee {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: clamp(86px, 15svh, 132px);
+  padding: 6px 10px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background:
+    radial-gradient(80% 120% at 50% 0%, #fffbe6, #fffbe600 70%),
+    linear-gradient(var(--gold-light), var(--gold) 70%, var(--gold-dark));
+  box-shadow: inset 0 -5px 0 #0002, 0 4px 0 var(--ink);
+}
+
+.marquee img {
+  width: auto;
+  height: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 0 #1b153044);
+}
+
+.bezel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  background: linear-gradient(#2c2350, #1d1638);
+  box-shadow: inset 0 3px 0 #ffffff18;
+}
+
+.crt {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 16px / 20px;
+  background: #050310;
+  box-shadow: 0 0 0 3px #0b0818;
+}
+
+.demo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 40%;
+}
+
+/* Scanlines and a darker rim, like glass. */
+.scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(#0000 0 2px, #00000038 2px 3px),
+    radial-gradient(120% 90% at 50% 50%, #0000 60%, #0008 100%);
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 18px;
+  background: #0c0920eb;
+  opacity: 0;
+  transition: opacity 0.35s steps(4);
+}
+
+.crt[data-slide='title'] .slide-title,
+.crt[data-slide='how'] .slide-how {
+  opacity: 1;
+}
+
+.slide-title img {
+  width: min(78%, 300px);
+}
+
+.slide-title p {
+  margin: 0;
+  font-size: 10px;
+  color: var(--lilac);
+}
+
+.how-head {
+  margin: 0;
+  font-size: 13px;
+  color: var(--gold);
+}
+
+.how-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: how;
+  font-size: 9.5px;
+  line-height: 1.6;
+  color: #fff;
+}
+
+.how-list li {
+  counter-increment: how;
+  display: grid;
+  grid-template-columns: 2.2em minmax(0, 1fr);
+}
+
+.how-list li::before {
+  content: counter(how) '.';
+  color: var(--lilac);
+}
+
+.how-list b {
+  font-weight: 400;
+  color: var(--gold-light);
+}
+
+.crt-credit,
+.demo-tag {
+  position: absolute;
+  top: 10px;
+  font-size: 9px;
+}
+
+.crt-credit {
+  right: 12px;
+  color: var(--gold-light);
+}
+
+.demo-tag {
+  left: 12px;
+  padding: 3px 5px 2px;
+  background: var(--them);
+  border: 2px solid var(--ink);
+  text-shadow: none;
+  transition: opacity 0.2s;
+}
+
+.crt:not([data-slide='demo']) .demo-tag {
+  opacity: 0;
+}
+
+.press {
+  position: absolute;
+  left: 50%;
+  bottom: 7%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--gold);
+  text-decoration: none;
+  white-space: nowrap;
+  animation: blink 1.1s steps(2, start) infinite;
+}
+
+.press:hover,
+.press:focus-visible {
+  animation: none;
+  color: #fff;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* ---------- Control deck ---------- */
+.deck {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 112px;
+  margin: 0 -4px;
+  padding: 10px 22px 8px;
+  border: 3px solid var(--ink);
+  border-radius: 16px 16px 6px 6px;
+  background: linear-gradient(var(--cream), var(--peach));
+  box-shadow: inset 0 4px 0 #ffffffa0, 0 5px 0 var(--ink);
+  transform: perspective(520px) rotateX(14deg);
+  transform-origin: 50% 100%;
+}
+
+.stick {
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: radial-gradient(#3a3060, #1b1530);
+  box-shadow: inset 0 -4px 0 #0006;
+}
+
+.stick i {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 8px;
+  height: 34px;
+  margin-left: -4px;
+  border-radius: 4px;
+  background: #cfcfe0;
+  border: 2px solid var(--ink);
+  transform-origin: 50% 100%;
+  animation: wiggle 3.2s ease-in-out infinite;
+}
+
+.stick i::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -18px;
+  width: 30px;
+  height: 30px;
+  margin-left: -15px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: radial-gradient(circle at 35% 30%, #ff9aa4, var(--them) 60%, var(--them-dark));
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20% {
+    transform: rotate(-18deg);
+  }
+  40% {
+    transform: rotate(14deg);
+  }
+  60% {
+    transform: rotate(-8deg);
+  }
+}
+
+.abtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  border: 4px solid var(--ink);
+  font-family: var(--display);
+  font-size: 22px;
+  color: #fff;
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+  box-shadow: inset 0 5px 0 #ffffff70, inset 0 -6px 0 #0003, 0 6px 0 var(--ink);
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s;
+}
+
+.p1 .cap {
+  background: radial-gradient(circle at 40% 30%, var(--gold-light), var(--gold) 55%, var(--gold-dark));
+}
+
+.p2 .cap {
+  width: 56px;
+  height: 56px;
+  font-size: 19px;
+  background: radial-gradient(circle at 40% 30%, #9fc4ff, var(--me) 60%, var(--me-dark));
+}
+
+/* The one bright moment: 1P START pulses a ring, like a lit button waiting. */
+.p1 .cap::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 3px solid var(--gold);
+  animation: ring 1.4s ease-out infinite;
+}
+
+@keyframes ring {
+  from {
+    transform: scale(0.85);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.abtn:active .cap,
+body.starting .p1 .cap {
+  transform: translateY(5px);
+  box-shadow: inset 0 5px 0 #ffffff70, inset 0 -6px 0 #0003, 0 1px 0 var(--ink);
+}
+
+.abtn:focus-visible {
+  outline: none;
+}
+
+.abtn:focus-visible .cap {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+
+.lbl {
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.deck .abtn:first-of-type {
+  margin-left: auto;
+}
+
+/* ---------- Coin door ---------- */
+.door {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin: 0 -10px;
+  padding: 10px 12px 12px;
+  border-top: 3px solid var(--ink);
+  background: #241c48;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px 5px;
+  border: 2px solid #0b0818;
+  border-radius: 6px;
+  background: #2f2660;
+  font-family: var(--px);
+  font-size: 8px;
+  color: #ffcf6b;
+}
+
+.slot i {
+  width: 5px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(#ffb347, #ff7a00);
+  box-shadow: 0 0 0 2px #0b0818;
+}
+
+.down {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--lilac);
+  text-decoration: none;
+}
+
+.down:hover {
+  color: #fff;
+}
+
+/* ---------- Stickers below ---------- */
+.stickers {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 26px 0 30px;
+}
+
+.sticker {
+  padding: 16px 18px 18px;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 0 5px 0 #0b0818;
+  transform: rotate(-0.8deg);
+}
+
+.sticker-gold {
+  background: var(--gold-light);
+  transform: rotate(0.8deg);
+}
+
+.sticker h2 {
+  margin: 0 0 6px;
+  font-family: var(--px);
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.sticker p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 15.5px;
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .stickers {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Desktop: the stickers hang on the wall either side of the cabinet, like posters. */
+@media (min-width: 1100px) {
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px minmax(0, 1fr);
+    column-gap: 56px;
+    align-items: center;
+    justify-content: stretch;
+  }
+
+  .cab {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .down {
+    display: none;
+  }
+
+  .stickers {
+    display: contents;
+  }
+
+  .sticker {
+    grid-row: 1;
+    max-width: 300px;
+    align-self: center;
+    margin-top: -12vh;
+  }
+
+  .sticker:first-child {
+    grid-column: 1;
+    justify-self: end;
+    transform: rotate(-3deg);
+  }
+
+  .sticker:last-child {
+    grid-column: 3;
+    justify-self: start;
+    transform: rotate(2.5deg);
+  }
+}
+
+/* ---------- Footer ---------- */
+.foot {
+  display: grid;
+  gap: 6px;
+  padding: 20px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  border-top: 3px solid #2c2457;
+  background: #120e25;
+  color: #a79fd6;
+  font-size: 14px;
+}
+
+.foot p {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 880px;
+}
+
+.foot a {
+  color: #fff;
+  font-weight: 800;
+  text-underline-offset: 3px;
+}
+
+.foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* ---------- Short or narrow screens ---------- */
+@media (max-height: 700px) {
+  .door {
+    display: none;
+  }
+
+  .cab {
+    border-radius: 22px 22px 6px 6px;
+    padding-bottom: 10px;
+    border-bottom: 4px solid var(--ink);
+    border-radius: 22px;
+  }
+
+  .deck {
+    height: 96px;
+  }
+
+  .cap {
+    width: 56px;
+    height: 56px;
+  }
+
+  .p2 .cap {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 360px) {
+  .deck {
+    padding-inline: 14px;
+  }
+
+  .stick {
+    display: none;
+  }
+
+  .deck .abtn:first-of-type {
+    margin-left: 0;
+  }
+
+  .deck {
+    justify-content: space-evenly;
+  }
+}
+
+/* ---------- Credits page (same room, sticker cards) ---------- */
+.nav {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  background: #17122ef0;
+  border-bottom: 3px solid #2c2457;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-size: 19px;
+  text-decoration: none;
+}
+
+.nav-play {
+  font-family: var(--px);
+  font-size: 10px;
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.page .wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left));
+}
+
+.page h1 {
+  margin: 0;
+  font-family: var(--px);
+  font-weight: 400;
+  font-size: clamp(18px, 4vw, 24px);
+  color: var(--gold);
+}
+
+.page h2 {
+  margin: 30px 0 12px;
+  font-family: var(--px);
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--lilac);
+}
+
+.lead {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  color: #d9d2ff;
+}
+
+.text-link {
+  font-weight: 800;
+}
+
+.people,
+.credits {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+@media (min-width: 640px) {
+  .people,
+  .credits {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.people > div,
+.credit {
+  padding: 12px 14px 13px;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 0 4px 0 #0b0818;
+}
+
+.people dt {
+  font-family: var(--display);
+  font-size: 19px;
+}
+
+.people dd {
+  margin: 0;
+}
+
+.credit h3 {
+  margin: 0 0 4px;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.credit p {
+  margin: 0;
+  font-size: 15px;
+}
+
+.credit .meta {
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: #5a5280;
+}
+
+.credit a,
+.people a {
+  color: var(--me-dark);
+  font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .press,
+  .stick i,
+  .p1 .cap::after {
+    animation: none;
+  }
+
+  .slide {
+    transition: none;
+  }
+}

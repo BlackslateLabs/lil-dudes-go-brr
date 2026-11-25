@@ -15,11 +15,12 @@ Nothing copied from any existing game.
 | Asset | Used for | Source (URL) | Author | Licence |
 |---|---|---|---|---|
 | Logo, mascot, app icons and link-preview card (`public/brand/logo.webp`, `public/brand/og.png`, `public/icon*.png`, `public/favicon.svg`, `public/apple-touch-icon.png`) | Home logo, screen wipe, PWA and favicon | drawn in code by us | ours | — |
-| Gameplay still (`public/brand/shot-match.webp`) | Landing page phone mock-up | captured from our own game | ours | — |
+| Attract-mode footage (`public/arcade/attract.mp4`, `attract.jpg`) | The landing page's arcade screen | recorded from our own game (bot vs bot) | ours | — |
 | Mascot heads (`public/brand/head-you.webp`, `head-bot.webp`, `head-rival.webp`: the blue knight, the red Base Bot robot, the knight in team red) | VS screen avatars | drawn in code by us (same vector mascots as the logo) | ours | — |
 | Luckiest Guy (glyph outlines baked into the logo image; no font file shipped) | "LIL DUDES GO BRR!" wordmark in the logo | https://github.com/google/fonts/tree/main/apache/luckiestguy | Astigmatic | Apache 2.0 |
 | Lilita One (`public/fonts/LilitaOne-Regular.ttf`) | Display font: numbers, gate labels, buttons | https://github.com/google/fonts/tree/main/ofl/lilitaone | Juan Montoreano | SIL OFL 1.1 (`public/fonts/LilitaOne-OFL.txt`) |
 | Baloo 2 (`public/fonts/Baloo2-Latin-Variable.woff2`) | UI text | https://fonts.google.com/specimen/Baloo+2 (https://github.com/EkType/Baloo2) | The Baloo 2 Project Authors (Ek Type) | SIL OFL 1.1 (`public/fonts/Baloo2-OFL.txt`) |
+| Press Start 2P (`public/fonts/PressStart2P-Regular.ttf`, unmodified) | Arcade lettering on the landing page and credits | https://github.com/google/fonts/tree/main/ofl/pressstart2p | The Press Start 2P Project Authors (CodeMan38) | SIL OFL 1.1 (`public/fonts/PressStart2P-OFL.txt`) |
 | Particle Pack (`public/assets/fx/particles.webp`: star_06, star_09, circle_05, smoke_04, dirt_01, circle_02, recoloured and resized) | Sparkles, glows, rings, smoke, debris | https://kenney.nl/assets/particle-pack | Kenney | CC0 1.0 |
 | Puff and coin cells in `public/assets/fx/particles.webp` | Cartoon puffs, coins | drawn in code by us | ours | — |
 | Mini Characters (`public/assets/models/dudes.glb`: character-knight, character-robot; `dudes-anim.bin`: their `walk` and `sprint` cycles baked per vertex by `bake-anim.mjs`) | Your dudes (knight, team blue) and the base's troops (robot, team red), and how they walk | https://kenney.nl/assets/mini-characters | Kenney | CC0 1.0 |
