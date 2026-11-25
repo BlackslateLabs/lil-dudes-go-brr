@@ -99,6 +99,74 @@
   cursor: progress;
 }
 
+/* Cooling down: the chip is a quiet countdown until the next free top-up. */
+.ls-topup.cooling {
+  min-width: 58px;
+  background: #ece8ff;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.ls-topwrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ls-info {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--outline);
+  background: #fff;
+  font-family: var(--display);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ls-info[aria-expanded='true'] {
+  background: var(--gold);
+}
+
+/* The limits: a small popover under the "i", only when asked. */
+.ls-pop {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(260px, calc(100vw - 48px));
+  padding: 9px 12px 10px;
+  border-radius: 14px;
+  border: var(--edge);
+  background: #fff;
+  box-shadow: var(--ledge), var(--soft);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ink);
+  animation: pop-in 0.2s var(--bounce) both;
+}
+
+.ls-pop b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+}
+
+.ls-pop ul {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
 .ls-field {
   display: flex;
   align-items: center;
