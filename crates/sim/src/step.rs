@@ -27,10 +27,10 @@ use crate::constants::{
     CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRATES_MAX,
     CRATE_HOLD, CRUISE_SPEED, ENEMY_CAP, ENGAGE_X, ENGAGE_Y, FATIGUE_END, FATIGUE_MIN_PM,
     FATIGUE_START, FINAL_STAGE, FIRE_TICKS, FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT,
-    GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT,
-    MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES, STEER_STEP, TOWERS_MAX, TOWER_BONUS,
-    TOWER_HALF_W, TOWER_STEER, TOWER_Y, TRANSIT_TICKS, TURN_MARGIN, TUTORIAL_WAVE_PCT, VAULT_Y,
-    VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
+    GIANT_F1_EVERY, GIANT_F1_FIRST, GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH, LAUNCH_SPEED,
+    LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES, STEER_STEP,
+    TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_STEER, TOWER_Y, TRANSIT_TICKS, TURN_MARGIN,
+    TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
 use crate::layouts::{self, covers, timing_value, Slot, StageDef};
@@ -767,6 +767,19 @@ pub fn wave_size(wave_base: u16, k: u32, t: u32, pct: u32) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX).max(1)
 }
 
+/// Whether wave `k` brings a giant per tower. SPEC_V5 §5: in the final stage each small wave
+/// does. §16 (rules v11): in Fight 1, wave GIANT_F1_FIRST and every GIANT_F1_EVERY-th after it
+/// (small waves too), except at the tutorial's softened `pct`.
+pub fn giant_wave(stage: u8, k: u32, pct: u32) -> bool {
+    if stage == FINAL_STAGE {
+        return k.checked_rem(3) == Some(1);
+    }
+    pct == 100
+        && k.checked_sub(GIANT_F1_FIRST)
+            .and_then(|d| d.checked_rem(GIANT_F1_EVERY))
+            == Some(0)
+}
+
 fn release_waves(
     side: &mut PublicSide,
     st: &StageDef,
@@ -780,8 +793,7 @@ fn release_waves(
         return;
     };
     let towers = side.towers;
-    // SPEC_V5 §5: in the final stage each small wave brings a giant.
-    let giants = side.stage == FINAL_STAGE && k.checked_rem(3) == Some(1);
+    let giants = giant_wave(side.stage, k, pct);
     for (tower, (&hp, def)) in (0u8..).zip(towers.iter().zip(st.towers)) {
         if hp == 0 {
             continue;

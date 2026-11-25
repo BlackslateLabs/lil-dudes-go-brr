@@ -32,6 +32,10 @@ pub const FIRST_BONUS: u32 = 50;
 /// comes with one giant enemy cohort of GIANT_COUNT that walks at GIANT_SPEED.
 pub const GIANT_COUNT: u32 = 5;
 pub const GIANT_SPEED: i32 = CRUISE_SPEED * 3 / 5;
+/// SPEC_V5 §16 (rules v11): Fight 1 gets giants too, but rarer: with wave GIANT_F1_FIRST and
+/// every GIANT_F1_EVERY-th wave after it (never in the tutorial's soft waves).
+pub const GIANT_F1_FIRST: u32 = 1;
+pub const GIANT_F1_EVERY: u32 = 6;
 
 /// SPEC §7: one volley every 8 ticks (0.4 s) of one dude.
 pub const FIRE_TICKS: u32 = 8;
@@ -147,6 +151,8 @@ const _: () = {
     // The Champion meter is a u8.
     assert!(CHAMP_TICKS <= u8::MAX as u32);
     assert!(GIANT_SPEED > 0 && GIANT_SPEED < CRUISE_SPEED);
+    // v11: Fight 1's giants come with a small wave (k % 3 == 1), like Fight 2's.
+    assert!(GIANT_F1_FIRST % 3 == 1 && GIANT_F1_EVERY % 3 == 0 && GIANT_F1_EVERY > 0);
     // v7: the bot defends well inside the lane. v9: engaging is short-range, and the late
     // turn has room to close any gap a tower's reach doesn't forgive.
     assert!(DEFEND_Y < TOWER_Y && ENGAGE_Y < TOWER_Y && ENGAGE_X < LANE_WIDTH);

@@ -4,7 +4,7 @@
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 10;
+export const RULES_VERSION = 11;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
@@ -27,7 +27,7 @@ export const CHAMP_TICKS = 8 * TICKS_PER_SEC;
 export const CHAMP_COUNT = 8;
 /** SPEC_V5 §6: whoever clears a fight on the lower match tick scores this. */
 export const FIRST_BONUS = 50;
-/** SPEC_V5 §5: Fight 2's small waves bring a giant enemy of GIANT_COUNT walking at GIANT_SPEED. */
+/** SPEC_V5 §5/§16: enemy giants (Fight 2: every small wave; Fight 1, rules v11: waves 1, 7, 13…) of GIANT_COUNT at GIANT_SPEED. */
 export const GIANT_COUNT = 5;
 export const GIANT_SPEED = 28;
 /** SPEC_V5 §3: the timing gate steps ×1 → ×TIMING_MAX, one step every TIMING_STEP_TICKS of the
