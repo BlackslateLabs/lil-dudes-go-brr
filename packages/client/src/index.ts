@@ -39,6 +39,6 @@ export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from
 export {
   GAME_KEY_MESSAGE, GAME_CHAIN, linkMessage, mergeMessage, signText, verifyText, parseAddress, burnerFromSignature, listWallets, onWalletsChange,
   connectWallet, disconnectWallet, deriveBurner, authText, authHeader, verifyAuthHeader, accountProfile, accountHistory, linkAccount, signIn,
-  setAccountName, depositTx, depositFromWallet, withdrawToWallet, migrateGuest, PublicKey,
+  setAccountName, depositTx, depositFromWallet, withdrawToWallet, migrateGuest, PublicKey, keyToText, keyFromText,
 } from './live/account';
 export type { GameWallet, ConnectedWallet, AccountProfile } from './live/account';
