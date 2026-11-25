@@ -12,6 +12,8 @@ import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
 import { isBreach, useMatchHud } from '../match/useMatchHud';
 import { clearSeed, peekSeed } from '../match/nextSeed';
+import { liveMatchSource } from '../live/session';
+import { LiveBadge } from './LiveBadge';
 import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
 
@@ -35,6 +37,9 @@ export function Match() {
   const [ready, setReady] = useState(false);
   const feed = useFeed(
     () => {
+      // A live match (Quick Match, room, rematch): the Private Ephemeral Rollup feed.
+      const live = liveMatchSource();
+      if (live) return live;
       // The seed (it picks the layout) was chosen for the VS screen; `?seed=123` pins it (testing).
       // `?autoplay=1` lets the bot drive your side too (demos, screenshots).
       const params = new URLSearchParams(window.location.search);
@@ -115,6 +120,7 @@ export function Match() {
     >
       <Arena feed={feed} interactive />
       <TopBar />
+      <LiveBadge />
       <RaceBar />
       <Tutorial feed={feed} />
       <Prompts />
