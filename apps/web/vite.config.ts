@@ -39,12 +39,13 @@ export default defineConfig({
       },
     }),
   ],
-  // Two pages: the landing page (/) and the game (/play/).
+  // Three pages: the landing page (/), the game (/play/) and the credits (/credits/).
   build: {
     rollupOptions: {
       input: {
         landing: fileURLToPath(new URL('index.html', import.meta.url)),
         play: fileURLToPath(new URL('play/index.html', import.meta.url)),
+        credits: fileURLToPath(new URL('credits/index.html', import.meta.url)),
       },
     },
   },
