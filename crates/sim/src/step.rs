@@ -10,9 +10,10 @@
 //!      it), slide around obstacles, hit crates, cross gate rows, drop
 //!      into pipes, and past the last row engage a close enemy or turn
 //!      late toward the tower (SPEC_V5 §14); enemy cohorts (giants
-//!      slower) walk straight down, sliding around obstacles; divider
-//!      walls keep both in their column while they stand; clash (never
-//!      through a wall); tower hits, gold, Rush loot, losses at the base
+//!      slower) walk straight down, sliding around obstacles and waiting
+//!      behind a live crate (SPEC_V5 §15); divider walls keep both in
+//!      their column while they stand; clash (never through a wall or a
+//!      live crate); tower hits, gold, Rush loot, losses at the base
 //!      edge; death; all towers down (the breach, its tick recorded) →
 //!      Transit (Fight 1) or the Rush in place (Fight 2); waves; a volley
 //!      while the trigger is held (it charges the Champion meter) or a
@@ -23,12 +24,13 @@
 //! 4. `tick + 1`; a death, both players done or the time cap ends it      SPEC §3, §8
 
 use crate::constants::{
-    CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRUISE_SPEED,
-    ENEMY_CAP, ENGAGE_X, ENGAGE_Y, FATIGUE_END, FATIGUE_MIN_PM, FATIGUE_START, FINAL_STAGE,
-    FIRE_TICKS, FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT, GIANT_SPEED, HALL_X, LANE_LENGTH,
-    LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT, MATCH_TICKS, PLANT_TICKS, RUSH_TICKS,
-    STAGES, STEER_STEP, TOWERS_MAX, TOWER_BONUS, TOWER_HALF_W, TOWER_STEER, TOWER_Y, TRANSIT_TICKS,
-    TURN_MARGIN, TUTORIAL_WAVE_PCT, VAULT_Y, VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
+    CANNON_STEP, CHAMP_COUNT, CHAMP_TICKS, CLASH_BAND, CLASH_REACH, COHORT_CAP, CRATES_MAX,
+    CRATE_HOLD, CRUISE_SPEED, ENEMY_CAP, ENGAGE_X, ENGAGE_Y, FATIGUE_END, FATIGUE_MIN_PM,
+    FATIGUE_START, FINAL_STAGE, FIRE_TICKS, FIRST_BONUS, FIRST_WAVE_TICKS, GIANT_COUNT,
+    GIANT_SPEED, HALL_X, LANE_LENGTH, LANE_WIDTH, LAUNCH_SPEED, LAUNCH_TICKS, LOOT_PER_UNIT,
+    MATCH_TICKS, PLANT_TICKS, RUSH_TICKS, STAGES, STEER_STEP, TOWERS_MAX, TOWER_BONUS,
+    TOWER_HALF_W, TOWER_STEER, TOWER_Y, TRANSIT_TICKS, TURN_MARGIN, TUTORIAL_WAVE_PCT, VAULT_Y,
+    VOLLEY_SIZE, WAVE_GAPS, WAVE_PCT,
 };
 use crate::events::{Event, EventSink};
 use crate::layouts::{self, covers, timing_value, Slot, StageDef};
@@ -181,9 +183,13 @@ fn lane_tick(m: &mut MatchState, s: u8, tick: u32, ev: &mut impl EventSink) {
         g.x = def.x_at(gate_t);
     }
     if active {
-        move_cohorts(side, st, secret, gate_t, s, ev);
-        move_enemies(side, st);
-        clash(side, st, s, ev);
+        // Once per lane tick for both crowds (cheaper on-chain than once per mover list).
+        let band = st.obstacle_band();
+        move_cohorts(side, st, band, secret, gate_t, s, ev);
+        // SPEC_V5 §15: crates my cohorts broke this tick no longer hold or shield anything.
+        let live = live_crates(&side.crates, st);
+        move_enemies(side, st, band, live);
+        clash(side, st, live, s, ev);
         hits(side, st, s, ev);
         compact(side);
         if side.enemies().iter().any(|e| e.y <= 0) {
@@ -239,9 +245,11 @@ fn toward(x: i16, target: i16, step: i32) -> i16 {
 
 // --- cohorts: movement, crates, gates, homing --------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn move_cohorts(
     side: &mut PublicSide,
     st: &StageDef,
+    band: (i32, i32),
     secret: &SecretState,
     gate_t: u32,
     s: u8,
@@ -262,7 +270,6 @@ fn move_cohorts(
     let stage = *stage;
     let rush = *phase == Phase::Rush;
     let enemies = enemies.get(..usize::from(*enemy_len)).unwrap_or(&[]);
-    let band = st.obstacle_band();
     for c in cohorts.iter_mut().take(usize::from(*cohort_len)) {
         if c.count == 0 {
             continue;
@@ -492,27 +499,47 @@ fn turn_due(x: i16, y: i16, tx: i16) -> bool {
 
 // --- enemies -----------------------------------------------------------------------------------
 
+/// SPEC_V5 §15: the y range of the live crates' lines (lowest, highest), `None` without any.
+/// One pass over ≤ CRATES_MAX crates per lane tick; it lets enemies and clash pairs far from
+/// every crate skip the per-crate tests (the same result, cheaper on-chain).
+fn live_crates(hp: &[u16; CRATES_MAX], st: &StageDef) -> Option<(i32, i32)> {
+    let mut band: Option<(i32, i32)> = None;
+    for (&h, c) in hp.iter().zip(st.crates) {
+        if h > 0 {
+            let y = i32::from(c.y);
+            band = Some(band.map_or((y, y), |(lo, hi)| (lo.min(y), hi.max(y))));
+        }
+    }
+    band
+}
+
 /// SPEC_V5 §13 (rules v8): an enemy cohort walks straight down at cruise speed (a giant at
 /// GIANT_SPEED, SPEC_V5 §5); it does not home in on my cohorts, it only fights what it meets.
 /// Obstacles deflect it by the same slide as mine (SPEC_V5 §13); it is pushed out of a wall's
 /// thickness as it enters the wall's span (SPEC_V5 §12 (b)). Pads and pipes don't touch it.
-fn move_enemies(side: &mut PublicSide, st: &StageDef) {
+/// SPEC_V5 §15 (rules v10): a live crate in its way holds it at `crate.y + CRATE_HOLD`
+/// (`StageDef::crate_hold`) until my cohorts break it; it never damages a crate.
+fn move_enemies(side: &mut PublicSide, st: &StageDef, band: (i32, i32), live: Option<(i32, i32)>) {
     let PublicSide {
-        enemies, enemy_len, ..
+        enemies,
+        enemy_len,
+        crates,
+        ..
     } = side;
-    let band = st.obstacle_band();
     for e in enemies.iter_mut().take(usize::from(*enemy_len)) {
         if e.count == 0 {
             continue;
         }
         let speed = if e.giant { GIANT_SPEED } else { CRUISE_SPEED };
-        let (x, y) = travel(
-            st,
-            band,
-            i32::from(e.x),
-            i32::from(e.y),
-            speed.saturating_neg(),
-        );
+        let from = i32::from(e.y);
+        let (x, mut y) = travel(st, band, i32::from(e.x), from, speed.saturating_neg());
+        // Only a move from above the lowest live crate line to below the highest hold line can
+        // be held.
+        if let Some((lo, hi)) = live {
+            if from > lo && y < hi.saturating_add(CRATE_HOLD) {
+                y = st.crate_hold(crates, x, from, y);
+            }
+        }
         e.y = y as i16;
         e.x = st.wall_push(x, y) as i16;
     }
@@ -522,14 +549,22 @@ fn move_enemies(side: &mut PublicSide, st: &StageDef) {
 
 /// SPEC §4: a cohort of mine and an enemy cohort meet once they have crossed in y (mine at or
 /// above theirs, by at most CLASH_BAND) with x at most CLASH_REACH apart, and no wall standing
-/// between them at the clash point's y (SPEC_V5 §12 (c)); they cancel 1:1.
+/// between them at the clash point's y (SPEC_V5 §12 (c)) nor a live crate's line between them
+/// at the clash point's x (SPEC_V5 §15; `live` = `live_crates`); they cancel 1:1.
 /// Front-most pairs first: both lists are stored oldest (front-most) first.
-fn clash(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
+fn clash(
+    side: &mut PublicSide,
+    st: &StageDef,
+    live: Option<(i32, i32)>,
+    s: u8,
+    ev: &mut impl EventSink,
+) {
     let PublicSide {
         cohorts,
         cohort_len,
         enemies,
         enemy_len,
+        crates,
         ..
     } = side;
     let foes = enemies
@@ -546,11 +581,17 @@ fn clash(side: &mut PublicSide, st: &StageDef, s: u8, ev: &mut impl EventSink) {
             if b.count == 0 {
                 continue;
             }
-            let crossed = i32::from(a.y).saturating_sub(i32::from(b.y));
+            let (my_y, foe_y) = (i32::from(a.y), i32::from(b.y));
+            let crossed = my_y.saturating_sub(foe_y);
             if !(0..=CLASH_BAND).contains(&crossed)
                 || i32::from(a.x).abs_diff(i32::from(b.x)) > CLASH_REACH as u32
                 || st.wall_between(i32::from(a.x), i32::from(b.x), i32::from(mid(a.y, b.y)))
             {
+                continue;
+            }
+            // SPEC_V5 §15: only a pair astride a live crate's line needs the per-crate test.
+            let astride = live.is_some_and(|(lo, hi)| foe_y < hi && my_y >= lo);
+            if astride && st.crate_between(crates, i32::from(mid(a.x, b.x)), my_y, foe_y) {
                 continue;
             }
             let killed = a.count.min(b.count);
