@@ -153,11 +153,11 @@ export function Home() {
                 playBot(false);
               }}
             >
-              PLAY VS BOT <small>free</small>
+              PLAY VS BOT
             </button>
           ) : check.short && !check.notLive ? (
             <button className="big primary play" disabled={topping} onClick={() => void doTopUp()}>
-              TOP UP <small>{sol(stake)} SOL</small>
+              TOP UP
             </button>
           ) : (
             <button
@@ -169,7 +169,7 @@ export function Home() {
                 setSheet('quick');
               }}
             >
-              QUICK MATCH <small>{sol(stake)} SOL</small>
+              QUICK MATCH
             </button>
           )}
 
