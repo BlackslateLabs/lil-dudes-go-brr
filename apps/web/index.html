@@ -41,31 +41,47 @@
           <img src="/brand/logo.webp" alt="Lil Dudes Go Brr!" width="1100" height="794" />
         </div>
 
-        <!-- The screen: attract mode (demo → title → how to play) -->
+        <!-- The screen: attract mode (demo → title → how to play → demo → fair play) -->
         <div class="bezel">
           <div class="crt" id="crt" data-slide="demo">
             <video class="demo" id="demo" muted loop playsinline preload="auto" poster="/arcade/attract.jpg" aria-hidden="true">
               <source src="/arcade/attract.mp4" type="video/mp4" />
             </video>
 
+            <!-- Title: the logo over a select menu -->
             <div class="slide slide-title" aria-hidden="true">
               <img src="/brand/logo.webp" alt="" width="1100" height="794" />
-              <p class="px">1P VS BOT &nbsp;·&nbsp; 2P ONLINE</p>
+              <ul class="px menu">
+                <li class="sel"><span class="pl">1P</span> VS BOT <em>FREE</em></li>
+                <li><span class="pl">2P</span> ONLINE <em>STAKE SOL</em></li>
+              </ul>
             </div>
 
+            <!-- How to play: four rows, zig-zag like an instruction screen -->
             <div class="slide slide-how" aria-hidden="true">
-              <p class="px how-head">HOW TO PLAY</p>
-              <ol class="px how-list">
-                <li><b>HOLD</b> TO FIRE, DRAG TO AIM</li>
-                <li><b>?</b> GATES MULTIPLY YOUR DUDES</li>
-                <li><b>FULL METER</b> = CHAMPION</li>
-                <li>DROP THE TOWERS. <b>BREACH!</b></li>
+              <p class="px head">HOW TO PLAY</p>
+              <ol class="px rows">
+                <li><span class="ico ico-cannon"></span><span class="t"><b>HOLD</b> TO FIRE<small>DRAG TO AIM</small></span></li>
+                <li><span class="ico ico-gate">?</span><span class="t"><b>? GATES</b> MULTIPLY<small>SOME OF THEM HURT</small></span></li>
+                <li><span class="ico ico-crown"></span><span class="t"><b>FULL METER</b><small>LET GO: A CHAMPION</small></span></li>
+                <li><span class="ico ico-tower"></span><span class="t"><b>DROP THE TOWERS</b><small>THEN BREACH THE HALL</small></span></li>
+              </ol>
+            </div>
+
+            <!-- Fair play: what MagicBlock and Solana do -->
+            <div class="slide slide-fair" aria-hidden="true">
+              <p class="px head">FAIR PLAY</p>
+              <ol class="px rows">
+                <li><span class="ico ico-lock"></span><span class="t"><b>GATES SEALED</b><small>IN A MAGICBLOCK PRIVATE ROLLUP</small></span></li>
+                <li><span class="ico ico-die"></span><span class="t"><b>DEALT BY VRF</b><small>VERIFY EVERY GATE AFTER</small></span></li>
+                <li><span class="ico ico-coin"></span><span class="t"><b>PAID ON SOLANA</b><small>WIN BY MORE, TAKE MORE</small></span></li>
               </ol>
             </div>
 
             <span class="px crt-credit">FREE PLAY</span>
             <span class="px demo-tag">DEMO</span>
-            <a class="px press" href="/play/">PRESS START</a>
+            <!-- PRESS START has its own strip at the bottom of the screen -->
+            <div class="strip"><a class="px press" href="/play/">PRESS START</a></div>
             <i class="scan" aria-hidden="true"></i>
           </div>
         </div>
@@ -90,26 +106,15 @@
         </div>
       </div>
 
-      <a class="down" href="#more">How it's fair ↓</a>
-
-      <!-- Two stickers, like the cards on a real machine: below the cabinet on phones, posters on the wall beside it on desktop -->
-      <section class="stickers" id="more">
-        <article class="sticker">
-          <h2>Fair play</h2>
-          <p>
-            Every gate is sealed on-chain in a MagicBlock Private Ephemeral Rollup until your dudes touch it. Nobody can
-            peek, not even your opponent's client. The level is dealt by VRF, and after the match anyone can hit Verify
-            and rebuild it from the seed.
-          </p>
-        </article>
-        <article class="sticker sticker-gold">
-          <h2>Stakes</h2>
-          <p>
-            The bot is always free. Online, both players stake devnet SOL. Get overrun and you lose it all; otherwise you
-            win by as much as you out-score them. The payout settles on Solana by itself.
-          </p>
-        </article>
-      </section>
+      <!-- Desktop only: cardboard standees of the two mascots either side of the cabinet -->
+      <div class="standee standee-me" aria-hidden="true">
+        <img src="/brand/head-you.webp" alt="" width="256" height="256" />
+        <span class="px plaque">P1</span>
+      </div>
+      <div class="standee standee-bot" aria-hidden="true">
+        <img src="/brand/head-bot.webp" alt="" width="256" height="256" />
+        <span class="px plaque">BOT</span>
+      </div>
     </main>
 
 

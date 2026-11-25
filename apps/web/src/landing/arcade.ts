@@ -1,4 +1,4 @@
-// Landing page: arcade attract mode. The CRT cycles demo → title → how to play, like a real
+// Landing page: arcade attract mode. The CRT cycles demo → title → how to play → demo → fair play, like a real
 // cabinet idling; Enter / Space / 1 / 2 press Start. No game code here.
 
 const crt = document.getElementById('crt') as HTMLElement | null;
@@ -7,9 +7,11 @@ const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Seconds on each attract screen. */
 const CYCLE: [string, number][] = [
-  ['demo', 13],
-  ['title', 3.5],
-  ['how', 5.5],
+  ['demo', 12],
+  ['title', 4],
+  ['how', 6],
+  ['demo', 12],
+  ['fair', 6],
 ];
 
 if (crt && demo) {

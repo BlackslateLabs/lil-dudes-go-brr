@@ -153,11 +153,13 @@ a {
 }
 
 .marquee {
+  --mq: clamp(92px, 15svh, 136px);
   flex: none;
-  display: grid;
-  place-items: center;
-  height: clamp(86px, 15svh, 132px);
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--mq);
+  overflow: hidden;
   border: 3px solid var(--ink);
   border-radius: 14px;
   background:
@@ -166,10 +168,11 @@ a {
   box-shadow: inset 0 -5px 0 #0002, 0 4px 0 var(--ink);
 }
 
+/* The whole logo always fits: its height is the marquee's minus a margin, never more. */
 .marquee img {
   width: auto;
-  height: 100%;
-  max-height: 120px;
+  height: calc(var(--mq) - 18px);
+  max-width: calc(100% - 16px);
   object-fit: contain;
   filter: drop-shadow(0 4px 0 #1b153044);
 }
@@ -219,73 +222,241 @@ a {
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 18px;
-  background: #0c0920eb;
+  padding: 40px 16px 58px;
+  background: #0c0920f0;
   opacity: 0;
   transition: opacity 0.35s steps(4);
 }
 
 .crt[data-slide='title'] .slide-title,
-.crt[data-slide='how'] .slide-how {
+.crt[data-slide='how'] .slide-how,
+.crt[data-slide='fair'] .slide-fair {
   opacity: 1;
 }
 
+/* Title: the logo, then a select menu with a blinking cursor on 1P. */
+.slide-title {
+  align-items: center;
+  justify-content: center;
+  gap: 8%;
+}
+
 .slide-title img {
-  width: min(78%, 300px);
+  width: min(80%, 300px);
 }
 
-.slide-title p {
-  margin: 0;
-  font-size: 10px;
-  color: var(--lilac);
-}
-
-.how-head {
-  margin: 0;
-  font-size: 13px;
-  color: var(--gold);
-}
-
-.how-list {
+.menu {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
-  counter-reset: how;
-  font-size: 9.5px;
-  line-height: 1.6;
+  font-size: 11px;
   color: #fff;
 }
 
-.how-list li {
-  counter-increment: how;
+.menu li {
+  position: relative;
   display: grid;
-  grid-template-columns: 2.2em minmax(0, 1fr);
+  grid-template-columns: 3.2em 7.4em auto;
+  align-items: baseline;
+  gap: 0.9em;
+  padding-left: 1.8em;
 }
 
-.how-list li::before {
-  content: counter(how) '.';
+.menu .pl {
+  color: var(--gold);
+}
+
+.menu em {
+  font-style: normal;
+  font-size: 8px;
   color: var(--lilac);
 }
 
-.how-list b {
+.menu .sel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  border: 0.45em solid transparent;
+  border-left: 0.7em solid var(--gold);
+  animation: blink 0.8s steps(2, start) infinite;
+}
+
+/* How to play / fair play: a heading on the left with a rule, then rows in a zig-zag. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--gold);
+}
+
+.head::after {
+  content: '';
+  flex: 1;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--gold) 0 6px, #0000 6px 10px);
+}
+
+.rows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rows li:nth-child(even) {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.rows .t {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #fff;
+}
+
+.rows b {
   font-weight: 400;
   color: var(--gold-light);
 }
 
+.rows small {
+  display: block;
+  margin-top: 7px;
+  font-size: 7.5px;
+  color: var(--lilac);
+}
+
+/* Game pieces as the row markers. */
+.ico {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-family: var(--display);
+  font-size: 22px;
+  color: #fff;
+  text-shadow: none;
+}
+
+.ico-cannon {
+  border-radius: 50%;
+  margin-top: 8px;
+  width: 30px;
+  height: 30px;
+  background: radial-gradient(circle at 40% 35%, #9fc4ff, var(--me) 60%, var(--me-dark));
+  border: 3px solid var(--ink);
+}
+
+.ico-cannon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 60%;
+  width: 9px;
+  height: 18px;
+  margin-left: -4.5px;
+  border-radius: 3px;
+  background: #cfe0ff;
+  border: 3px solid var(--ink);
+}
+
+.ico-gate {
+  height: 30px;
+  border-radius: 7px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(#a58cff, #6a4be0);
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+}
+
+.ico-crown {
+  width: 36px;
+  height: 26px;
+  background: linear-gradient(var(--gold-light), var(--gold-dark));
+  clip-path: polygon(0 100%, 0 20%, 25% 55%, 50% 0, 75% 55%, 100% 20%, 100% 100%);
+}
+
+.ico-tower {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: radial-gradient(circle at 40% 35%, #ff9aa4, var(--them) 60%, var(--them-dark));
+  box-shadow: inset 0 0 0 4px #ffffff40;
+}
+
+.ico-lock {
+  width: 26px;
+  height: 22px;
+  margin-top: 12px;
+  border-radius: 4px;
+  background: var(--gold);
+  border: 3px solid var(--ink);
+}
+
+.ico-lock::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border: 3px solid var(--lilac);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+}
+
+.ico-die {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 3px solid var(--ink);
+  background:
+    radial-gradient(circle, var(--ink) 2.5px, #0000 3px) 2px 2px / 8px 8px no-repeat,
+    radial-gradient(circle, var(--ink) 2.5px, #0000 3px) 50% 50% / 8px 8px no-repeat,
+    radial-gradient(circle, var(--ink) 2.5px, #0000 3px) calc(100% - 2px) calc(100% - 2px) / 8px 8px no-repeat,
+    #fff;
+}
+
+.ico-coin {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background:
+    radial-gradient(circle, #0000 42%, var(--gold-dark) 44% 52%, #0000 54%),
+    radial-gradient(circle at 40% 35%, var(--gold-light), var(--gold));
+}
+
+/* Top corners: DEMO (only on the demo) and FREE PLAY. */
 .crt-credit,
 .demo-tag {
   position: absolute;
-  top: 10px;
+  z-index: 2;
+  top: 12px;
   font-size: 9px;
 }
 
 .crt-credit {
-  right: 12px;
+  right: 14px;
   color: var(--gold-light);
 }
 
@@ -302,13 +473,21 @@ a {
   opacity: 0;
 }
 
-.press {
+/* PRESS START: a strip of its own along the bottom of the screen, so it never sits on text. */
+.strip {
   position: absolute;
-  left: 50%;
-  bottom: 7%;
   z-index: 2;
-  transform: translateX(-50%);
-  padding: 10px 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 10px;
+  background: linear-gradient(#0c092000, #0c0920d9 45%);
+}
+
+.press {
+  padding: 6px 12px;
   font-size: 13px;
   color: var(--gold);
   text-decoration: none;
@@ -521,102 +700,82 @@ body.starting .p1 .cap {
   box-shadow: 0 0 0 2px #0b0818;
 }
 
-.down {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--lilac);
-  text-decoration: none;
+/* ---------- Desktop: cardboard standees of the mascots either side ---------- */
+.standee {
+  display: none;
 }
 
-.down:hover {
-  color: #fff;
-}
-
-/* ---------- Stickers below ---------- */
-.stickers {
-  display: grid;
-  gap: 18px;
-  width: 100%;
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 26px 0 30px;
-}
-
-.sticker {
-  padding: 16px 18px 18px;
-  border: 3px solid var(--ink);
-  border-radius: 12px;
-  background: var(--cream);
-  color: var(--ink);
-  box-shadow: 0 5px 0 #0b0818;
-  transform: rotate(-0.8deg);
-}
-
-.sticker-gold {
-  background: var(--gold-light);
-  transform: rotate(0.8deg);
-}
-
-.sticker h2 {
-  margin: 0 0 6px;
-  font-family: var(--px);
-  font-weight: 400;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-}
-
-.sticker p {
-  margin: 0;
-  max-width: 60ch;
-  font-size: 15.5px;
-}
-
-@media (min-width: 720px) and (max-width: 1099px) {
-  .stickers {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-/* Desktop: the stickers hang on the wall either side of the cabinet, like posters. */
 @media (min-width: 1100px) {
   .stage {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 440px minmax(0, 1fr);
-    column-gap: 56px;
-    align-items: center;
+    column-gap: 40px;
+    align-items: end;
     justify-content: stretch;
   }
 
   .cab {
     grid-column: 2;
     grid-row: 1;
-  }
-
-  .down {
-    display: none;
-  }
-
-  .stickers {
-    display: contents;
-  }
-
-  .sticker {
-    grid-row: 1;
-    max-width: 300px;
     align-self: center;
-    margin-top: -12vh;
   }
 
-  .sticker:first-child {
+  .standee {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    grid-row: 1;
+    margin-bottom: 4vh;
+  }
+
+  .standee-me {
     grid-column: 1;
     justify-self: end;
-    transform: rotate(-3deg);
+    transform: rotate(-4deg);
   }
 
-  .sticker:last-child {
+  .standee-bot {
     grid-column: 3;
     justify-self: start;
-    transform: rotate(2.5deg);
+    transform: rotate(4deg);
+  }
+
+  /* Cut out of card: a thick white edge round the art, then its shadow on the wall. */
+  .standee img {
+    width: clamp(190px, 17vw, 260px);
+    filter:
+      drop-shadow(4px 0 0 #fff) drop-shadow(-4px 0 0 #fff) drop-shadow(0 4px 0 #fff) drop-shadow(0 -4px 0 #fff)
+      drop-shadow(0 18px 14px #0009);
+  }
+
+  /* The card leg it stands on. */
+  .standee::after {
+    content: '';
+    order: 3;
+    width: 46%;
+    height: 22px;
+    margin-top: -6px;
+    border-radius: 0 0 8px 8px;
+    background: linear-gradient(#e9e2d0, #b9b09a);
+    border: 3px solid var(--ink);
+    border-top: 0;
+  }
+
+  .plaque {
+    position: relative;
+    z-index: 1;
+    order: 2;
+    margin-top: -10px;
+    padding: 6px 12px 5px;
+    border: 3px solid var(--ink);
+    background: var(--ink);
+    font-size: 12px;
+    color: var(--gold);
+  }
+
+  .standee-bot .plaque {
+    color: #ff9aa4;
   }
 }
 
@@ -821,6 +980,7 @@ body.starting .p1 .cap {
   }
 
   .press,
+  .menu .sel::before,
   .stick i,
   .p1 .cap::after {
     animation: none;
