@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   BackSide,
@@ -22,7 +22,6 @@ import { Crowds } from './Crowds';
 import { Fx } from './Fx';
 import { Gates } from './Gates';
 import { Level } from './Level';
-import { Post } from './Post';
 import { fxTier } from './quality';
 import { Scenery } from './Scenery';
 import { Walls } from './Walls';
@@ -33,6 +32,12 @@ interface ArenaProps {
   /** Gate taps (peek). Off for the Home background. */
   interactive?: boolean;
 }
+
+// Post-processing (bloom, tone mapping) only runs on the high tier: its library loads only there,
+// starting at once (alongside the models) so the first frames already have it.
+const loadPost = () => import('./Post').then((m) => ({ default: m.Post }));
+if (fxTier() === 'high') void loadPost().catch(() => undefined);
+const Post = lazy(loadPost);
 
 /** The camera's resting position (Fx shakes around it). Re-solved whenever the viewport changes. */
 const camBase = new Vector3(...solveCamera(9 / 19.5).position);
@@ -71,7 +76,11 @@ export function Arena({ feed, interactive = false }: ArenaProps) {
       <Cannon feed={feed} />
       <Crowds feed={feed} />
       <Fx feed={feed} camBase={camBase} />
-      {tier === 'high' && <Post />}
+      {tier === 'high' && (
+        <Suspense fallback={null}>
+          <Post />
+        </Suspense>
+      )}
     </Canvas>
   );
 }
