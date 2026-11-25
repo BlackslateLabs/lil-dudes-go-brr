@@ -1870,3 +1870,18 @@ deposit popups. The derived-key phishing caveat is in README Limits.
 **Blocked / risks:** none. No program change or redeploy needed.
 
 **Next / handoff:** none. Deploy: merge #14, then redeploy Render (server) and Vercel.
+
+## 2026-11-25 20:57 IST · Suparno · Verify sheet; the bot only when asked · [CONTRACT]
+**Did:**
+- Live result: Verify opens as a full sheet over the screen (portaled to body, fixed), not boxed inside the
+  scrolling result.
+- The online bot never joins by itself any more.
+  - In a free Quick Match alone for ~5 s, the queue shows "Play the Bot instead", which calls the new
+    `POST /queue/:ticket/bot` (free tickets only; a busy bot joins on a later poll). A person can still pair first.
+  - Client: `askBot` (additive). Server tests 35, client 30.
+
+**Decided:** Suparno: the player chooses the bot; it never steps in automatically.
+
+**Blocked / risks:** none. Server change: redeploy Render.
+
+**Next / handoff:** none.
