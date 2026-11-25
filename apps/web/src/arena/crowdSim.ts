@@ -132,7 +132,7 @@ export const MAX_GIANTS = 16;
  * Body radius against solids per kind (sim units). A Champion giant is ~730 wide as drawn; 240
  * fits the narrowest gap (a comb arm to its wall, ~550) and the drawn body squashes to fit (G_SQUASH).
  */
-const RAD = [BODY_R, 240, 170];
+const RAD = [BODY_R, 240, 220];
 /**
  * A giant's radius against obstacles (pillars, blocks, wedges; walls use RAD). Smaller than its
  * body so it fits the pillar field's ~440 gaps; the drawn body squashes across to match. A head-on
@@ -140,9 +140,9 @@ const RAD = [BODY_R, 240, 170];
  */
 const SOLID_R = [BODY_R, 150, 130];
 /** Formation step for giants (neighbours ~1.9 steps apart, about two bodies). */
-const G_SPACING = [SPACING, 235, 150];
+const G_SPACING = [SPACING, 235, 220];
 /** Drawn half-width of a giant (sim units) and the most it squashes across to fit a gap. */
-const G_HALF = [0, 360, 210];
+const G_HALF = [0, 360, 315];
 const G_SQUASH = 0.68;
 /** A giant column can stretch this much along the lane (more than a blob of dudes: they're big). */
 const G_KZ_MAX = 5;
