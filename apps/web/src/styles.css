@@ -207,6 +207,42 @@ button {
 .home-bg {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  /* The painted still (no download): grass with mown stripes under a pale sky. */
+  background:
+    linear-gradient(#dff4ff 0 4%, #dff4ff00 14%),
+    repeating-linear-gradient(90deg, #6fcf5a 0 12%, #79d663 12% 24%);
+}
+
+/* The lane in perspective: candy kerbs (wider) under the warm tiles. */
+.home-bg-paint,
+.home-bg-paint::after {
+  position: absolute;
+  inset: 0;
+}
+
+.home-bg-paint {
+  background: repeating-linear-gradient(#fff 0 18px, #ff7eb3 18px 36px);
+  clip-path: polygon(12% 7%, 88% 7%, 100% 84%, 0 84%);
+}
+
+.home-bg-paint::after {
+  content: '';
+  background:
+    repeating-linear-gradient(90deg, #efab6c 0 3px, #0000 3px 33.3%),
+    repeating-linear-gradient(#efab6c 0 3px, #ffc88a 3px 7%, #ffcf98 7% 14%);
+  clip-path: polygon(15% 7%, 85% 7%, 96% 84%, 4% 84%);
+}
+
+.home-bg-live {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.home-bg.ready .home-bg-live {
+  opacity: 1;
 }
 
 .home-bg::after {
@@ -229,6 +265,7 @@ button {
   padding: max(40px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
   width: 100%;
   height: 100%;
+  overflow-y: auto; /* last resort on very short screens: scroll, never clip */
   text-align: center;
   pointer-events: none;
 }
@@ -238,19 +275,27 @@ button {
 }
 
 /* The Face-Off logo (drawn by us; source in the art picks). The image carries its own outline and shadow. */
+/* The logo takes whatever height the menu leaves and shrinks into it, so the menu never clips. */
 .logo {
+  flex: 1 1 0;
+  min-height: 72px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
   margin: 0;
-  width: min(76vw, 330px);
   line-height: 0;
-  animation: logo-bob 3.2s ease-in-out infinite;
 }
 
 .logo img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: min(76vw, 330px);
+  max-height: 100%;
   user-select: none;
   filter: drop-shadow(0 10px 16px #1b153055);
+  animation: logo-bob 3.2s ease-in-out infinite;
 }
 
 @keyframes logo-bob {
@@ -296,6 +341,11 @@ button {
   font-weight: 800;
   color: #fff;
   text-shadow: 0 2px 0 var(--outline);
+}
+
+.home-foot a {
+  color: #fff;
+  text-underline-offset: 3px;
 }
 
 .home-foot button {

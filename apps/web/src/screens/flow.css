@@ -712,6 +712,40 @@
   font-size: 14px;
 }
 
+/* Short screens (small phones, browser bars showing): a tighter menu so the logo keeps some room. */
+@media (max-height: 780px) {
+  .home-ui {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .flow-home {
+    gap: 10px;
+  }
+
+  .home-bottom {
+    gap: 8px;
+  }
+
+  .home .stake-card {
+    gap: 6px;
+    padding: 8px 10px 10px;
+  }
+
+  .home .ls-field input {
+    font-size: 26px;
+  }
+
+  .home .ls-step {
+    width: 36px;
+    height: 36px;
+  }
+
+  .home .big.play {
+    font-size: 26px;
+    padding: 10px 14px 12px;
+  }
+}
+
 .toast {
   position: absolute;
   z-index: 30;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
+import { modelsReady } from '../arena/models/assets';
 import { sfx, unlockSound } from '../feel/sound';
 import { hasBurner } from '../live/device';
 import { checkResume, hostRoom, lookupRoom, quickMatch, recoverStale, refreshBalance, resume, topUpFor, useLive } from '../live/session';
@@ -14,6 +15,8 @@ import './flow.css';
 import './live.css';
 
 const NOTE_MS = 2600;
+/** The live background has faded in once this session (no fade on later visits to Home). */
+let bgShown = false;
 
 /**
  * Home (SPEC v5 §8, MVP §3.3). Free → PLAY VS BOT (instant, offline, no wallet); a stake → QUICK
@@ -33,6 +36,31 @@ export function Home() {
   const live = free ? 0 : stake;
   const check = free ? { ok: true, hint: '', short: false, notLive: false } : checkStake(stake, balance);
   const say = (text: string) => setNote({ text, at: performance.now() });
+  const [bgReady, setBgReady] = useState(bgShown);
+
+  // Fade the live background in a few frames after every model is in (shaders compile on the
+  // first frames). Once shown, later loops and visits skip the fade.
+  useEffect(() => {
+    if (bgReady) return;
+    let on = true;
+    void modelsReady()
+      .catch(() => undefined)
+      .then(() => {
+        let n = 4;
+        const tick = () => {
+          if (!on) return;
+          if (--n > 0) requestAnimationFrame(tick);
+          else {
+            bgShown = true;
+            setBgReady(true);
+          }
+        };
+        requestAnimationFrame(tick);
+      });
+    return () => {
+      on = false;
+    };
+  }, [bgReady]);
 
   useEffect(() => {
     if (!note) return;
@@ -72,8 +100,12 @@ export function Home() {
 
   return (
     <div className="screen home">
-      <div className="home-bg" aria-hidden>
-        <Background key={bgKey} onEnd={() => setBgKey((k) => k + 1)} />
+      {/* A painted still shows at once; the live 3D loop fades in over it once its models are in. */}
+      <div className={`home-bg ${bgReady ? 'ready' : ''}`} aria-hidden>
+        <div className="home-bg-paint" />
+        <div className="home-bg-live">
+          <Background key={bgKey} onEnd={() => setBgKey((k) => k + 1)} />
+        </div>
       </div>
       <div className="home-ui flow-home">
         <h1 className="logo">
@@ -88,21 +120,16 @@ export function Home() {
             </button>
           )}
 
-          <StakePicker locked={!unlocked} balance={balance} onTopUp={() => void doTopUp()} toppingUp={topping} />
-          {!unlocked && (
-            <p className="unlock-line on-sky">
-              Staked PvP unlocks after your first bot match ·{' '}
-              <button
-                className="link"
-                onClick={() => {
-                  setTutorialDone();
-                  setUnlocked(true);
-                }}
-              >
-                skip
-              </button>
-            </p>
-          )}
+          <StakePicker
+            locked={!unlocked}
+            balance={balance}
+            onTopUp={() => void doTopUp()}
+            toppingUp={topping}
+            onSkip={() => {
+              setTutorialDone();
+              setUnlocked(true);
+            }}
+          />
 
           {free || !unlocked ? (
             <button
@@ -136,27 +163,31 @@ export function Home() {
             <div className="actions row2 home-pvp">
               {free ? (
                 <button
-                  className="big secondary"
+                  className="big secondary two-line"
                   onClick={() => {
                     unlockSound();
                     void quickMatch(0);
                   }}
                 >
-                  Quick Match <small>online</small>
+                  Quick Match
+                  <span>online · free</span>
                 </button>
               ) : (
-                <button className="big secondary" onClick={() => playBot(false)}>
-                  vs Bot <small>free</small>
+                <button className="big secondary two-line" onClick={() => playBot(false)}>
+                  vs Bot
+                  <span>free practice</span>
                 </button>
               )}
-              <button className="big secondary" onClick={() => setSheet('friend')}>
+              <button className="big secondary two-line" onClick={() => setSheet('friend')}>
                 Play a Friend
+                <span>{live ? `${sol(live)} SOL · room code` : 'room code · free'}</span>
               </button>
             </div>
           )}
 
           <footer className="home-foot">
             <button onClick={() => playBot(true)}>How to play</button>
+            <a href="/">About</a>
             <span>Devnet play money</span>
           </footer>
         </div>
