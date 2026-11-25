@@ -17,7 +17,8 @@
 // - rules v8: the re-run follows the real movement (obstacle slides, wall pushes, speed pads,
 //   pipes with their `pipe` event, homing past the last row on the enemies and towers of the
 //   earlier snapshot; rules v9 `homing`: close enemies, the late turn), so one-tick snapshots
-//   stay exact;
+//   stay exact; rules v10's crate hold moves enemies only, and the feed takes enemies from the
+//   snapshots (`enemyStep` in layout.ts mirrors their movement for anyone predicting it);
 // - missing: a volley fired on a lane's last Rush tick (the lane is cleared in that same tick);
 // - approximate: a wave that merged into an existing enemy cohort (at ENEMY_CAP) shows as the
 //   count increase net of that cohort's clash losses.

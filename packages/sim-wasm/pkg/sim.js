@@ -2,7 +2,8 @@
 
 /**
  * The Warlord bot on its own, deciding from the on-chain public state (codec bytes). Used by
- * headless live matches (packages/client/scripts); the UI never needs it.
+ * headless live matches (packages/client/scripts) and the server's online bot; the UI never
+ * needs it. Rules v10: the human-strength bot players face (`Warlord::new`, `Skill::Human`).
  */
 export class Bot {
     __destroy_into_raw() {

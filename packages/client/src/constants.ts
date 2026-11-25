@@ -1,10 +1,10 @@
 // Mirrors crates/sim/src/constants.rs, the odds in crates/sim/src/deal.rs and the level pool in
-// crates/sim/src/layouts.rs (rules v8, docs/SPEC_V5.md on top of docs/SPEC.md). Change both
+// crates/sim/src/layouts.rs (rules v10, docs/SPEC_V5.md on top of docs/SPEC.md). Change both
 // together (CONTRACT log entry);
 // the parity test (test/offline.test.ts) checks every value against the WASM `constants_json`.
 // Units: 1 tick = 50 ms; distances in "sim units". The renderer scales sim units to world units.
 
-export const RULES_VERSION = 9;
+export const RULES_VERSION = 10;
 
 export const TICKS_PER_SEC = 20;
 export const TICK_MS = 1000 / TICKS_PER_SEC;
@@ -29,7 +29,7 @@ export const CHAMP_COUNT = 8;
 export const FIRST_BONUS = 50;
 /** SPEC_V5 §5: Fight 2's small waves bring a giant enemy of GIANT_COUNT walking at GIANT_SPEED. */
 export const GIANT_COUNT = 5;
-export const GIANT_SPEED = 36;
+export const GIANT_SPEED = 28;
 /** SPEC_V5 §3: the timing gate steps ×1 → ×TIMING_MAX, one step every TIMING_STEP_TICKS of the
  *  lane's phase clock (`timingValue(phaseTick)`). */
 export const TIMING_STEP_TICKS = TICKS_PER_SEC;
@@ -39,8 +39,8 @@ export const TIMING_MAX = 5;
 export const FIRE_TICKS = 8;
 export const VOLLEY_SIZE = 1;
 
-/** Rules v7: 60 (the lane is ~35% shorter, so the walk to the tower stays ~5.5 s). */
-export const CRUISE_SPEED = 60;
+/** Rules v7: 60 (the lane is ~35% shorter). Rules v10: 48, 20% slower (the walk is ~6.6 s). */
+export const CRUISE_SPEED = 48;
 export const LAUNCH_TICKS = 6;
 export const LAUNCH_SPEED = CRUISE_SPEED * 3;
 
@@ -67,7 +67,7 @@ export const ENGAGE_X = 900;
 /** Rules v9 late turn (`turnDue`): toward a tower (the hall's centre in the Rush) a cohort walks
  *  straight until `TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN`, then steers
  *  TOWER_STEER a tick. */
-export const TOWER_STEER = 60;
+export const TOWER_STEER = CRUISE_SPEED;
 export const TURN_MARGIN = 250;
 /** The cannon chases the aim by at most this per tick. */
 export const CANNON_STEP = LANE_WIDTH / 5;
@@ -83,6 +83,10 @@ export const WALL_HALF = 60;
  *  (rects: the nearer reachable one, ties left; wedges: their open side). */
 export const OBSTACLE_GRACE = 60;
 export const SLIDE_STEP = 150;
+/** Rules v10 crate hold (`crateHold`): an enemy whose next step would cross a live crate's line
+ *  inside its span stops CRATE_HOLD behind it (`crate.y + CRATE_HOLD`) and waits there until my
+ *  dudes break the crate; enemies never damage crates, and nothing clashes through a live one. */
+export const CRATE_HOLD = 80;
 
 /** Live cohorts of yours / enemy cohorts, per lane. */
 export const COHORT_CAP = 40;
@@ -224,7 +228,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Three Lanes',
     stages: [
       {
-        towers: [{ x: 1500, hp: 411, waveBase: 6 }],
+        towers: [{ x: 1500, hp: 239, waveBase: 8 }],
         rows: [1000, 3400],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -245,7 +249,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 500, hp: 400, waveBase: 5 }, { x: 2500, hp: 400, waveBase: 5 }],
+        towers: [{ x: 500, hp: 320, waveBase: 4 }, { x: 2500, hp: 320, waveBase: 4 }],
         rows: [1000, 3400],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -272,7 +276,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Funnel',
     stages: [
       {
-        towers: [{ x: 1500, hp: 372, waveBase: 13 }],
+        towers: [{ x: 1500, hp: 312, waveBase: 5 }],
         rows: [1000, 4100],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -290,7 +294,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 500, hp: 372, waveBase: 5 }, { x: 2500, hp: 372, waveBase: 5 }],
+        towers: [{ x: 500, hp: 251, waveBase: 6 }, { x: 2500, hp: 251, waveBase: 6 }],
         rows: [1000, 4400],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
@@ -315,7 +319,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Speed Comb',
     stages: [
       {
-        towers: [{ x: 750, hp: 273, waveBase: 10 }],
+        towers: [{ x: 750, hp: 212, waveBase: 8 }],
         rows: [1000, 2700, 4500],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
@@ -344,14 +348,14 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 750, hp: 250, waveBase: 5 }, { x: 2250, hp: 250, waveBase: 5 }],
+        towers: [{ x: 750, hp: 290, waveBase: 2 }, { x: 2250, hp: 290, waveBase: 2 }],
         rows: [1000, 2700, 4500],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
           { row: 0, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
           { row: 1, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
-          { row: 2, x: 750, width: 1380, big: false, timing: true, xMin: 750, xMax: 750, speed: 0 },
-          { row: 2, x: 2250, width: 1380, big: false, timing: false, xMin: 2250, xMax: 2250, speed: 0 },
+          { row: 2, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
+          { row: 2, x: 2250, width: 1380, big: false, timing: true, xMin: 2250, xMax: 2250, speed: 0 },
         ],
         crates: [
           { x: 750, width: 700, y: 2000, hp: 15 },
@@ -378,7 +382,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Pipes',
     stages: [
       {
-        towers: [{ x: 1500, hp: 407, waveBase: 26 }],
+        towers: [{ x: 1500, hp: 260, waveBase: 11 }],
         rows: [1000, 2600, 4000],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -403,7 +407,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         ],
       },
       {
-        towers: [{ x: 1200, hp: 330, waveBase: 14 }, { x: 1800, hp: 330, waveBase: 14 }],
+        towers: [{ x: 1200, hp: 280, waveBase: 5 }, { x: 1800, hp: 280, waveBase: 5 }],
         rows: [1000, 2600, 4000],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -433,7 +437,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Pillars',
     stages: [
       {
-        towers: [{ x: 1500, hp: 403, waveBase: 7 }],
+        towers: [{ x: 1500, hp: 320, waveBase: 6 }],
         rows: [1000, 4400],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -466,7 +470,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 750, hp: 1119, waveBase: 4 }, { x: 2250, hp: 1119, waveBase: 4 }],
+        towers: [{ x: 750, hp: 705, waveBase: 4 }, { x: 2250, hp: 705, waveBase: 4 }],
         rows: [1000, 4400],
         gates: [
           { row: 0, x: 500, width: 880, big: true, timing: false, xMin: 500, xMax: 500, speed: 0 },
@@ -507,7 +511,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
     name: 'Island',
     stages: [
       {
-        towers: [{ x: 1500, hp: 218, waveBase: 11 }],
+        towers: [{ x: 1500, hp: 178, waveBase: 8 }],
         rows: [1000, 4000],
         gates: [
           { row: 0, x: 750, width: 1380, big: false, timing: false, xMin: 750, xMax: 750, speed: 0 },
@@ -528,7 +532,7 @@ export const LAYOUTS: readonly LayoutDef[] = [
         pipes: [],
       },
       {
-        towers: [{ x: 750, hp: 423, waveBase: 5 }, { x: 2250, hp: 423, waveBase: 5 }],
+        towers: [{ x: 750, hp: 293, waveBase: 4 }, { x: 2250, hp: 293, waveBase: 4 }],
         rows: [1000, 3800],
         gates: [
           { row: 0, x: 500, width: 880, big: false, timing: false, xMin: 500, xMax: 500, speed: 0 },

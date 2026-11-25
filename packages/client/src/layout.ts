@@ -108,7 +108,7 @@ export function opFromByte(b: number): GateOp | null {
   }
 }
 
-// --- rules v8 geometry (crates/sim/src/layouts.rs StageDef methods; integer, exact mirrors) ------
+// --- rules v8 / v10 geometry (crates/sim/src/layouts.rs StageDef methods; integer, exact mirrors) -
 
 /** crates/sim `inside_obstacle`: (x, y) is inside obstacle `o` grown by `grace` (the rules use
  *  OBSTACLE_GRACE): inside the box grown by `grace` on every side and, for a wedge, on the inner
@@ -204,6 +204,33 @@ export const onPad = (st: C.StageDef, x: number, y: number): boolean => st.pads.
 
 /** crates/sim `StageDef::pipe_at`: the index of the pipe whose entrance (x, y) is in, or -1. */
 export const pipeAt = (st: C.StageDef, x: number, y: number): number => st.pipes.findIndex((p) => inBox(p, x, y));
+
+/** crates/sim `StageDef::crate_hold` (rules v10): an enemy at (x, y) about to move down to `to`
+ *  stops at `crate.y + CRATE_HOLD` instead if that move crosses the line of a live crate
+ *  (`crates[i] > 0`, the lane's crate HP) inside its span (`covers`); it never moves back up.
+ *  Returns the new y. The sim applies it after the obstacle slide and before the wall push. */
+export function crateHold(st: C.StageDef, crates: readonly number[], x: number, y: number, to: number): number {
+  st.crates.forEach((c, i) => {
+    const stop = c.y + C.CRATE_HOLD;
+    if ((crates[i] ?? 0) > 0 && y > c.y && to < stop && covers(x, c.x, c.width)) to = Math.max(to, Math.min(stop, y));
+  });
+  return to;
+}
+
+/** crates/sim `StageDef::crate_between` (rules v10): a live crate's line lies between an enemy at
+ *  `foeY` and my cohort at `myY` (foeY < line ≤ myY) with `x` (the clash point) inside its span:
+ *  no clash through it. */
+export const crateBetween = (st: C.StageDef, crates: readonly number[], x: number, myY: number, foeY: number): boolean =>
+  st.crates.some((c, i) => (crates[i] ?? 0) > 0 && foeY < c.y && c.y <= myY && covers(x, c.x, c.width));
+
+/** crates/sim step.rs `move_enemies`: one tick of an enemy cohort (straight down at its speed,
+ *  sliding round obstacles, held behind a live crate, pushed out of a wall it enters). Returns
+ *  the new [x, y]. `crates` is the lane's crate HP after my cohorts moved this tick. */
+export function enemyStep(st: C.StageDef, crates: readonly number[], x: number, y: number, giant: boolean): [number, number] {
+  const [nx, ny] = advance(st, x, y, -(giant ? C.GIANT_SPEED : C.CRUISE_SPEED));
+  const held = crateHold(st, crates, nx, y, ny);
+  return [wallPush(st, nx, held), held];
+}
 
 /** crates/sim `StageDef::rows_through`: rows at or below `y` (a pipe's exit skips them). */
 export const rowsThrough = (st: C.StageDef, y: number): number => st.rows.filter((r) => r <= y).length;

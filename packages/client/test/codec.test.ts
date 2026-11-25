@@ -17,8 +17,8 @@ test('codec constants match the WASM build', () => {
 });
 
 test('decodePublic(publicBytes) == the WASM view at every tick of whole matches', () => {
-  for (const seed of [1n, 42n, 77n, 1234n]) {
-    const src = new OfflineSource({ seed, botSeed: seed + 1n, stake: 100_000_000, mySide: seed === 42n ? 1 : 0, selfBot: true, tutorial: seed === 77n });
+  for (const seed of [1n, 43n, 77n, 1234n]) {
+    const src = new OfflineSource({ seed, botSeed: seed + 1n, stake: 100_000_000, mySide: seed === 43n ? 1 : 0, selfBot: true, tutorial: seed === 77n });
     const names: [string, string] = [src.view.sides[0].name, src.view.sides[1].name];
     let ticks = 0;
     for (;;) {
