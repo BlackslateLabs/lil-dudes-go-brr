@@ -1,4 +1,13 @@
-# Asset credits
+# Credits
+
+## Built by
+
+- **Suparno Saha** ([suparno.me](https://suparno.me)): front end, game feel and art direction.
+- **Priyanshu Saha** ([github.com/Kai-972](https://github.com/Kai-972)): the Solana program, the rules engine and the server.
+
+The same list is on the website at `/credits/`.
+
+## Assets
 
 Every asset in the game, with its source and licence. Only CC0 or properly licensed assets.
 Nothing copied from any existing game.
