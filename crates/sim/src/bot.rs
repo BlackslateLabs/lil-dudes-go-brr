@@ -1,18 +1,25 @@
-//! The Warlord bot (SPEC §10, SPEC_V5 §1: no rig; Scouts at the start of a fight; calls the
-//! Champion when charged; rules v8: aims at the first row's gates and weighs each by tracing a
-//! volley's flight through the stage's walls, obstacles, speed pads and pipes).
+//! The Warlord bot (SPEC §10: Scouts at the start of a fight; calls the Champion when charged;
+//! rules v8: aims at the first row's gates and weighs each by tracing a volley's flight through
+//! the stage's walls, obstacles, speed pads and pipes).
+//!
+//! Two strengths (rules v10, SPEC_V5 §15): `Skill::Human`, what players face (`Warlord::new`),
+//! plays like a decent person: it re-targets every 6–8 ticks, aims a little off, now and then
+//! takes the second-best path, releases a full Champion meter late and lifts its finger off the
+//! trigger for a moment every few seconds. `Skill::Perfect` (`Warlord::perfect`) is the old
+//! full-strength bot, kept for tests and to calibrate the human one in the balance runner.
 //!
 //! It is handed `&PublicState` only. Hidden gate values, peeks and the match seed live in
 //! `SecretState`, which it never receives, so it cannot read secrets by construction. Its own
-//! randomness comes from its own seed, which the caller must supply independently of the match
-//! seed. It also ignores its own peek results (they are private state it is not given).
+//! randomness (choices and imperfections alike) comes from its own seed, which the caller must
+//! supply independently of the match seed. It also ignores its own peek results (they are
+//! private state it is not given).
 
 use crate::constants::{
     CHAMP_TICKS, CRATES_MAX, CRUISE_SPEED, DEFEND_Y, GATES_MAX, LANE_WIDTH, LAUNCH_SPEED,
     LAUNCH_TICKS, ROWS_MAX, VOLLEY_SIZE,
 };
 use crate::layouts::{covers, timing_value, Slot, StageDef};
-use crate::rng::SplitMix64;
+use crate::rng::{mix64, SplitMix64};
 use crate::state::{PublicSide, PublicState, SideInput};
 use crate::types::{GateOp, Phase};
 
@@ -34,33 +41,104 @@ pub const TRACE_TICKS: u32 = 400;
 /// Gate rows and crates a traced volley can cross.
 const STEPS: usize = ROWS_MAX + CRATES_MAX;
 
+// Rules v10 (SPEC_V5 §15): the human bot's imperfections. Tuned so it wins ~32% of decisive
+// matches against `Skill::Perfect` (the balance runner's `calibrate` mode, 18,000 matches).
+/// It re-targets (and re-checks for threats) every HUMAN_THINK_MIN–MAX ticks (0.30–0.40 s).
+pub const HUMAN_THINK_MIN: u32 = 6;
+pub const HUMAN_THINK_MAX: u32 = 8;
+/// Its aim is off by up to this much either way (drawn per re-target).
+pub const AIM_ERROR: i32 = 120;
+/// Every SWITCH_MIN–MAX ticks it reconsiders, and this percent of the time takes the
+/// second-best path...
+pub const MISTAKE_PCT: u64 = 22;
+/// ...held for MISTAKE_MIN–MAX ticks.
+pub const MISTAKE_MIN: u32 = 20;
+pub const MISTAKE_MAX: u32 = 60;
+/// A full Champion meter is released after HUMAN_CHAMP_MIN–MAX ticks (0.5–1.5 s).
+pub const HUMAN_CHAMP_MIN: u32 = 10;
+pub const HUMAN_CHAMP_MAX: u32 = 30;
+/// Every PAUSE_GAP_MIN–MAX ticks (4–8 s) it holds fire for PAUSE_MIN–MAX ticks (0.3–0.6 s).
+pub const PAUSE_GAP_MIN: u32 = 80;
+pub const PAUSE_GAP_MAX: u32 = 160;
+pub const PAUSE_MIN: u32 = 6;
+pub const PAUSE_MAX: u32 = 12;
+
+/// How well the Warlord plays (rules v10).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Skill {
+    /// Full strength: re-targets every THINK_TICKS, aims dead on, always takes the best path,
+    /// releases a full Champion meter at once and never stops firing. Tests and calibration.
+    Perfect,
+    /// What players face: the imperfections above, all drawn from the bot's own seed.
+    Human,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Warlord {
     side: u8,
+    skill: Skill,
     rng: SplitMix64,
+    /// The human imperfections' own stream (so `Perfect` draws exactly as before).
+    noise: SplitMix64,
     /// The x it is going for.
     target: i32,
     /// When it may switch to another equally good spot.
     switch_at: u32,
     /// The traced paths of its aim points in the stage it last thought about.
     paths: Paths,
+    /// Human: the tick it next thinks.
+    next_think: u32,
+    /// Human: it next reconsiders (and may take the second-best path) at `reconsider_at`; it is
+    /// holding a second-best target until `mistake_until`.
+    reconsider_at: u32,
+    mistake: bool,
+    mistake_until: u32,
+    /// Human: the tick it lets go of a full Champion meter (`None` while not charged).
+    champ_at: Option<u32>,
+    /// Human: the next firing pause starts at `pause_at` (`None` until first scheduled) and
+    /// the current one lasts until `pause_until`.
+    pause_at: Option<u32>,
+    pause_until: u32,
 }
 
 impl Warlord {
-    /// `seed` must not be derived from the match seed by anything the opponent can't see either;
-    /// it only drives tie-breaks and the random Scout (peek) slot.
+    /// The bot players face (`Skill::Human`). `seed` must not be derived from the match seed by
+    /// anything the opponent can't see either; it drives tie-breaks, the random Scout (peek)
+    /// slot and the human imperfections.
     pub fn new(side: u8, seed: u64) -> Self {
+        Self::with_skill(side, seed, Skill::Human)
+    }
+
+    /// The full-strength bot (`Skill::Perfect`), as before rules v10.
+    pub fn perfect(side: u8, seed: u64) -> Self {
+        Self::with_skill(side, seed, Skill::Perfect)
+    }
+
+    pub fn with_skill(side: u8, seed: u64, skill: Skill) -> Self {
         Self {
             side,
+            skill,
             rng: SplitMix64::new(seed),
+            noise: SplitMix64::new(mix64(seed ^ 0x4855_4D41_4E00_0000)),
             target: LANE_WIDTH / 2,
             switch_at: 0,
             paths: Paths::EMPTY,
+            next_think: 0,
+            reconsider_at: 0,
+            mistake: false,
+            mistake_until: 0,
+            champ_at: None,
+            pause_at: None,
+            pause_until: 0,
         }
     }
 
     pub fn side(&self) -> u8 {
         self.side
+    }
+
+    pub fn skill(&self) -> Skill {
+        self.skill
     }
 
     /// The bot's input for the tick `view.tick` is about to process.
@@ -78,25 +156,91 @@ impl Warlord {
             input.peek = self.random_hidden(me, view.stage_def(self.side), n);
         }
         // SPEC_V5 §2, §4: hold the trigger; let go for one tick to release the Champion as
-        // soon as it is charged.
+        // soon as it is charged (Human: a moment later, and with short pauses now and then).
         let charged = me.phase == Phase::Fight
             && !me.champ_pending
             && u32::from(me.champ_meter) >= CHAMP_TICKS;
-        input.fire = Some(!(charged && me.firing));
-        if view.tick.checked_rem(THINK_TICKS) != Some(0) {
+        let tick = view.tick;
+        input.fire = Some(match self.skill {
+            Skill::Perfect => !(charged && me.firing),
+            Skill::Human => {
+                let pausing = self.pausing(tick, charged || threat(me).is_some());
+                let release = self.release_due(tick, charged);
+                !(pausing || (release && me.firing))
+            }
+        });
+        let think = match self.skill {
+            Skill::Perfect => tick.checked_rem(THINK_TICKS) == Some(0),
+            Skill::Human => tick >= self.next_think,
+        };
+        if !think {
             return input;
         }
-        input.aim = Some(match threat(me) {
+        if self.skill == Skill::Human {
+            let wait = self.noise.range_inclusive(HUMAN_THINK_MIN, HUMAN_THINK_MAX);
+            self.next_think = tick.saturating_add(wait);
+        }
+        let aim = match threat(me) {
             // SPEC §10.1: defend.
             Some(x) => x,
             // SPEC §10.2–3: the best expected product; alternate between ties.
             None => {
                 let st = view.stage_def(self.side);
                 self.paths.load(view.layout, me.stage, st);
-                self.pick(view.tick, me, st)
+                self.pick(tick, me, st)
+            }
+        };
+        input.aim = Some(match self.skill {
+            Skill::Perfect => aim,
+            Skill::Human => {
+                let span = AIM_ERROR.unsigned_abs().saturating_mul(2);
+                let off = self.noise.range_inclusive(0, span) as i32;
+                aim.saturating_add(off.saturating_sub(AIM_ERROR))
+                    .clamp(0, LANE_WIDTH.saturating_sub(1))
             }
         });
         input
+    }
+
+    /// Human: holding fire right now? Every PAUSE_GAP_MIN–MAX ticks it lifts its finger for
+    /// PAUSE_MIN–MAX ticks, but never starts a pause while `busy`: with a full Champion meter
+    /// (letting go would release it) or an enemy close to its cannon (it keeps firing then).
+    fn pausing(&mut self, tick: u32, busy: bool) -> bool {
+        let at = match self.pause_at {
+            Some(at) => at,
+            None => {
+                let at =
+                    tick.saturating_add(self.noise.range_inclusive(PAUSE_GAP_MIN, PAUSE_GAP_MAX));
+                self.pause_at = Some(at);
+                at
+            }
+        };
+        if tick >= at && tick >= self.pause_until && !busy {
+            let len = self.noise.range_inclusive(PAUSE_MIN, PAUSE_MAX);
+            self.pause_until = tick.saturating_add(len);
+            let gap = self.noise.range_inclusive(PAUSE_GAP_MIN, PAUSE_GAP_MAX);
+            self.pause_at = Some(self.pause_until.saturating_add(gap));
+        }
+        tick < self.pause_until
+    }
+
+    /// Human: is it time to release a full Champion meter? HUMAN_CHAMP_MIN–MAX ticks after it
+    /// was first seen full.
+    fn release_due(&mut self, tick: u32, charged: bool) -> bool {
+        if !charged {
+            self.champ_at = None;
+            return false;
+        }
+        let at = match self.champ_at {
+            Some(at) => at,
+            None => {
+                let wait = self.noise.range_inclusive(HUMAN_CHAMP_MIN, HUMAN_CHAMP_MAX);
+                let at = tick.saturating_add(wait);
+                self.champ_at = Some(at);
+                at
+            }
+        };
+        tick >= at
     }
 
     fn random_hidden(&mut self, side: &PublicSide, st: &StageDef, n: usize) -> Option<u8> {
@@ -136,6 +280,17 @@ impl Warlord {
             }
         }
         let tied = tied.get(..k).unwrap_or(&[]);
+        // Human: a second-best pick is held for a while (unless it became worthless).
+        if self.mistake {
+            let alive = scores
+                .iter()
+                .zip(paths.xs.iter())
+                .any(|(&score, &x)| x == self.target && score > 0);
+            if tick < self.mistake_until && alive {
+                return self.target;
+            }
+            self.mistake = false;
+        }
         let current = tied.iter().position(|&x| x == self.target);
         let switch = match current {
             None => true,
@@ -151,6 +306,25 @@ impl Warlord {
                 self.target = x;
             }
             self.switch_at = tick.saturating_add(self.rng.range_inclusive(SWITCH_MIN, SWITCH_MAX));
+        }
+        // Human: every SWITCH_MIN–MAX ticks it reconsiders, and MISTAKE_PCT of the time takes
+        // the second-best path (the best aim point outside the near-ties that still scores)
+        // for MISTAKE_MIN–MAX ticks.
+        if self.skill == Skill::Human && tick >= self.reconsider_at {
+            let wait = self.noise.range_inclusive(SWITCH_MIN, SWITCH_MAX);
+            self.reconsider_at = tick.saturating_add(wait);
+            let second = scores
+                .iter()
+                .zip(paths.xs.iter())
+                .filter(|&(&score, _)| score > 0 && !near(score))
+                .max_by_key(|&(&score, _)| score)
+                .map(|(_, &x)| x);
+            if let (true, Some(x)) = (self.noise.below(100) < MISTAKE_PCT, second) {
+                self.target = x;
+                self.mistake = true;
+                let hold = self.noise.range_inclusive(MISTAKE_MIN, MISTAKE_MAX);
+                self.mistake_until = tick.saturating_add(hold);
+            }
         }
         self.target
     }

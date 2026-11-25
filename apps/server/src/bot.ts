@@ -1,8 +1,9 @@
 // The online bot (MVP §3.5 "Play the bot while you wait"): when Quick Match finds nobody on the
 // FREE tier within ~5 s, the server's own player takes the seat. It is an ordinary player of the
 // on-chain match: its own burner (funded by the sponsor), a server-side LiveSource, and the same
-// WASM Warlord as offline, deciding from the public state only (it never sees anything a human
-// opponent could not). It only ever creates stake-0 matches, so the matched stake is always 0.
+// WASM Warlord as offline (rules v10: the human-strength one, with slower reactions, a little aim
+// error, the odd second-best path, a late Champion and short firing pauses, all from its own seed),
+// deciding from the public state only (it never sees anything a human opponent could not). It only ever creates stake-0 matches, so the matched stake is always 0.
 //
 // Flow: create (bot pays the rent, back at close) → the human joins → the bot delegates → both
 // LiveSources auto-drive the TEE → finish → settle (free: nothing to pay) → the sweeper closes it
