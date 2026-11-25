@@ -1947,3 +1947,25 @@ SUBMISSION. Prize wallet: decide. Demo video. After submitting: an uptime pinger
 split.
 
 **Next / handoff (Kai):** skim packages/client "sideEffects": false (CONTRACT).
+
+## 2026-11-26 02:11 IST · Suparno · docs: README for judges and AI reviewers
+**Did:**
+- README rewritten to match the code at fbe58ba:
+  - rules v11 and the MagicBlock "remove it" table, now with code links;
+  - a mermaid architecture diagram and a 12-step live-match lifecycle (each step linked);
+  - the privacy model, Verify, payout and conservation, compute, accounts / faucet / matchmaking, and what the
+    server can and can't do;
+  - the proof table, limits, and tests with current counts (rules 116 + 7, WASM 11, client 37, server 35, MagicSVM
+    19).
+- A new "For AI reviewers" section: claim → pinned code lines → how to check it, one entry per claim. All 154
+  permalinks point to commit fbe58ba with line ranges and were checked against it (file exists, range in bounds,
+  range starts and ends on the right symbol).
+- docs/SUBMISSION.md in step: the Friday deadline, accounts / any-stake / try-to-peek, privacy PASS and MagicSVM
+  19/19 on rules v11, test counts.
+
+**Decided:** pin code links to a commit (fbe58ba) so the line numbers survive later edits; re-pin if the code moves
+before judging.
+
+**Blocked / risks:** "A settled staked match" stays TBD until the two-phone live test.
+
+**Next / handoff:** after the live test, paste the settle tx into README "On chain" and SUBMISSION.
