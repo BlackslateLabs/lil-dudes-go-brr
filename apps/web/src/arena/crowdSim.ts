@@ -133,6 +133,12 @@ export const MAX_GIANTS = 16;
  * fits the narrowest gap (a comb arm to its wall, ~550) and the drawn body squashes to fit (G_SQUASH).
  */
 const RAD = [BODY_R, 240, 170];
+/**
+ * A giant's radius against obstacles (pillars, blocks, wedges; walls use RAD). Smaller than its
+ * body so it fits the pillar field's ~440 gaps; the drawn body squashes across to match. A head-on
+ * hit turns into a sideways slide round the obstacle instead of a stop (see collide).
+ */
+const SOLID_R = [BODY_R, 150, 130];
 /** Formation step for giants (neighbours ~1.9 steps apart, about two bodies). */
 const G_SPACING = [SPACING, 235, 150];
 /** Drawn half-width of a giant (sim units) and the most it squashes across to fit a gap. */
@@ -541,7 +547,9 @@ export class CrowdSim {
       const R = step * Math.sqrt(units + 0.5);
       // Open sides (no wall) give a big blob room to stay round: max(half a column, its radius).
       spanAt(walls, Math.max(col, 2 * R), r.x, r.y, span);
-      narrowSpan(solids, r.x, r.y, R, span);
+      // Giants follow the cohort's own line (the sim already threads it round obstacles): aiming
+      // them at the middle of a gap puts them on the next pillar in a staggered field.
+      if (!big) narrowSpan(solids, r.x, r.y, R, span);
       const lo = big ? Math.max(body, span.lo + body) : Math.max(EDGE, span.lo + BODY_R * 0.5);
       const hi = big ? Math.min(LANE_WIDTH - body, span.hi - body) : Math.min(LANE_WIDTH - EDGE, span.hi - BODY_R * 0.5);
       const half = Math.max(30, (hi - lo) / 2);
@@ -1036,10 +1044,18 @@ export class CrowdSim {
       let x = this.x[a]!;
       let y = this.y[a]!;
       for (let k = 0; k < solids.n; k++) {
-        if (pushOut(solids, k, x, y, BODY, hitOut) > 0) {
+        const obstacle = solids.defs[k] != null;
+        const pen = pushOut(solids, k, x, y, big && obstacle ? SOLID_R[big]! : BODY, hitOut);
+        if (pen > 0) {
           x = hitOut.x;
           y = hitOut.y;
           this.killInto(a, hitOut.nx, hitOut.ny);
+          // A giant hitting an obstacle's front or back face slides off sideways (to the side
+          // it's already on), so it walks round a pillar instead of stalling against it.
+          if (big && obstacle && Math.abs(hitOut.ny) > 0.7) {
+            const mid = (solids.box[k * 4]! + solids.box[k * 4 + 2]!) / 2;
+            x += (x >= mid ? 1 : -1) * Math.min(pen * 1.5, 40);
+          }
         }
       }
       for (let k = 0; k < this.nCrates; k++) {
