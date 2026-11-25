@@ -1774,3 +1774,16 @@ export would be cleaner; no rush.
 **Blocked / risks:** the server is not hosted yet (Kai: Render, then Vercel with `VITE_SERVER_URL`; the server's
 `CORS_ORIGINS` must include the web URL). Staked two-human play and Profile withdraw are untested until two phones try.
 **Next / handoff:** Kai hosts and posts [DEPLOYED]. Then both do the live test. Suparno: nothing needed until the test finds bugs.
+
+## 2026-11-25 · Kai · hosting handoff: Suparno deploys web and server · [HANDOFF]
+**Did:** nothing new in code. Kai's side (chain, program, server code, multiplayer) is done and checked on devnet (see the entry above).
+
+**Decided:** Suparno (with his Claude) does the hosting and picks the host for both the web app and the server.
+
+**Blocked / risks (for the host choice):**
+- **Render's free tier** gives 750 shared instance hours a month; Kai's account hit it, so its free services stay suspended until the start of next month (after the deadline). A new Render account, or the paid Starter plan, avoids that. Free instances also sleep after ~15 min idle (the first Quick Match would wait for a wake-up).
+- **The server must run as one long-lived process.** Its matchmaking queue and rooms are in memory, and the online bot and the refund sweeper run on timers. A stateless/serverless function host would drop all of that. Any host that runs a persistent Node process works (Render, Fly.io, Railway, Koyeb, Vercel only if it can run a persistent container/process rather than functions). Run exactly one instance.
+- Server env (see `apps/server/.env.example`, `render.yaml`): `SOLANA_RPC_URL`, `SPONSOR_SECRET_KEY` (or `_PATH`), `BOT_SECRET_KEY` (the bot wallet `CJbQ…9ogW` has 0.5 SOL), `TRUST_PROXY=1`, `BASE_RPC_URL`, `CORS_ORIGINS` = the web URL. Web env: `VITE_SERVER_URL` = the server URL. Health check: `/healthz`.
+- Secrets go into the host's secret store, never into git.
+
+**Next / handoff (Suparno):** host the server and the web app, then post [DEPLOYED] with both URLs and fill the README and `docs/SUBMISSION.md` links (Play URL, program ID `4QFSXrcG…9FDa`, explorer links). After that Kai and Suparno do the live test together: staked Quick Match, room + rematch, free match vs the bot, Profile withdraw.
