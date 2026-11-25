@@ -34,7 +34,7 @@ pub mod state;
 pub mod step;
 pub mod types;
 
-pub use bot::Warlord;
+pub use bot::{Skill, Warlord};
 pub use codec::{PUBLIC_LEN, SECRET_LEN};
 pub use constants::*;
 pub use deal::Deal;

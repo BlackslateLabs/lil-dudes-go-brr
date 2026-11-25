@@ -1,11 +1,14 @@
-//! Warlord bot (SPEC §10).
+//! Warlord bot (SPEC §10). Most tests pin the full-strength rules (`Warlord::perfect`); the
+//! human imperfections (rules v10, SPEC_V5 §15) have their own tests at the end.
 
 use super::*;
-use crate::constants::{CHAMP_TICKS, ENEMY_CAP, GATES_MAX, PLANT_TICKS, STAGES};
+use crate::constants::{
+    CHAMP_TICKS, CRUISE_SPEED, ENEMY_CAP, GATES_MAX, LAUNCH_SPEED, PLANT_TICKS, STAGES,
+};
 use crate::deal::NO_GATE;
 use crate::events::NoEvents;
 use crate::layouts::{self, GateDef, ObstacleDef, Shape, StageDef, LAYOUTS};
-use crate::state::{Inputs, MatchOptions, MatchState, Peek};
+use crate::state::{Inputs, MatchOptions, MatchState, Peek, PublicState};
 use crate::step::step;
 use crate::types::{Enemy, Phase};
 
@@ -23,7 +26,7 @@ fn aim_of(m: &MatchState) -> i32 {
     let mut view = m.public;
     view.tick = 1_000;
     view.sides[1].peek_used = true;
-    Warlord::new(1, 5).decide(&view).aim.unwrap()
+    Warlord::perfect(1, 5).decide(&view).aim.unwrap()
 }
 
 #[test]
@@ -38,13 +41,16 @@ fn decisions_depend_on_the_public_state_only() {
         slot: 1,
         op: GateOp::Mul(5),
     }); 2];
-    let (mut a, mut b) = (Warlord::new(1, 9), Warlord::new(1, 9));
-    for t in 0..200 {
-        let mut pa = m.public;
-        pa.tick = PLANT_TICKS + t;
-        let mut pb = other_secrets.public;
-        pb.tick = pa.tick;
-        assert_eq!(a.decide(&pa), b.decide(&pb));
+    for skill in [Skill::Perfect, Skill::Human] {
+        let mut a = Warlord::with_skill(1, 9, skill);
+        let mut b = Warlord::with_skill(1, 9, skill);
+        for t in 0..400 {
+            let mut pa = m.public;
+            pa.tick = PLANT_TICKS + t;
+            let mut pb = other_secrets.public;
+            pb.tick = pa.tick;
+            assert_eq!(a.decide(&pa), b.decide(&pb), "{skill:?}");
+        }
     }
 }
 
@@ -52,7 +58,7 @@ fn decisions_depend_on_the_public_state_only() {
 fn thinks_every_two_ticks() {
     let mut m = fighting(0);
     m.public.sides[1].peek_used = true;
-    let mut bot = Warlord::new(1, 1);
+    let mut bot = Warlord::perfect(1, 1);
     for t in 100..140 {
         m.public.tick = t;
         assert_eq!(bot.decide(&m.public).aim.is_some(), t % THINK_TICKS == 0);
@@ -233,7 +239,7 @@ fn timing_gates_count_their_value_on_arrival_and_are_never_scouted() {
     }
     // Scout never picks it.
     for seed in 0..50 {
-        let mut bot = Warlord::new(1, seed);
+        let mut bot = Warlord::perfect(1, seed);
         let pick = bot.decide(&m.public).peek.unwrap();
         assert_ne!(pick, 4);
     }
@@ -242,7 +248,7 @@ fn timing_gates_count_their_value_on_arrival_and_are_never_scouted() {
 #[test]
 fn holds_the_trigger_and_lets_go_to_release_the_champion() {
     let mut m = fighting(0);
-    let mut bot = Warlord::new(1, 3);
+    let mut bot = Warlord::perfect(1, 3);
     m.public.sides[1].firing = true;
     m.public.sides[1].champ_meter = (CHAMP_TICKS - 1) as u8;
     assert_eq!(bot.decide(&m.public).fire, Some(true), "keeps holding");
@@ -263,18 +269,19 @@ fn holds_the_trigger_and_lets_go_to_release_the_champion() {
 #[test]
 fn travel_time_matches_the_movement_rules() {
     // SPEC §7: 6 ticks at LAUNCH_SPEED, then cruise.
-    assert_eq!(travel_ticks(180), 1);
-    assert_eq!(travel_ticks(1_080), 6);
-    assert_eq!(travel_ticks(1_081), 7);
-    assert_eq!(travel_ticks(1_140), 7);
-    assert_eq!(travel_ticks(1_141), 8);
+    let (l, c) = (LAUNCH_SPEED, CRUISE_SPEED);
+    assert_eq!(travel_ticks(l), 1);
+    assert_eq!(travel_ticks(6 * l), 6);
+    assert_eq!(travel_ticks(6 * l + 1), 7);
+    assert_eq!(travel_ticks(6 * l + c), 7);
+    assert_eq!(travel_ticks(6 * l + c + 1), 8);
 }
 
 #[test]
 fn alternates_between_equal_options() {
     // SPEC §10.3: with ties it moves between them every 20–60 ticks.
     let m = fighting(0);
-    let mut bot = Warlord::new(1, 3);
+    let mut bot = Warlord::perfect(1, 3);
     let mut view = m.public;
     view.sides[1].peek_used = true;
     // The left lane (two `?`) and the right one (a `?` and the timing gate, ×2 on arrival) tie.
@@ -293,7 +300,7 @@ fn peeks_at_the_fight_start() {
     // SPEC §10: a random own `?` each fight; never in the plant, never a revealed gate.
     let m = MatchState::new(0, MatchOptions::default());
     let n = LAYOUTS[0].stages[0].gates.len() as u8;
-    let mut bot = Warlord::new(1, 8);
+    let mut bot = Warlord::perfect(1, 8);
     let i = bot.decide(&m.public);
     assert!(i.peek.is_none());
     let f = fighting(0);
@@ -318,7 +325,7 @@ fn does_nothing_once_finished() {
     let mut m = fighting(0);
     m.public.sides[1].phase = Phase::Done;
     assert_eq!(
-        Warlord::new(1, 1).decide(&m.public),
+        Warlord::perfect(1, 1).decide(&m.public),
         crate::state::SideInput::default()
     );
 }
@@ -339,7 +346,7 @@ fn aims_at_the_first_rows_gates_in_every_stage() {
         assert_eq!(&xs[..n], &firsts[..]);
         let mut view = m.public;
         view.sides[1].peek_used = true;
-        let mut bot = Warlord::new(1, u64::from(layout));
+        let mut bot = Warlord::perfect(1, u64::from(layout));
         for t in (0..200).step_by(2) {
             view.tick = 1_000 + t;
             let x = bot.decide(&view).aim.unwrap();
@@ -398,4 +405,191 @@ fn traces_follow_slides_pads_and_pipes_and_a_sealed_pocket_scores_nothing() {
     assert!(!trace(&sealed, 1_500).open);
     let m = fighting(0);
     assert_eq!(path_score(&m.public.sides[1], &sealed, 1_500), 0);
+}
+
+// --- rules v10: the human bot (SPEC_V5 §15) ----------------------------------------------------
+
+/// Layout 0's Fight 1 with side 1's Scout spent and its trigger held, at a late tick.
+fn human_view() -> PublicState {
+    let m = fighting(0);
+    let mut view = m.public;
+    view.sides[1].peek_used = true;
+    view.sides[1].firing = true;
+    view
+}
+
+#[test]
+fn the_default_bot_is_the_human_one() {
+    assert_eq!(Warlord::new(1, 1).skill(), Skill::Human);
+    assert_eq!(Warlord::perfect(1, 1).skill(), Skill::Perfect);
+}
+
+#[test]
+fn human_reacts_every_six_to_eight_ticks_and_aims_a_little_off() {
+    let mut view = human_view();
+    let st = layouts::stage(0, 0);
+    let (xs, n) = candidates(st);
+    let mut bot = Warlord::new(1, 4);
+    let mut last: Option<u32> = None;
+    let mut offs = std::collections::BTreeSet::new();
+    for t in 0..2_000 {
+        view.tick = 1_000 + t;
+        let Some(aim) = bot.decide(&view).aim else {
+            continue;
+        };
+        if let Some(l) = last {
+            let gap = view.tick - l;
+            assert!(
+                (HUMAN_THINK_MIN..=HUMAN_THINK_MAX).contains(&gap),
+                "gap {gap}"
+            );
+        }
+        last = Some(view.tick);
+        // Within AIM_ERROR of one of row 1's gate centres.
+        let off = xs[..n]
+            .iter()
+            .map(|&x| aim - x)
+            .min_by_key(|d| d.abs())
+            .unwrap();
+        assert!(off.abs() <= AIM_ERROR, "aim {aim}");
+        offs.insert(off);
+    }
+    assert!(offs.len() > 50, "the error varies: {} values", offs.len());
+    // Defending is slower and off too, but still goes for the enemy.
+    view.sides[1].enemies[0] = crate::types::Enemy {
+        id: 1,
+        count: 3,
+        x: 444,
+        y: 1_000,
+        tower: 0,
+        giant: false,
+    };
+    view.sides[1].enemy_len = 1;
+    let aim = (0..HUMAN_THINK_MAX)
+        .find_map(|t| {
+            view.tick = 5_000 + t;
+            bot.decide(&view).aim
+        })
+        .unwrap();
+    assert!((aim - 444).abs() <= AIM_ERROR, "defends at {aim}");
+}
+
+#[test]
+fn human_sometimes_takes_the_second_best_path() {
+    // Layout 0, Fight 1, revealed ×3 / ×3 on the left lane, ×2 / ×1 on the right, the middle
+    // lane behind a crate: the left lane is clearly best, the right lane second.
+    let m = fighting(0);
+    let st = layouts::stage(0, 0);
+    let mut view = m.public;
+    view.sides[1].peek_used = true;
+    view.sides[1].phase_ticks = timing_at(st, 2_500, 1, 1);
+    for (slot, k) in [(0, 3), (3, 3), (1, 1), (2, 2)] {
+        view.sides[1].gates[slot].revealed = Some(GateOp::Mul(k));
+    }
+    let best = path_score(&view.sides[1], st, 500);
+    let second = path_score(&view.sides[1], st, 2_500);
+    assert!(second > 0 && second * 100 < best * NEAR_PCT);
+    let (mut on_best, mut on_second) = (0u32, 0u32);
+    for seed in 0..40 {
+        let mut bot = Warlord::new(1, seed);
+        // The phase clock stays put (the timing gate's value is fixed); only the tick moves.
+        for t in 0..1_200 {
+            view.tick = 2_000 + t;
+            if let Some(aim) = bot.decide(&view).aim {
+                if (aim - 500).abs() <= AIM_ERROR {
+                    on_best += 1;
+                } else if (aim - 2_500).abs() <= AIM_ERROR {
+                    on_second += 1;
+                } else {
+                    panic!("aim {aim}");
+                }
+            }
+        }
+        // The perfect bot never does.
+        let mut perfect = Warlord::perfect(1, seed);
+        view.tick = 2_000;
+        assert_eq!(perfect.decide(&view).aim, Some(500));
+    }
+    let share = 100 * on_second / (on_best + on_second);
+    assert!(
+        (5..=35).contains(&share),
+        "{share}% on the second-best path"
+    );
+}
+
+#[test]
+fn human_releases_a_full_champion_meter_late() {
+    let mut view = human_view();
+    view.sides[1].champ_meter = CHAMP_TICKS as u8;
+    for seed in 0..30 {
+        let mut bot = Warlord::new(1, seed);
+        let mut waited = None;
+        for t in 0..60 {
+            view.tick = 3_000 + t;
+            if bot.decide(&view).fire == Some(false) {
+                waited = Some(t);
+                break;
+            }
+        }
+        let waited = waited.expect("released");
+        assert!(
+            (HUMAN_CHAMP_MIN..=HUMAN_CHAMP_MAX).contains(&waited),
+            "seed {seed}: {waited} ticks"
+        );
+    }
+}
+
+#[test]
+fn human_lifts_its_finger_now_and_then() {
+    let mut view = human_view();
+    let mut bot = Warlord::new(1, 12);
+    let mut runs = Vec::new();
+    let mut run = 0u32;
+    let mut held = 0u32;
+    for t in 0..4_000 {
+        view.tick = 1_000 + t;
+        if bot.decide(&view).fire == Some(false) {
+            run += 1;
+        } else {
+            held += 1;
+            if run > 0 {
+                runs.push(run);
+                run = 0;
+            }
+        }
+    }
+    // A pause every 4-8 s (plus its own length): 4,000 ticks hold ~24-46 of them.
+    assert!((20..=50).contains(&runs.len()), "{} pauses", runs.len());
+    assert!(
+        runs.iter().all(|r| (PAUSE_MIN..=PAUSE_MAX).contains(r)),
+        "{runs:?}"
+    );
+    assert!(held > 3_000, "fires most of the time: {held}");
+    // Never with a full meter: it waits for the release instead.
+    view.sides[1].champ_meter = CHAMP_TICKS as u8;
+    let mut bot = Warlord::new(1, 12);
+    let mut lets_go = 0;
+    for t in 0..HUMAN_CHAMP_MIN {
+        view.tick = 1_000 + t;
+        lets_go += u32::from(bot.decide(&view).fire == Some(false));
+    }
+    assert_eq!(lets_go, 0);
+}
+
+#[test]
+fn human_plays_whole_matches_from_its_own_seed() {
+    // Same seeds, same match; another bot seed, another match (same deal).
+    let play = |bot_seed: u64| {
+        let mut m = MatchState::new(7, MatchOptions::default());
+        let mut bots = [Warlord::new(0, bot_seed), Warlord::new(1, bot_seed ^ 1)];
+        while m.public.result.is_none() {
+            let inputs = Inputs {
+                sides: [bots[0].decide(&m.public), bots[1].decide(&m.public)],
+            };
+            step(&mut m, &inputs, &mut NoEvents);
+        }
+        (m.public.tick, m.public.sides.map(|s| s.gold))
+    };
+    assert_eq!(play(3), play(3));
+    assert_ne!(play(3), play(4));
 }
