@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { STAKE_MIN, maxStake, stakeOnChain } from '@lil-dudes/client';
+import { clock, useFaucet } from '../live/session';
 import { STAKE_PRESETS, useApp } from '../store';
 import { sol } from './format';
 import './live.css';
@@ -72,6 +73,31 @@ export function StakePicker({ locked, balance, onTopUp, toppingUp, onSkip }: Sta
   const typed = toLamports(text);
   const check = checkStake(typed, balance);
 
+  // Top-up cooldown: the chip counts down instead of offering a refused top-up.
+  const until = useFaucet((f) => f.until);
+  const policy = useFaucet((f) => f.policy);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until || until <= Date.now()) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [until]);
+  const left = until ? until - now : 0;
+  const cooling = left > 0;
+
+  // The limits live behind a small "i", never inline on Home.
+  const [info, setInfo] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!info) return;
+    const off = (e: PointerEvent) => {
+      if (!infoRef.current?.contains(e.target as Node)) setInfo(false);
+    };
+    window.addEventListener('pointerdown', off);
+    return () => window.removeEventListener('pointerdown', off);
+  }, [info]);
+
   return (
     <div className={`stake-card live-stake ${locked ? 'is-locked' : ''} ${free ? 'is-free' : 'is-staked'}`}>
       <div className={`seg ${free ? '' : 'right'}`} role="radiogroup" aria-label="Free or staked">
@@ -101,9 +127,29 @@ export function StakePicker({ locked, balance, onTopUp, toppingUp, onSkip }: Sta
             <span>
               Wallet <b>{balance === null ? '…' : sol(balance)} SOL</b>
             </span>
-            <button className="ls-topup" onClick={onTopUp} disabled={toppingUp} title="Your burner wallet in this browser (devnet play money)">
-              {toppingUp ? 'Topping up…' : '+ Top up'}
-            </button>
+            <div className="ls-topwrap" ref={infoRef}>
+              <button
+                className={`ls-topup ${cooling ? 'cooling' : ''}`}
+                onClick={onTopUp}
+                disabled={toppingUp || cooling}
+                title={cooling ? 'Next free top-up' : 'Free devnet SOL into your game wallet'}
+              >
+                {toppingUp ? 'Topping up…' : cooling ? clock(left) : '+ Top up'}
+              </button>
+              <button className="ls-info" aria-label="Top-up limits" aria-expanded={info} onClick={() => setInfo((v) => !v)}>
+                i
+              </button>
+              {info && (
+                <div className="ls-pop" role="note">
+                  <b>Free devnet SOL</b>
+                  <ul>
+                    <li>Tops your game wallet up to {sol(policy.maxBalance)} SOL at most.</li>
+                    <li>Once every {Math.round(policy.burnerEveryMs / 60_000)} min per wallet, {policy.ipMax} per {Math.round(policy.ipWindowMs / 60_000)} min per connection.</li>
+                    <li>Stakes above ~{sol(policy.maxBalance - policy.reserve)} SOL need SOL from your own wallet.</li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
           <div className={`ls-field ${check.ok ? '' : check.notLive && !check.short ? 'warn' : 'bad'}`}>
             <button className="ls-step" aria-label="Less" onClick={() => setStake(step(Number.isFinite(typed) ? typed : stake, -1))}>

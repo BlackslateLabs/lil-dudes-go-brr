@@ -2,6 +2,7 @@
 // apps/server (matchmaking, faucet) and the chain (through packages/client only). The screens draw
 // this store; nothing here fakes progress: every step is ticked off when the server or the chain
 // says so, and every failure lands in `error` with a retry.
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import {
   baseConnection,
@@ -270,19 +271,147 @@ export async function refreshBalance(): Promise<number | null> {
   return b;
 }
 
+// --- faucet limits + cooldown -----------------------------------------------------------------
+
+/** The server faucet's limits (GET /faucet `policy`); these defaults until it answers. */
+export interface FaucetPolicy {
+  /** The most it fills a burner to (lamports). */
+  maxBalance: number;
+  /** Once per burner every this long. */
+  burnerEveryMs: number;
+  /** Top-ups per connection (IP) per window. */
+  ipMax: number;
+  ipWindowMs: number;
+  /** What it adds on top of the stake (rent + fees). */
+  reserve: number;
+}
+
+const DEFAULT_POLICY: FaucetPolicy = {
+  maxBalance: 300_000_000,
+  burnerEveryMs: 10 * 60_000,
+  ipMax: 3,
+  ipWindowMs: 10 * 60_000,
+  reserve: STAKE_RESERVE,
+};
+
+const UNTIL_KEY = 'ldgb.topupUntil';
+
+function readUntil(): number | null {
+  try {
+    const v = Number(sessionStorage.getItem(UNTIL_KEY));
+    return Number.isFinite(v) && v > Date.now() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The faucet's limits and this tab's cooldown (kept apart from the live session, which resets). */
+export const useFaucet = create<{ policy: FaucetPolicy; until: number | null }>(() => ({ policy: DEFAULT_POLICY, until: readUntil() }));
+
+function setUntil(until: number | null) {
+  useFaucet.setState({ until });
+  try {
+    if (until) sessionStorage.setItem(UNTIL_KEY, String(until));
+    else sessionStorage.removeItem(UNTIL_KEY);
+  } catch {
+    /* private mode: the countdown just won't survive a reload */
+  }
+}
+
+let policyAsked = false;
+/** Reads the faucet's real limits once (GET /faucet); keeps the defaults if it can't. */
+export function loadFaucetPolicy() {
+  if (policyAsked) return;
+  policyAsked = true;
+  void fetch(`${SERVER.replace(/\/$/, '')}/faucet`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j: { policy?: Partial<FaucetPolicy> } | null) => {
+      if (j?.policy) useFaucet.setState({ policy: { ...DEFAULT_POLICY, ...j.policy } });
+    })
+    .catch(() => undefined);
+}
+
+/** "7:42" (or "42 s"). */
+export const clock = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
+};
+
+/** The faucet can fill a burner for this stake (stake + reserve within its cap). */
+export const faucetCovers = (stake: number) => {
+  const p = useFaucet.getState().policy;
+  return stake + p.reserve <= p.maxBalance;
+};
+
+/** The limits in one line, for the "i" popover and refused top-ups. */
+export function faucetLimits(p: FaucetPolicy = useFaucet.getState().policy): string {
+  return `Free devnet SOL is limited: once every ${Math.round(p.burnerEveryMs / 60_000)} min, up to ${sol(p.maxBalance)} SOL.`;
+}
+
 /** Server faucet (devnet): fills the burner to stake + reserve. Resolves with a message to show. */
 export async function topUpFor(stake: number): Promise<{ ok: boolean; text: string }> {
+  const wait = useFaucet.getState().until;
+  if (wait && wait > Date.now()) return { ok: false, text: `${faucetLimits()} Next top-up in ${clock(wait - Date.now())}.` };
+  if (!faucetCovers(stake)) {
+    const p = useFaucet.getState().policy;
+    return { ok: false, text: `The free faucet tops up to ${sol(p.maxBalance)} SOL at most. For ${sol(stake)} SOL, add SOL from your own wallet.` };
+  }
   try {
     const t = await topUp(SERVER, myBurner().publicKey, stake);
     set({ balance: t.balance });
     void refreshBalance();
+    if (t.sent > 0) setUntil(Date.now() + useFaucet.getState().policy.burnerEveryMs);
     return { ok: true, text: t.sent > 0 ? `+${sol(t.sent)} devnet SOL` : 'Already topped up' };
   } catch (e) {
     if (e instanceof ServerError && e.status === 0) return { ok: false, text: 'Faucet unreachable (server down?)' };
     if (e instanceof ServerError && e.status === 503) return { ok: false, text: 'The faucet is off on this server' };
+    if (e instanceof ServerError && e.status === 429) {
+      if (e.retryAfterSec) {
+        const until = Date.now() + e.retryAfterSec * 1000;
+        setUntil(until);
+        return { ok: false, text: `${faucetLimits()} Next top-up in ${clock(until - Date.now())}.` };
+      }
+      return { ok: false, text: "The free faucet's hourly budget is used up. Try again later, or add SOL from your own wallet." };
+    }
     const m = String(e instanceof Error ? e.message : e).replace(/^top-up: /, '');
     return { ok: false, text: m.charAt(0).toUpperCase() + m.slice(1) };
   }
+}
+
+/** "7:42" until `until` (ms), ticking each second; null once it has passed (or none). */
+export function useCountdown(until: number | null): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until || until <= Date.now()) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [until]);
+  return until && until > now ? clock(until - now) : null;
+}
+
+/** "3 online · 1 searching at 0.1 SOL" (the Quick Match sheet and the queue screen). */
+export const whoLine = (online: number, here: number, stake: number) => `${online} online · ${here} searching at ${stake ? `${sol(stake)} SOL` : 'free'}`;
+
+/** Who's around at this stake, refreshed every ~5 s while `on` (GET /queue/stats); null until known. */
+export function useWhosAround(stake: number, on: boolean): string | null {
+  const [line, setLine] = useState<string | null>(null);
+  useEffect(() => {
+    if (!on) return;
+    let live = true;
+    const player = hasBurner() ? myBurner().publicKey : undefined;
+    const tick = async () => {
+      const st = await queueStats(SERVER, { stake, player }).catch(() => null);
+      if (live && st) setLine(whoLine(st.online, st.here ?? 0, stake));
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 5_000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [stake, on]);
+  return line;
 }
 
 /** What a stake needs on the burner: the stake + the reserve (rent, delegation, fees). */

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FEE_BPS, stakeOnChain } from '@lil-dudes/client';
-import { cancel, confirmJoin, leave, needFor, quickMatch, refreshBalance, topUpFor, useLive, type LiveError, type Step } from '../live/session';
+import { cancel, confirmJoin, leave, needFor, quickMatch, refreshBalance, topUpFor, useLive, whoLine, type LiveError, type Step } from '../live/session';
 import { useApp } from '../store';
 import { bpsLabel, sol } from './format';
 import './flow.css';
@@ -71,8 +71,7 @@ export function Lobby() {
           {s.phase === 'queue' && s.qstats && (
             <div className="lobby-stats">
               <p>
-                {s.qstats.here > 0 ? `${s.qstats.here} waiting at ${s.stake ? `${sol(s.stake)} SOL` : 'free'}` : `Nobody else at ${s.stake ? `${sol(s.stake)} SOL` : 'free'} yet`} ·{' '}
-                {s.qstats.online} online
+                {whoLine(s.qstats.online, s.qstats.here, s.stake)}
               </p>
             </div>
           )}

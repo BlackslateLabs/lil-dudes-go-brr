@@ -4,7 +4,23 @@ import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
 import { sfx, unlockSound } from '../feel/sound';
 import { hasBurner } from '../live/device';
-import { checkResume, hostRoom, lookupRoom, quickMatch, recoverStale, refreshBalance, resume, topUpFor, useLive } from '../live/session';
+import {
+  checkResume,
+  faucetCovers,
+  hostRoom,
+  loadFaucetPolicy,
+  lookupRoom,
+  needFor,
+  quickMatch,
+  recoverStale,
+  refreshBalance,
+  resume,
+  topUpFor,
+  useCountdown,
+  useFaucet,
+  useLive,
+  useWhosAround,
+} from '../live/session';
 import { useFeed } from '../match/useFeed';
 import { setTutorialDone, tutorialDone, useApp } from '../store';
 import { FriendSheet } from './FriendSheet';
@@ -16,12 +32,15 @@ import './live.css';
 import './profile.css';
 
 const NOTE_MS = 2600;
+/** Refused top-ups and other errors stay up longer (they say when to try again). */
+const NOTE_LONG_MS = 4500;
 /** The live background has faded in once this session (no fade on later visits to Home). */
 let bgShown = false;
 
 /**
- * Home (SPEC v5 §8, MVP §3.3). Free → PLAY VS BOT (instant, offline, no wallet); a stake → QUICK
- * MATCH at exactly that amount, with Play a Friend (room code) beside it. Live play also works
+ * Home (SPEC v5 §8, MVP §3.3). Free → PLAY VS BOT (instant, offline, no wallet); a stake → FIND
+ * MATCH at exactly that amount (always the big button; a short balance is handled in its sheet),
+ * with Play a Friend (room code) beside it. Live play also works
  * free from the small buttons (the server's Bot takes a free Quick Match after ~5 s). Staked play
  * unlocks after the first bot match (or skip). A silent bot-vs-bot match loops behind it.
  */
@@ -31,12 +50,14 @@ export function Home() {
   const [bgKey, setBgKey] = useState(0);
   const [unlocked, setUnlocked] = useState(tutorialDone);
   const [sheet, setSheet] = useState<'quick' | 'friend' | null>(null);
-  const [note, setNote] = useState<{ text: string; at: number } | null>(null);
+  const [note, setNote] = useState<{ text: string; at: number; ms: number } | null>(null);
   const [topping, setTopping] = useState(false);
   const back = useLive((s) => s.resume);
   const live = free ? 0 : stake;
   const check = free ? { ok: true, hint: '', short: false, notLive: false } : checkStake(stake, balance);
-  const say = (text: string) => setNote({ text, at: performance.now() });
+  const say = (text: string, ms = NOTE_MS) => setNote({ text, at: performance.now(), ms });
+  const around = useWhosAround(stake, sheet === 'quick');
+  const cooldown = useCountdown(useFaucet((f) => f.until));
   const [bgReady, setBgReady] = useState(bgShown);
 
   // Fade the live background in a few frames after every model is in (shaders compile on the
@@ -65,7 +86,7 @@ export function Home() {
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => setNote(null), NOTE_MS);
+    const t = setTimeout(() => setNote(null), note.ms);
     return () => clearTimeout(t);
   }, [note]);
 
@@ -78,6 +99,7 @@ export function Home() {
   // crashed tab left behind (MVP §4).
   useEffect(() => {
     if (!unlocked) return;
+    loadFaucetPolicy();
     const had = hasBurner();
     void refreshBalance();
     if (had) void recoverStale().then((t) => t && say(t));
@@ -93,7 +115,7 @@ export function Home() {
     setTopping(true);
     const r = await topUpFor(amount);
     setTopping(false);
-    say(r.text);
+    say(r.text, r.ok ? NOTE_MS : NOTE_LONG_MS);
   };
 
   // The stake can't be played as is: why, for the Create button and the sheet.
@@ -155,21 +177,17 @@ export function Home() {
             >
               PLAY VS BOT
             </button>
-          ) : check.short && !check.notLive ? (
-            <button className="big primary play" disabled={topping} onClick={() => void doTopUp()}>
-              TOP UP
-            </button>
           ) : (
             <button
               className="big primary play"
-              disabled={!check.ok}
+              disabled={!check.ok && !check.short}
               onClick={() => {
                 unlockSound();
                 sfx.playButton();
                 setSheet('quick');
               }}
             >
-              QUICK MATCH
+              FIND MATCH
             </button>
           )}
 
@@ -208,7 +226,7 @@ export function Home() {
       </div>
 
       {note && (
-        <div key={note.at} className="toast" role="status">
+        <div key={note.at} className={`toast ${note.text.length > 40 ? 'long' : ''}`} role="status">
           {note.text}
         </div>
       )}
@@ -218,6 +236,20 @@ export function Home() {
           title="Quick Match"
           stake={stake}
           balance={balance}
+          around={around}
+          short={
+            check.short
+              ? {
+                  need: needFor(stake),
+                  faucet: faucetCovers(stake),
+                  cooldown,
+                  topping,
+                  onTopUp: () => void doTopUp(),
+                  // Part 2 hook: "Add SOL from wallet" lives on the Profile screen.
+                  onAddFromWallet: () => go('profile'),
+                }
+              : null
+          }
           onClose={() => setSheet(null)}
           onSign={() => {
             setSheet(null);
