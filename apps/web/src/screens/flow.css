@@ -798,6 +798,17 @@
   animation: sheet-dim 0.25s ease-out both;
 }
 
+/* A sheet portaled to <body> (e.g. Verify on the scrolling result screen): covers the viewport. */
+.sheet-wrap.sheet-fixed {
+  position: fixed;
+  z-index: 60;
+  justify-content: center;
+}
+
+.sheet-wrap.sheet-fixed > .sheet {
+  width: min(100%, 520px);
+}
+
 .sheet-wrap.closing {
   animation: sheet-dim 0.15s ease-in reverse both;
 }

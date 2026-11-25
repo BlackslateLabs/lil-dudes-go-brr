@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { BASE_EXPLORER, dealsFor, matchResultOf, opLabel, payoutOf, trueOp, type GateOp, type LiveSource, type MatchReveal } from '@lil-dudes/client';
 import { refreshBalance, useLive, type FlipLog } from '../live/session';
 import { SERVER } from '../live/device';
@@ -184,8 +185,9 @@ function VerifySheet({ reveal, src, onClose }: { reveal: MatchReveal; src: LiveS
   const flips = useLive((s) => s.flips);
   const checks = useMemo(() => verifyChecks(reveal, src, flips), [reveal, src, flips]);
   const fair = checks.slice(0, 4).every((c) => c.ok);
-  return (
-    <div className="sheet-wrap" onClick={onClose}>
+  // Portaled to <body> and fixed: the result screen scrolls, and a sheet inside it got boxed in.
+  return createPortal(
+    <div className="sheet-wrap sheet-fixed" onClick={onClose}>
       <div className="sheet verify-sheet" role="dialog" aria-modal="true" aria-label="Verify this match" onClick={(e) => e.stopPropagation()}>
         <i className="sheet-grip" aria-hidden />
         <h3>Verify</h3>
@@ -222,6 +224,7 @@ function VerifySheet({ reveal, src, onClose }: { reveal: MatchReveal; src: LiveS
           Close
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
