@@ -1596,3 +1596,56 @@ layout with crates: the worst there is a stack of 16 enemies held at a crate plu
   with a layout change;
 - the `STAKE_TIERS` → any-amount change is a separate program item (see the 23:01 entry);
 - MagicSVM + redeploy for v10 after review. Not posting [RULES FINAL]: Suparno decides after review.
+
+## 2026-11-25 10:36 IST · Suparno · web multiplayer + server lobby · [CONTRACT] [HANDOFF]
+**Did:** (branch `v10-final`; commits `769e029`, `e5770e6`, `dd582ab`, `bc73bdc`, `6a600e4`, `a96a6fa`)
+- **Web:** Home stakes any amount (Free · vs Bot, or a stake field with − / +, presets 0.05 / 0.1 / 0.25 / 0.5,
+  burner balance and Top up; min 0.01, max = balance − 0.035 reserve). Quick Match at the **exact** stake with a
+  waiting screen (elapsed, cancel, real steps, "N waiting at X · N online", after ~12 s alone: the nearest stakes with
+  players + "Play the bot instead"). Play a Friend: create a room (code tiles, share link, copy, native share,
+  Cancel & refund) or join by code / `?room=CODE` link (the joiner sees the creator's stake and confirms). VS screen
+  fed with the real chain steps (stakes → private rollup → VRF → arena) and the level once SEEDED. Match on
+  `LiveSource` with a LIVE / Reconnecting tag. Live result: settling → paid out (Settle now after 20 s), payout
+  counting into the balance, **Verify** (re-derives level, flipped gates, Scouts and payout from the revealed seed;
+  every tx linked), explorer links, Rematch in the same room (vs the Bot: Play again). Errors with retry for server
+  down, not enough SOL, faucet off/limited, room not found / expired / cancelled / full, opponent never showed,
+  aborted, tx failed, other tab. Resume: this device's saved match, else the server's `/me`. Stale matches are
+  refunded on Home (`recoverMatches`). Play vs Bot and the tutorial gate unchanged.
+- **Server** (`apps/server`, now mine for the lobby): any-stake exact queue; `GET /queue/stats`; room lifecycle
+  (waiting / joined / playing / ended, two seats, creator-only cancel and rematch, 30 min idle expiry, 410 for
+  expired / cancelled); `GET /me/:player`; history (`POST /history/report`, `GET /history/:player`,
+  `GET /stats/:player`, recorded from the base-layer Match, never from the client; `/settle` records too; optional
+  `HISTORY_FILE`). 26/26 server tests (new `lobby.test.ts`), client 24/24, web typecheck + build green.
+- **Verified locally** (server + web, headless Edge muted): queue pairing at exactly 0.1 between two browsers, stats
+  and suggestions, `/me`, room resume / share link / 410 cancelled / full room, every error card. **Not verified
+  end to end on chain:** no devnet SOL here (the RPC airdrop is closed, the faucet needs the sponsor key), so the
+  waiting screens ran with `getBalance` stubbed in the test browser and every on-chain step failed for real at the
+  first tx. The live match, live result, Verify and Rematch are untested against devnet.
+
+**CONTRACT (packages/client, additive):** `joinQueue`, `pollQueue`, `leaveQueue`, `takeSeat`, `setRoomState`,
+`closeRoom(server, code, player?)`, `nextRoomMatch(…, player?)`, `createRoom(…, { player, role })`, `queueStats`,
+`resumeInfo`, `reportMatch`, `matchHistory`, `playerStats`, `ServerError` (status 0 = unreachable); `Room` gains
+`state / players / creator / joiner`; `live/player.ts`: `deviceBurner`, `STAKE_MIN`, `STAKE_RESERVE`, `maxStake`,
+`stakeOnChain`.
+
+**Decided:** (Suparno) any amount in the UI, but only what the program takes is playable (one function,
+`stakeOnChain`); the server bot stays free-only; history only from the chain.
+
+**Blocked / risks:** the live flow has never run on devnet from the web. Rooms are bookkeeping: anyone with a code
+can take the free seat (the on-chain join is what counts).
+
+**Next / handoff (Kai):**
+1. **Program: any stake.** `create_match` / `join_match` take only `STAKE_TIERS` (`base.rs` `BadStake`). Take any
+   amount in [min, max] (proposal: 0.01–5 SOL, same as the server's `STAKE_MIN` / `STAKE_MAX`), then change
+   `stakeOnChain` in `packages/client/src/live/player.ts` to that range.
+2. **Queue: bot fallback for staked queues.** The exact-stake queue is done server-side; the online bot still only
+   takes FREE tickets (`maybeBot`). If a staked bot is wanted, it needs a funded float and your call; today the UI
+   suggests nearby stakes or a free bot match.
+3. **Rooms carry the stake:** done on the server (`POST /rooms {stake}`, the joiner sees it); on-chain the joiner's
+   pick is the creator's stake, and the matched stake is the lower pick as before.
+4. **Render deploy:** new routes (TECH §9 table); new env `HISTORY_FILE` (optional). For history to survive restarts
+   it needs a persistent disk: `render.yaml` has a commented `disk` + `HISTORY_FILE=/data/history.jsonl`. Please
+   review (paid-instance feature; the Docker user must be able to write `/data`). Without it, history is in memory.
+5. Web needs `VITE_SERVER_URL` set on Vercel (default is `<host>:8787`), and the server's `CORS_ORIGINS` to include
+   the web URL.
+6. First live check on two phones: Quick Match 0.05, a room + rematch, a free Quick Match vs the online bot, Verify.
