@@ -19,9 +19,9 @@ export interface StakeCheck {
 export function checkStake(lamports: number, balance: number | null): StakeCheck {
   if (!Number.isFinite(lamports) || lamports < STAKE_MIN) return { ok: false, hint: `Min ${sol(STAKE_MIN)} SOL`, short: false, notLive: false };
   // The program's limit first (topping up wouldn't help), then the balance.
-  if (!stakeOnChain(lamports)) return { ok: false, hint: 'Live on-chain today: 0.05 · 0.1 · 0.25. Any amount comes with the next program update.', short: false, notLive: true };
+  if (!stakeOnChain(lamports)) return { ok: false, hint: 'On-chain today: 0.05, 0.1 or 0.25. Any amount soon.', short: false, notLive: true };
   if (balance !== null && lamports > maxStake(balance)) {
-    return { ok: false, hint: `Max ${sol(maxStake(balance))} SOL: your balance minus ~0.035 for rent and fees`, short: true, notLive: false };
+    return { ok: false, hint: `Max ${sol(maxStake(balance))} SOL (keeps ~0.035 for fees)`, short: true, notLive: false };
   }
   return { ok: true, hint: '', short: false, notLive: false };
 }
@@ -42,13 +42,22 @@ export interface StakePickerProps {
   balance: number | null;
   onTopUp: () => void;
   toppingUp: boolean;
+  /** Unlock staked play without the first bot match. */
+  onSkip: () => void;
 }
 
+const Lock = () => (
+  <svg className="seg-lock" viewBox="0 0 16 16" aria-hidden>
+    <path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <rect x="2.5" y="7" width="11" height="8" rx="2" fill="currentColor" />
+  </svg>
+);
+
 /**
- * Home's stake card: Free (vs bot) or a stake: a numeric field with − / +, quick presets, the
- * burner balance and Top up. Devnet play money.
+ * Home's stake card: a Free / Stake switch; with a stake, a numeric field with − / +, quick
+ * presets, the burner balance and Top up. Devnet play money.
  */
-export function StakePicker({ locked, balance, onTopUp, toppingUp }: StakePickerProps) {
+export function StakePicker({ locked, balance, onTopUp, toppingUp, onSkip }: StakePickerProps) {
   const free = useApp((s) => s.free);
   const stake = useApp((s) => s.stake);
   const setFree = useApp((s) => s.setFree);
@@ -64,28 +73,38 @@ export function StakePicker({ locked, balance, onTopUp, toppingUp }: StakePicker
   const check = checkStake(typed, balance);
 
   return (
-    <div className={`stake-card live-stake ${locked ? 'is-locked' : ''}`}>
-      <div className="ls-top">
-        <span className="stake-head">Stake · devnet SOL</span>
-        {!locked && (
-          <button className="ls-bal" onClick={onTopUp} disabled={toppingUp} title="Your burner wallet in this browser (devnet play money)">
-            <span>{balance === null ? '…' : sol(balance)} SOL</span>
-            <b>{toppingUp ? 'Topping up…' : 'Top up'}</b>
-          </button>
-        )}
+    <div className={`stake-card live-stake ${locked ? 'is-locked' : ''} ${free ? 'is-free' : 'is-staked'}`}>
+      <div className={`seg ${free ? '' : 'right'}`} role="radiogroup" aria-label="Free or staked">
+        <i className="seg-thumb" aria-hidden />
+        <button role="radio" aria-checked={free} className={free ? 'on' : ''} onClick={() => setFree(true)}>
+          Free
+        </button>
+        <button role="radio" aria-checked={!free} className={!free ? 'on' : ''} disabled={locked} onClick={() => setFree(false)}>
+          {locked && <Lock />}
+          Stake SOL
+        </button>
       </div>
 
-      <div className="ls-mode" role="radiogroup" aria-label="Free or staked">
-        <button role="radio" aria-checked={free} className={`chip ${free ? 'on' : ''}`} onClick={() => setFree(true)}>
-          Free · vs Bot
-        </button>
-        <button role="radio" aria-checked={!free} className={`chip ${!free ? 'on' : ''} ${locked ? 'locked' : ''}`} disabled={locked} onClick={() => setFree(false)}>
-          Stake
-        </button>
-      </div>
+      {locked && (
+        <p className="ls-hint">
+          Staked play unlocks after your first bot match ·{' '}
+          <button className="link" onClick={onSkip}>
+            skip
+          </button>
+        </p>
+      )}
+      {free && !locked && <p className="ls-hint">Practice for free. No wallet, nothing at stake.</p>}
 
       {!free && !locked && (
         <>
+          <div className="ls-wallet">
+            <span>
+              Wallet <b>{balance === null ? '…' : sol(balance)} SOL</b>
+            </span>
+            <button className="ls-topup" onClick={onTopUp} disabled={toppingUp} title="Your burner wallet in this browser (devnet play money)">
+              {toppingUp ? 'Topping up…' : '+ Top up'}
+            </button>
+          </div>
           <div className={`ls-field ${check.ok ? '' : check.notLive && !check.short ? 'warn' : 'bad'}`}>
             <button className="ls-step" aria-label="Less" onClick={() => setStake(step(Number.isFinite(typed) ? typed : stake, -1))}>
               −
