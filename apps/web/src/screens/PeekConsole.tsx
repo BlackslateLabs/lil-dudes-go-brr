@@ -84,9 +84,22 @@ export function PeekConsole({ src, autoRun = false }: { src: LiveSource; autoRun
         </p>
       )}
       {!reveal && during.length === 0 && !runningNow && <p className="pk-fine">Your browser will ask the rollup for the sealed accounts, with your own login. Real requests.</p>}
-      <button className="big pk-run" disabled={runningNow} onClick={() => void runPeek(src)}>
-        {runningNow ? 'Trying…' : reveal ? (afterLines.length ? 'Read them again' : 'Read them now') : during.length ? 'Try again' : 'Try to peek'}
-      </button>
+      <div className="pk-bar">
+        <span className="pk-status" aria-live="polite">
+          {runningNow ? (
+            <>
+              trying<i className="pk-cursor" aria-hidden />
+            </>
+          ) : during.length || afterLines.length ? (
+            'done'
+          ) : (
+            'ready'
+          )}
+        </span>
+        <button className="pk-run" disabled={runningNow} onClick={() => void runPeek(src)}>
+          {runningNow ? 'Trying…' : reveal ? (afterLines.length ? '↻ Read again' : '▶ Read them now') : during.length ? '↻ Try again' : '▶ Try to peek'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -105,10 +118,7 @@ export function PeekSheet({ src, onClose }: { src: LiveSource; onClose: () => vo
         <i className="sheet-grip" aria-hidden />
         <h3>Try to peek</h3>
         <PeekConsole src={src} autoRun />
-        <p className="sheet-fine">
-          The gate values and their Scout sit in private accounts inside MagicBlock’s Private Ephemeral Rollup (an Intel TDX enclave)
-          until the match ends. That hardware is the trust assumption. The match keeps going.
-        </p>
+        <p className="pk-note">Sealed in MagicBlock’s Private Ephemeral Rollup (an Intel TDX enclave) until the match ends.</p>
         <button className="sheet-cancel" onClick={close}>
           Back to the match
         </button>
