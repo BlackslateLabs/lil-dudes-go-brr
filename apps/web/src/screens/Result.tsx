@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FEE_BPS } from '@lil-dudes/client';
 import { haptic, sfx } from '../feel/sound';
-import { leave, rematch, useLive } from '../live/session';
-import { LiveProof } from './LiveProof';
+import { leave, rematch } from '../live/actions';
+import { useLive } from '../live/store';
 import { bestScore, isDemoResult, setBestScore, useApp, type LastMatch, type ScoreParts } from '../store';
 import { bpsLabel, signedSol, sol } from './format';
 import './flow.css';
+
+// Verify and the explorer links need the live code: they load with it (a live result has it already).
+const LiveProof = lazy(() => import('./LiveProof').then((m) => ({ default: m.LiveProof })));
 
 /** Ceremony timeline (ms from mount). Tap anywhere to jump to the end. */
 const BANNER_MS = 700;
@@ -262,7 +265,9 @@ export function Result() {
       </div>
 
       {live ? (
-        <LiveProof on={t >= tl.proofAt} />
+        <Suspense fallback={null}>
+          <LiveProof on={t >= tl.proofAt} />
+        </Suspense>
       ) : (
       <section className={`proof-row reveal ${t >= tl.proofAt ? 'on' : ''}`}>
         <button className="big" disabled title="Needs the revealed VRF seed from the chain">

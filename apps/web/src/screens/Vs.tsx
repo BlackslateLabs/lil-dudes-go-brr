@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { LAYOUTS } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
 import { layoutOfSeed, peekSeed } from '../match/nextSeed';
 import { LanePreview } from './LanePreview';
-import { useLive } from '../live/session';
-import { LiveVs } from './LiveVs';
+import { useLive } from '../live/store';
+
+// The live VS screen runs the chain steps: it loads with the live code.
+const LiveVs = lazy(() => import('./LiveVs').then((m) => ({ default: m.LiveVs })));
 import { useApp } from '../store';
 import { sol } from './format';
 import './flow.css';
@@ -165,7 +167,12 @@ export function VsScreen() {
   const [layout] = useState(() => layoutOfSeed(peekSeed()));
   // `?name=` previews a long opponent name (layout testing).
   const rivalName = params.get('name');
-  if (live) return <LiveVs />;
+  if (live)
+    return (
+      <Suspense fallback={null}>
+        <LiveVs />
+      </Suspense>
+    );
   if (rivalName) return <Vs me={{ name: 'You' }} them={{ name: rivalName }} layout={layout} onDone={() => go('match')} />;
   if (demoStaked) {
     const stake = stakeLamports;

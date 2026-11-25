@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLive } from '../live/session';
+import { useLive } from '../live/store';
 import './live.css';
 
 /** No new rollup snapshot for this long mid-match = show "Reconnecting…" (the feed reopens itself). */

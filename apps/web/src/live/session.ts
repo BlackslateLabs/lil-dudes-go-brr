@@ -2,8 +2,6 @@
 // apps/server (matchmaking, faucet) and the chain (through packages/client only). The screens draw
 // this store; nothing here fakes progress: every step is ticked off when the server or the chain
 // says so, and every failure lands in `error` with a retry.
-import { useEffect, useState } from 'react';
-import { create } from 'zustand';
 import {
   baseConnection,
   cancelMatch,
@@ -35,126 +33,37 @@ import {
   STAKE_RESERVE,
   stakeOnChain,
   topUp,
-  type GateOp,
   type QueueTicket,
   type Side,
 } from '@lil-dudes/client';
 import { sol } from '../screens/format';
 import { useApp } from '../store';
 import { claimTab, guestBurner, hasBurner, myBurner, myName, myTeeToken, releaseTab, saveMatch, savedMatch, SERVER } from './device';
+import {
+  clock,
+  faucetCovers,
+  faucetLimits,
+  IDLE,
+  needFor,
+  setKeySource,
+  short,
+  useFaucet,
+  useLive,
+  type LiveError,
+  type LiveMode,
+  type LiveState,
+  type LivePhase,
+  type Opponent,
+  type Step,
+  type StepState,
+} from './store';
 
-export type StepState = 'todo' | 'now' | 'ok' | 'fail';
-export interface Step {
-  key: string;
-  label: string;
-  state: StepState;
-  /** A second line (e.g. "connection lost, retrying"). */
-  note?: string;
-}
+// Lazy screens (Lobby, Profile, LiveVs, LiveProof) import the store's names from here too.
+export * from './store';
 
-export type ErrorKind = 'server' | 'balance' | 'faucet' | 'room' | 'full' | 'aborted' | 'noshow' | 'chain' | 'stake' | 'tab';
-export interface LiveError {
-  kind: ErrorKind;
-  title: string;
-  message: string;
-  /** Run the same flow again. */
-  retry?: () => void;
-  /** The stake that was asked for (balance errors offer a top-up to it). */
-  stake?: number;
-}
-
-export type LivePhase = 'idle' | 'queue' | 'host' | 'join' | 'starting' | 'playing' | 'ended' | 'error';
-export type LiveMode = 'queue' | 'host' | 'join' | 'rematch' | 'rejoin';
-
-/** A gate that flipped during the match (Verify checks each against the seed). */
-export interface FlipLog {
-  side: Side;
-  stage: number;
-  slot: number;
-  op: GateOp;
-}
-
-export interface Opponent {
-  name: string;
-  address: string;
-  bot: boolean;
-}
-
-interface LiveState {
-  phase: LivePhase;
-  mode: LiveMode | null;
-  /** Lamports per player (0 = free). */
-  stake: number;
-  /** When the current wait started (the waiting screens' clock). */
-  since: number;
-  /** Lobby steps (queue, room). */
-  steps: Step[];
-  /** On-chain steps shown on the VS screen. */
-  chain: Step[];
-  /** 'retrying' while the server or RPC is unreachable (the flow keeps trying). */
-  conn: 'ok' | 'retrying';
-  /** The room: the host's share card, or what a joiner is about to confirm. */
-  room: { code: string; stake: number; host: string } | null;
-  /** A joiner looked the room up and must confirm the stake. */
-  confirm: boolean;
-  /** Quick Match: alone at this stake for ~12 s (suggest nearby stakes and the bot). */
-  lonely: boolean;
-  /** Free Quick Match alone for ~5 s: offer "Play the Bot instead" (it never joins by itself). */
-  botOffer: boolean;
-  /** The online bot couldn't be called: the offer becomes the bot on this device. */
-  botOffline: boolean;
-  /** Queue liquidity while waiting (GET /queue/stats): others at my stake, the nearest stakes
-   *  with someone waiting, players online. */
-  qstats: { here: number; near: { stake: number; players: number }[]; online: number } | null;
-  /** What Home can resume (a reloaded tab): from this device or the server's /me. */
-  resume: { kind: 'match' | 'queue' | 'room'; label: string } | null;
-  matchId: bigint | null;
-  side: Side | null;
-  opp: Opponent | null;
-  source: LiveSource | null;
-  layout: number | null;
-  flips: FlipLog[];
-  /** Burner balance in lamports (null = not fetched yet / unknown). */
-  balance: number | null;
-  /** Balance just before the payout landed (the result's count-up starts here). */
-  balanceBefore: number | null;
-  /** Bumps when the settlement is known (the result screen re-reads `source.reveal()`). */
-  settled: number;
-  error: LiveError | null;
-}
-
-const IDLE: Omit<LiveState, 'balance'> = {
-  phase: 'idle',
-  mode: null,
-  stake: 0,
-  since: 0,
-  steps: [],
-  chain: [],
-  conn: 'ok',
-  room: null,
-  confirm: false,
-  lonely: false,
-  botOffer: false,
-  botOffline: false,
-  qstats: null,
-  resume: null,
-  matchId: null,
-  side: null,
-  opp: null,
-  source: null,
-  layout: null,
-  flips: [],
-  balanceBefore: null,
-  settled: 0,
-  error: null,
-};
-
-export const useLive = create<LiveState>(() => ({ ...IDLE, balance: null }));
 const set = useLive.setState;
 const get = useLive.getState;
 
-/** Short address: "4oar…aA4Z". */
-export const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 const solLabel = (stake: number) => (stake > 0 ? `${sol(stake)} SOL` : 'free');
 const go = (s: Parameters<ReturnType<typeof useApp.getState>['go']>[0]) => useApp.getState().go(s);
 
@@ -282,27 +191,6 @@ export async function refreshBalance(): Promise<number | null> {
 
 // --- faucet limits + cooldown -----------------------------------------------------------------
 
-/** The server faucet's limits (GET /faucet `policy`); these defaults until it answers. */
-export interface FaucetPolicy {
-  /** The most it fills a burner to (lamports). */
-  maxBalance: number;
-  /** Once per burner every this long. */
-  burnerEveryMs: number;
-  /** Top-ups per connection (IP) per window. */
-  ipMax: number;
-  ipWindowMs: number;
-  /** What it adds on top of the stake (rent + fees). */
-  reserve: number;
-}
-
-const DEFAULT_POLICY: FaucetPolicy = {
-  maxBalance: 300_000_000,
-  burnerEveryMs: 10 * 60_000,
-  ipMax: 3,
-  ipWindowMs: 10 * 60_000,
-  reserve: STAKE_RESERVE,
-};
-
 /** The faucet's cooldown is per game wallet (a fresh account key isn't cooling because the guest was). */
 const untilKey = (pk: string) => `ldgb.topupUntil:${pk}`;
 /** The key that plays now, without making a guest burner just to ask. */
@@ -317,9 +205,6 @@ function readUntil(pk = currentPk()): number | null {
     return null;
   }
 }
-
-/** The faucet's limits and this tab's cooldown (kept apart from the live session, which resets). */
-export const useFaucet = create<{ policy: FaucetPolicy; until: number | null }>(() => ({ policy: DEFAULT_POLICY, until: readUntil() }));
 
 function setUntil(until: number | null) {
   useFaucet.setState({ until });
@@ -336,36 +221,6 @@ function setUntil(until: number | null) {
 /** The playing key changed (signed in or out): show that key's cooldown, if any. */
 export function syncCooldown() {
   useFaucet.setState({ until: readUntil() });
-}
-
-let policyAsked = false;
-/** Reads the faucet's real limits once (GET /faucet); keeps the defaults if it can't. */
-export function loadFaucetPolicy() {
-  if (policyAsked) return;
-  policyAsked = true;
-  void fetch(`${SERVER.replace(/\/$/, '')}/faucet`)
-    .then((r) => (r.ok ? r.json() : null))
-    .then((j: { policy?: Partial<FaucetPolicy> } | null) => {
-      if (j?.policy) useFaucet.setState({ policy: { ...DEFAULT_POLICY, ...j.policy } });
-    })
-    .catch(() => undefined);
-}
-
-/** "7:42" (or "42 s"). */
-export const clock = (ms: number) => {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
-};
-
-/** The faucet can fill a burner for this stake (stake + reserve within its cap). */
-export const faucetCovers = (stake: number) => {
-  const p = useFaucet.getState().policy;
-  return stake + p.reserve <= p.maxBalance;
-};
-
-/** The limits in one line, for the "i" popover and refused top-ups. */
-export function faucetLimits(p: FaucetPolicy = useFaucet.getState().policy): string {
-  return `Free devnet SOL is limited: once every ${Math.round(p.burnerEveryMs / 60_000)} min, up to ${sol(p.maxBalance)} SOL.`;
 }
 
 /** Server faucet (devnet): fills the burner to stake + reserve. Resolves with a message to show. */
@@ -398,45 +253,7 @@ export async function topUpFor(stake: number): Promise<{ ok: boolean; text: stri
   }
 }
 
-/** "7:42" until `until` (ms), ticking each second; null once it has passed (or none). */
-export function useCountdown(until: number | null): string | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!until || until <= Date.now()) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [until]);
-  return until && until > now ? clock(until - now) : null;
-}
 
-/** "3 online · 1 searching" (the Quick Match sheet and the queue screen). Staked tickets pair at any
- *  amount now, so `here` counts every staked player for a stake, free ones for free. */
-export const whoLine = (online: number, here: number, stake: number) => `${online} online · ${here} searching${stake ? '' : ' (free)'}`;
-
-/** Who's around at this stake, refreshed every ~5 s while `on` (GET /queue/stats); null until known. */
-export function useWhosAround(stake: number, on: boolean): string | null {
-  const [line, setLine] = useState<string | null>(null);
-  useEffect(() => {
-    if (!on) return;
-    let live = true;
-    const player = hasBurner() ? myBurner().publicKey : undefined;
-    const tick = async () => {
-      const st = await queueStats(SERVER, { stake, player }).catch(() => null);
-      if (live && st) setLine(whoLine(st.online, st.here ?? 0, stake));
-    };
-    void tick();
-    const t = setInterval(() => void tick(), 5_000);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, [stake, on]);
-  return line;
-}
-
-/** What a stake needs on the burner: the stake + the reserve (rent, delegation, fees). */
-export const needFor = (stake: number) => stake + STAKE_RESERVE;
 
 /** Checks before any signature: the program takes this stake, and the burner can pay for it. */
 async function preflight(r: number, stake: number): Promise<boolean> {
@@ -1087,12 +904,6 @@ export async function markBalanceBefore() {
   if (b !== null && get().balanceBefore === null) set({ balanceBefore: b });
 }
 
-/** The Match screen's source when a live match is on (null = play offline vs the bot). */
-export function liveMatchSource(): LiveSource | null {
-  const s = get();
-  return (s.phase === 'playing' || s.phase === 'ended') && s.source ? s.source : null;
-}
-
 // --- resume after a reload (this device's saved match, else the server's /me) -------------------
 
 let serverResume: Awaited<ReturnType<typeof resumeInfo>> | null = null;
@@ -1161,3 +972,7 @@ export async function resume(): Promise<void> {
     return startMatch(r, { id: room.id, role: 'create', stake: room.stake, opponent: m.header.players[1].toBase58(), bot: false, code: room.code, created: true });
   }
 }
+
+// The live code is loaded: show this key's faucet cooldown, and tell the light store whose key plays.
+setKeySource(currentPk);
+syncCooldown();
