@@ -1755,3 +1755,22 @@ export would be cleaner; no rush.
 
 **Next / handoff:** none for Kai. To refresh the attract video after a visual change, re-record with
 `?screen=match&autoplay=1&seed=3` (CDP virtual time, 15 fps) and crop the HUD (`crop=540:690:0:70`).
+
+## 2026-11-25 · Kai · rules v11 merged, program v11 deployed to devnet, live checks pass · [DEPLOYED-PROGRAM] [HANDOFF]
+**Did:**
+- Merged `rules-v11` (enemy Champions in Fight 1, Suparno's commit; balance and worst tick unchanged, benched here:
+  48,637 CU worst, 14,609 busiest real tick, MagicSVM all green). Only the rules commit, not the branch's older web files.
+- Program: `CRANK_CATCH_UP` 8 → 3 (the worst possible tick × 3 ≈ 160k CU, under the ER's 200k per instruction);
+  stakes are now 0 or any amount from 0.01 to 5 SOL (`stake_ok`), the 0.05 / 0.1 / 0.25 are quick picks only.
+  Client `stakeOnChain`, `STAKE_MAX` and the web's preflight message follow. MagicSVM checks the range edges.
+- **Deployed** to devnet `4QFSXrcG…9FDa` (account extended by 30,000 bytes first; the deploy wallet has ~4.28 SOL left).
+  The IDL did not change.
+- Funded the online bot's wallet with 0.5 SOL.
+- Live devnet checks on the new program, all passing: bot-vs-bot match at 0.037 SOL (an amount that was refused
+  before): VRF seed, crank, finish, Magic Action settle, payouts = expected, Verify OK; `privacy-check` PASS, 0 leaks;
+  "fresh phone" vs the server's bot (faucet, queue, bot joins, free match settles).
+
+**Decided:** none new.
+**Blocked / risks:** the server is not hosted yet (Kai: Render, then Vercel with `VITE_SERVER_URL`; the server's
+`CORS_ORIGINS` must include the web URL). Staked two-human play and Profile withdraw are untested until two phones try.
+**Next / handoff:** Kai hosts and posts [DEPLOYED]. Then both do the live test. Suparno: nothing needed until the test finds bugs.

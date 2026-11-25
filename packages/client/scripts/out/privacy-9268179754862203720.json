@@ -1,0 +1,282 @@
+{
+  "verdict": "PASS",
+  "match": "9268179754862203720",
+  "fails": [],
+  "controls": {
+    "A reads own Peek0 (mid-match)": true,
+    "B reads own Peek1 (mid-match)": true,
+    "everyone reads Match (mid-match)": true,
+    "B reads A's public set_aim in full (mid-match)": true,
+    "B accountSubscribe(own Peek1) > 0": true,
+    "C accountSubscribe(Match) > 0": true,
+    "public snapshots during a plant window seen": true,
+    "A scouted (peek_cell)": true
+  },
+  "invariants": {
+    "snapshots": 305,
+    "plantSnapshots": 150,
+    "seedBeforeFinish": 0,
+    "historyBeforeFinish": 0,
+    "revealedInPlant": 0
+  },
+  "subscriptions": {
+    "B": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 3,
+        "accountSubscribe(Match)": 303,
+        "programSubscribe": 305,
+        "logsSubscribe(program)": 62,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 1,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 2,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 1
+      },
+      "errors": {}
+    },
+    "C": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 304,
+        "programSubscribe": 303,
+        "logsSubscribe(program)": 62,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    },
+    "anon": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 303,
+        "programSubscribe": 303,
+        "logsSubscribe(program)": 62,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    }
+  },
+  "needles": [
+    "A salt",
+    "A request_seed ix data",
+    "VRF output (base, after)",
+    "salt 1 (B, base, after)",
+    "secret state bytes 8..40",
+    "A Peek account bytes (56 B)"
+  ],
+  "corpusStrings": {
+    "A": 133,
+    "B": 5594,
+    "C": 5098,
+    "anon": 5092
+  },
+  "sigs": {
+    "A request_seed": 1,
+    "B request_seed": 1,
+    "A start": 1,
+    "A set_aim": 31,
+    "B set_aim": 31,
+    "B peek_cell": 1,
+    "A peek_cell": 1,
+    "A finish": 1
+  },
+  "cellsSent": [
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 2,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 3,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 1,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 2,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 1,
+      "phase": 0
+    }
+  ],
+  "probes": {
+    "baseSecretsDuringPlay": {
+      "owner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+      "zeroVrfAndSalts": true,
+      "zeroState": true
+    },
+    "accounts mid-match": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "1 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "1 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "1 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "1 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction mid-match": {
+      "A request_seed 2joLebh5": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed 5Jpdum68": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 52WkcwPb": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 3XNT6XJB": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 48ZKagbZ": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim 5Ret6FPt": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim 3onUy56V": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "getSignaturesForAddress mid-match": {
+      "B Secrets": "2 sigs; A's secret txs listed: 0",
+      "B Peek0": "0 sigs; A's secret txs listed: 0",
+      "B Match": "63 sigs; A's secret txs listed: 0",
+      "B program": "751 sigs; A's secret txs listed: 0",
+      "B burnerA": "32 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "64 sigs; A's secret txs listed: 0",
+      "C program": "744 sigs; A's secret txs listed: 0",
+      "C burnerA": "32 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "64 sigs; A's secret txs listed: 0",
+      "anon program": "743 sigs; A's secret txs listed: 0",
+      "anon burnerA": "32 sigs; A's secret txs listed: 0"
+    }
+  },
+  "sol": {
+    "before": 3.765603161,
+    "after": 3.753619321,
+    "spent": 0.01198384
+  }
+}
