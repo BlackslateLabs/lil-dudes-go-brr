@@ -3,7 +3,7 @@ import type { MatchResult, Side } from '@lil-dudes/client';
 import { sfx } from './feel/sound';
 
 /** `lobby`: live waiting screens (Quick Match queue, room create / join), drawn from live/session. */
-export type Screen = 'home' | 'lobby' | 'vs' | 'match' | 'result';
+export type Screen = 'home' | 'lobby' | 'vs' | 'match' | 'result' | 'profile';
 
 /** Stake presets on Home (devnet SOL); any amount from 0.01 can be typed. */
 export const STAKE_PRESETS = [0.05, 0.1, 0.25, 0.5] as const;
@@ -65,10 +65,10 @@ interface AppState {
 
 const params = new URLSearchParams(window.location.search);
 
-/** `?screen=match` (or `vs`, `result`) opens straight to that screen, no wipe. Dev and screenshots. */
+/** `?screen=match` (or `vs`, `result`, `profile`) opens straight to that screen, no wipe. Dev and screenshots. */
 function initialScreen(): Screen {
   const s = params.get('screen');
-  return s === 'vs' || s === 'match' || s === 'result' ? s : 'home';
+  return s === 'vs' || s === 'match' || s === 'result' || s === 'profile' ? s : 'home';
 }
 
 let wipeTimer: ReturnType<typeof setTimeout> | undefined;

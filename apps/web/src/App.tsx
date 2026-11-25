@@ -5,6 +5,7 @@ import { lookupRoom } from './live/session';
 import { Home } from './screens/Home';
 import { Lobby } from './screens/Lobby';
 import { Match } from './screens/Match';
+import { Profile } from './screens/Profile';
 import { Result } from './screens/Result';
 import { VsScreen } from './screens/Vs';
 import { Wipe } from './screens/Wipe';
@@ -56,6 +57,7 @@ export function App() {
       {screen === 'vs' && <VsScreen />}
       {screen === 'match' && <Match />}
       {screen === 'result' && <Result />}
+      {screen === 'profile' && <Profile />}
       <Wipe />
     </div>
   );

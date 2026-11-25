@@ -13,6 +13,7 @@ import { StakeSheet } from './StakeSheet';
 import { sol } from './format';
 import './flow.css';
 import './live.css';
+import './profile.css';
 
 const NOTE_MS = 2600;
 /** The live background has faded in once this session (no fade on later visits to Home). */
@@ -107,6 +108,19 @@ export function Home() {
           <Background key={bgKey} onEnd={() => setBgKey((k) => k + 1)} />
         </div>
       </div>
+      {unlocked && (
+        <button
+          className="profile-btn"
+          onClick={() => {
+            sfx.playButton();
+            go('profile');
+          }}
+          aria-label="Your profile and wallet"
+        >
+          <img src="/brand/head-you.webp" alt="" width={30} height={30} />
+          <span>{balance === null ? 'Profile' : `${sol(balance)} SOL`}</span>
+        </button>
+      )}
       <div className="home-ui flow-home">
         <h1 className="logo">
           <img src="/brand/logo.webp" alt="Lil Dudes Go Brr" width={1100} height={794} draggable={false} />

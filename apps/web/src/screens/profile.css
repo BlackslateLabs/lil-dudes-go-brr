@@ -1,0 +1,473 @@
+/* Profile: the burner wallet, withdraw, and match history. Same chunky cards as the lobby; the
+   screen scrolls inside itself on short phones. */
+.profile {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+  background: linear-gradient(var(--sky-top), var(--sky) 45%, var(--bg));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.profile > * {
+  flex: none;
+  width: 100%;
+  max-width: 400px;
+}
+
+.pf-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.pf-title {
+  font-size: 32px;
+}
+
+.pf-back {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 12px 6px;
+  border-radius: 12px;
+  border: var(--edge);
+  background: linear-gradient(#fff, #e9e4ff);
+  box-shadow: var(--gloss), 0 3px 0 var(--outline);
+  font-family: var(--display);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.pf-back:active {
+  transform: translateY(calc(-50% + 2px));
+  box-shadow: var(--gloss), 0 1px 0 var(--outline);
+}
+
+.pf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 20px;
+  border: var(--edge);
+  background: linear-gradient(#ffffffee, #fff6e8ee);
+  box-shadow: var(--gloss), var(--ledge), var(--soft);
+  text-align: left;
+}
+
+.pf-card h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+}
+
+.pf-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pf-who img {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  filter: drop-shadow(0 3px 0 #1b153040);
+}
+
+.pf-who > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pf-name {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.pf-addr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.pf-addr code,
+.pf-mid code,
+.pf-confirm code {
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pf-mini {
+  padding: 1px 8px 2px;
+  border-radius: 8px;
+  border: 2px solid var(--outline);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pf-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px solid #1b153022;
+}
+
+.pf-balance > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pf-balance small,
+.pf-stat small {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.pf-balance b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.pf-balance em,
+.pf-field em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--them-dark);
+}
+
+.pf-note,
+.pf-muted {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.pf-muted p {
+  margin: 0 0 4px;
+}
+
+.pf-open {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.pf-open b {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.pf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pf-field > span {
+  color: var(--muted);
+}
+
+.pf-field small {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pf-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: var(--edge);
+  background: #fff;
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  outline: none;
+}
+
+.pf-field input:focus-visible {
+  box-shadow: 0 0 0 3px var(--grape);
+}
+
+.pf-field input.bad {
+  border-color: var(--bad);
+}
+
+.pf-field input:disabled {
+  background: #f1eefc;
+  color: var(--muted);
+}
+
+.pf-amt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pf-amt .chip {
+  flex: none;
+  font-size: 14px;
+  padding: 4px 10px 6px;
+}
+
+.pf-send {
+  width: 100%;
+  flex: none;
+  font-size: 22px;
+  padding: 9px 12px 11px;
+}
+
+.pf-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: #fff3d6;
+  border: 2px solid var(--gold-dark);
+}
+
+.pf-confirm p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pf-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pf-row .big {
+  flex: 1;
+  font-size: 18px;
+  padding: 8px 10px 10px;
+}
+
+.pf-err {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--them-dark);
+}
+
+.pf-done {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pf-done a,
+.pf-net a {
+  color: var(--grape-dark);
+  text-underline-offset: 3px;
+}
+
+.pf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pf-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid #1b153022;
+  min-width: 0;
+}
+
+.pf-stat b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pf-stat.good b {
+  color: #0f8a55;
+}
+
+.pf-stat.bad b {
+  color: var(--them-dark);
+}
+
+.pf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pf-row-m {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid #1b153022;
+}
+
+.pf-out {
+  flex: none;
+  width: 46px;
+  padding: 2px 0 3px;
+  border-radius: 8px;
+  border: 2px solid var(--outline);
+  text-align: center;
+  font-family: var(--display);
+  font-size: 13px;
+  color: #fff;
+  -webkit-text-stroke: 2.5px var(--outline);
+  paint-order: stroke fill;
+}
+
+.pf-row-m.won .pf-out {
+  background: var(--mint);
+}
+
+.pf-row-m.lost .pf-out {
+  background: var(--them);
+}
+
+.pf-row-m.draw .pf-out {
+  background: var(--grape);
+}
+
+.pf-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pf-mid b {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-mid code {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pf-mid small {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-net {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pf-net b {
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+}
+
+.pf-row-m.won .pf-net b {
+  color: #0f8a55;
+}
+
+.pf-row-m.lost .pf-net b {
+  color: var(--them-dark);
+}
+
+.pf-more {
+  align-self: center;
+}
+
+/* Home: the profile button, top right once staked play is unlocked. */
+.profile-btn {
+  position: absolute;
+  z-index: 3;
+  top: max(10px, env(safe-area-inset-top));
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  border: var(--edge);
+  background: #fff;
+  box-shadow: var(--gloss), 0 3px 0 var(--outline);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.profile-btn img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #dfeaff;
+}
+
+.profile-btn:active {
+  transform: translateY(2px);
+  box-shadow: var(--gloss), 0 1px 0 var(--outline);
+}
+
+/* Keep the logo clear of the button (short screens tighten the menu's top padding). */
+.home .profile-btn ~ .home-ui {
+  padding-top: max(54px, calc(env(safe-area-inset-top) + 44px));
+}
