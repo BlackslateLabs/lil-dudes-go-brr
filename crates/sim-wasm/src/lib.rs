@@ -257,7 +257,8 @@ impl SimMatch {
 }
 
 /// The Warlord bot on its own, deciding from the on-chain public state (codec bytes). Used by
-/// headless live matches (packages/client/scripts); the UI never needs it.
+/// headless live matches (packages/client/scripts) and the server's online bot; the UI never
+/// needs it. Rules v10: the human-strength bot players face (`Warlord::new`, `Skill::Human`).
 #[wasm_bindgen]
 pub struct Bot {
     inner: Warlord,
@@ -467,7 +468,7 @@ pub fn constants_json() -> String {
         let items: Vec<String> = xs.iter().map(|(k, p)| format!("[{k},{p}]")).collect();
         format!("[{}]", items.join(","))
     };
-    let pairs: [(&str, String); 59] = [
+    let pairs: [(&str, String); 60] = [
         ("RULES_VERSION", RULES_VERSION.to_string()),
         ("TICKS_PER_SEC", TICKS_PER_SEC.to_string()),
         ("MATCH_TICKS", MATCH_TICKS.to_string()),
@@ -506,6 +507,7 @@ pub fn constants_json() -> String {
         ("WALL_HALF", WALL_HALF.to_string()),
         ("OBSTACLE_GRACE", OBSTACLE_GRACE.to_string()),
         ("SLIDE_STEP", SLIDE_STEP.to_string()),
+        ("CRATE_HOLD", CRATE_HOLD.to_string()),
         ("COHORT_CAP", COHORT_CAP.to_string()),
         ("ENEMY_CAP", ENEMY_CAP.to_string()),
         ("FIRST_WAVE_TICKS", FIRST_WAVE_TICKS.to_string()),
@@ -639,7 +641,7 @@ fn layouts_json() -> String {
 
 /// Final digest of the parity match (seed 42, bot seed 7, 0.1 SOL, bot on side 1, idle side 0).
 #[cfg(test)]
-const PARITY_DIGEST: u64 = 2_875_921_047_618_464_984;
+const PARITY_DIGEST: u64 = 13_575_074_804_793_296_806;
 
 #[cfg(test)]
 mod tests {

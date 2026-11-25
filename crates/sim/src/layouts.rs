@@ -18,8 +18,8 @@
 //! `tests::layouts_follow_the_design_rules` and the path tests in `step::tests` check it all.
 
 use crate::constants::{
-    GATE_GRACE, LANE_WIDTH, LAYOUT_COUNT, OBSTACLE_GRACE, SLIDE_STEP, STAGES, TIMING_MAX,
-    TIMING_STEP_TICKS, WALL_HALF,
+    CRATE_HOLD, GATE_GRACE, LANE_WIDTH, LAYOUT_COUNT, OBSTACLE_GRACE, SLIDE_STEP, STAGES,
+    TIMING_MAX, TIMING_STEP_TICKS, WALL_HALF,
 };
 
 /// What a gate slot can hold (SPEC §6, SPEC_V5 §3).
@@ -425,6 +425,33 @@ impl StageDef {
         (0u8..).zip(self.pipes).find(|(_, p)| p.contains(x, y))
     }
 
+    /// SPEC_V5 §15 (rules v10) crate hold: an enemy at (`x`, `y`) about to move down to `to`
+    /// stops at `crate.y + CRATE_HOLD` instead if that move would cross the line of a live crate
+    /// (`hp[i] > 0`) inside its span (`covers`, edges count), so it waits behind the crate until
+    /// it breaks. It never moves back up (an enemy already inside the gap stays put). Returns
+    /// the new y. packages/client `crateHold` mirrors it.
+    pub fn crate_hold(&self, hp: &[u16], x: i32, y: i32, to: i32) -> i32 {
+        let mut to = to;
+        for (&h, c) in hp.iter().zip(self.crates) {
+            let line = i32::from(c.y);
+            let stop = line.saturating_add(CRATE_HOLD);
+            if h > 0 && y > line && to < stop && covers(x, i32::from(c.x), c.width) {
+                to = to.max(stop.min(y));
+            }
+        }
+        to
+    }
+
+    /// SPEC_V5 §15 (rules v10): a live crate's line lies between an enemy at `foe_y` and my
+    /// cohort at `my_y` (`foe_y < line ≤ my_y`) with `x` inside its span: nothing clashes
+    /// through it, as through a standing wall.
+    pub fn crate_between(&self, hp: &[u16], x: i32, my_y: i32, foe_y: i32) -> bool {
+        hp.iter().zip(self.crates).any(|(&h, c)| {
+            let line = i32::from(c.y);
+            h > 0 && foe_y < line && line <= my_y && covers(x, i32::from(c.x), c.width)
+        })
+    }
+
     /// SPEC_V5 §13: the number of rows at or below `y` (a pipe's exit skips them).
     pub fn rows_through(&self, y: i32) -> u8 {
         let n = self.rows.iter().filter(|&&r| i32::from(r) <= y).count();
@@ -613,12 +640,12 @@ const R1: i16 = 1_000;
 /// (driven by `tools/balance/tune_layouts.py`) so every layout plays about as long and as
 /// dangerously as the others.
 const TUNE: [(u16, u16, u16, u16); LAYOUT_COUNT] = [
-    (411, 6, 400, 5),
-    (372, 13, 372, 5),
-    (273, 10, 250, 5),
-    (407, 26, 330, 14),
-    (403, 7, 1119, 4),
-    (218, 11, 423, 5),
+    (239, 8, 320, 4),
+    (312, 5, 251, 6),
+    (212, 8, 290, 2),
+    (260, 11, 280, 5),
+    (320, 6, 705, 4),
+    (178, 8, 293, 4),
 ];
 
 // Compile-time only (inside the LAYOUTS initializer): a bad index is a build error.
@@ -815,7 +842,8 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
         ],
     },
     // 2. Speed Comb: a centre wall. One half is a comb the crowd zigzags through, a speed pad
-    //    in every pocket; the other is open, with a breakable block. Fight 2 mirrors it.
+    //    in every pocket; the other is open, with a breakable block. Fight 2 mirrors the
+    //    obstacles; its timing gate tops the comb half (rules v10).
     Layout {
         name: "Speed Comb",
         stages: [
@@ -838,12 +866,15 @@ pub const LAYOUTS: [Layout; LAYOUT_COUNT] = [
             StageDef {
                 towers: &[f2(2, 750), f2(2, 2_250)],
                 rows: &COMB_ROWS,
+                // Rules v10: the timing gate tops the comb half (as in Fight 1, where the comb's
+                // `?` is the risk and the open half ends on the timing gate, the open half here
+                // carries the risk): a `÷` on each path left only lone dudes and fights at 3:00.
                 gates: &[
                     gate(0, 750),
                     gate(0, 2_250),
                     gate(1, 750),
-                    timing(2, 750),
-                    gate(2, 2_250),
+                    gate(2, 750),
+                    timing(2, 2_250),
                 ],
                 crates: &[block(750, 2_000, 700, 15)],
                 walls: &COMB_WALL,

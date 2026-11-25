@@ -49,7 +49,7 @@ pub use step::{apply_input, step};
 pub use types::*;
 
 /// Bump when rules change in a way that changes outcomes (Verify must use the same version).
-pub const RULES_VERSION: u16 = 9;
+pub const RULES_VERSION: u16 = 10;
 
 /// Every stage's gate values and the layout of a match with this seed: what Verify re-derives
 /// once the seed is published (SPEC §11).

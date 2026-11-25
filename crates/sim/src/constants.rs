@@ -38,8 +38,9 @@ pub const FIRE_TICKS: u32 = 8;
 pub const VOLLEY_SIZE: u32 = 1;
 
 /// SPEC §7: movement per tick (3× cruise for the first LAUNCH_TICKS ticks). SPEC_V5 §12 (rules
-/// v7): 60, so the cannon-to-tower walk stays ~5.5 s on the shorter lane.
-pub const CRUISE_SPEED: i32 = 60;
+/// v7): 60, so the cannon-to-tower walk stays ~5.5 s on the shorter lane. SPEC_V5 §15 (rules
+/// v10): 48, 20% slower (crowds read better; the walk is ~6.6 s).
+pub const CRUISE_SPEED: i32 = 48;
 pub const LAUNCH_TICKS: u32 = 6;
 pub const LAUNCH_SPEED: i32 = CRUISE_SPEED * 3;
 
@@ -75,9 +76,9 @@ pub const ENGAGE_Y: i32 = 1_200;
 pub const ENGAGE_X: i32 = 900;
 /// SPEC_V5 §14 (rules v9) late turn: toward a tower (the town hall's centre in the Rush) a
 /// cohort walks straight until `TOWER_Y − y ≤ |dx| · CRUISE_SPEED / TOWER_STEER + TURN_MARGIN`,
-/// then steers by TOWER_STEER per tick (at cruise 60, a ~45° approach that closes the gap
-/// TURN_MARGIN before the tower line).
-pub const TOWER_STEER: i32 = 60;
+/// then steers by TOWER_STEER per tick (a 45° approach at cruise speed that closes the gap
+/// TURN_MARGIN before the tower line; rules v10: = CRUISE_SPEED, 48).
+pub const TOWER_STEER: i32 = CRUISE_SPEED;
 pub const TURN_MARGIN: i32 = 250;
 /// SPEC §2: the cannon chases the aim by at most this per tick (crosses the lane in 5 ticks).
 pub const CANNON_STEP: i32 = LANE_WIDTH / 5;
@@ -90,6 +91,10 @@ pub const OBSTACLE_GRACE: i32 = 60;
 /// SPEC_V5 §13: a crowd an obstacle blocks does not advance in y that tick; it slides sideways
 /// by at most this toward a free side instead.
 pub const SLIDE_STEP: i32 = 150;
+/// SPEC_V5 §15 (rules v10): an enemy cohort whose next step would cross a live crate's line
+/// inside its span stops this far behind it (`crate.y + CRATE_HOLD`) and waits there until the
+/// crate breaks. Enemies never damage crates.
+pub const CRATE_HOLD: i32 = 80;
 
 /// SPEC §7: live cohorts of yours / enemy cohorts, per lane.
 pub const COHORT_CAP: usize = 40;
@@ -152,4 +157,7 @@ const _: () = {
     // v8: a blocked crowd gets round a pillar's corner in a few ticks, and the grace is less
     // than a fresh volley's first step.
     assert!(SLIDE_STEP > CRUISE_SPEED && OBSTACLE_GRACE > 0 && OBSTACLE_GRACE < LAUNCH_SPEED);
+    // v10: enemies held behind a crate sit past its line (my cohorts below it can't have crossed
+    // them yet), and a pair meeting there right after it breaks can't skip the clash band.
+    assert!(CRATE_HOLD > 0 && CRATE_HOLD + LAUNCH_SPEED + CRUISE_SPEED < CLASH_BAND);
 };
