@@ -427,7 +427,8 @@ Also: ✅ a burner with 0 SOL can send ER transactions; ❌ `advance` with 40 st
 ## 9. Server (`apps/server`, M5)
 
 Hono on Node, one instance, state in memory (rooms, queue, limits; a restart only drops waiting
-players and resets limits). **Not in the trust path:** it never decides an outcome; every
+players and resets limits), except the match history, which can persist to a JSON-lines file
+(`HISTORY_FILE`). **Not in the trust path:** it never decides an outcome; every
 on-chain thing it does is permissionless or its own player's move, and every refund goes to the
 players recorded in the Match.
 
@@ -435,8 +436,17 @@ players recorded in the Match.
 |---|---|
 | `GET /healthz` | `{ ok }` for platform health checks (no RPC, never rate-limited) |
 | `GET /health` | rooms, queue size, faucet on/off, bot stats, sweeper stats |
-| `POST /rooms {id, stake}` / `GET /rooms/:code` / `DELETE` | room codes (6 chars, 15 min) |
-| `POST /queue {player, stake}` / `GET /queue/:ticket` / `DELETE` | quick match; a FREE ticket alone for 5 s gets the bot (`bot: true`, role `join`) |
+| `POST /rooms {id, stake, player?, role?}` / `GET /rooms/:code` | room codes (6 chars). States `waiting → joined → playing → ended`, two seats at most. Same id again = same room (a Quick Match pair registers its match from both sides, `role` create/join, so a rematch can reuse the code). Expires after 30 min idle (every request runs the in-memory sweep); an expired or cancelled code answers **410**, an unknown one 404 |
+| `POST /rooms/:code/join {player}` | take the second seat before `join_match` (409 full, 400 own room) |
+| `POST /rooms/:code/state {player, state}` | either player moves it on (`playing`, `ended`), never back |
+| `POST /rooms/:code/next {prev, id, player?}` | rematch: the creator points the code at its new match (back to `waiting`, same two seats) |
+| `DELETE /rooms/:code?player=` | the creator cancels (not while `joined` / `playing`); the on-chain refund is the client's `cancel_match` (or the sweeper after 20 min) |
+| `POST /queue {player, stake}` / `GET /queue/:ticket` / `DELETE` | quick match at an **exact** stake (a tier, or any whole lamports in 0.01–5 SOL; the program takes only the tiers today); a FREE ticket alone for 5 s gets the bot (`bot: true`, role `join`; the bot never plays staked). Re-posting at another stake replaces a waiting ticket |
+| `GET /queue/stats?stake=&player=` | `{ online, waiting: [{stake, players}], here, near, rooms }`: players waiting per exact stake, the 3 nearest stakes with someone waiting, players seen in the last 30 s (the bot never counts) |
+| `GET /me/:player` | resume after a reload: the player's live `ticket`, `room` and `match` (or null) |
+| `POST /history/report {id}` | "match N is over": the server reads the Match from the base layer and records it (never what the client claims); 409 = not back on the base layer yet; aborted matches are skipped. 30 / min per IP. `/settle` records too, with the signature |
+| `GET /history/:player?limit=&before=` | the player's matches, newest first (`next` = the `before` cursor): players, names, stakes, scores, winner, who died, payout, bot, `endedAt`, `settleSig?`, plus the player's `side`, `outcome`, `net` |
+| `GET /stats/:player` | `{ played, won, lost, draw, net, staked, best }` |
 | `POST /topup {burner, stake?}` | faucet: fills the burner to stake + 0.035 SOL (≤ 0.3); 1 / 10 min per burner, 3 / 10 min per IP, 3 SOL / hour; devnet only (genesis hash checked) |
 | `GET /faucet` | sponsor address, balance, policy, spent last hour |
 | `POST /settle {id}` | "Settle now" for a burner with no SOL: permissionless `settle`, sponsor pays (10 / 10 min per IP) |
@@ -452,6 +462,11 @@ players recorded in the Match.
   never delegated for 5 min, aborts TEE matches stuck before the start ~5 min, finishes over
   matches nobody finished, nudges a dead crank (`advance`), settles a finished match the Magic
   Action left unpaid for 30 s, closes paid-out matches after 10 min (rent → creator).
+- **History** (`src/history.ts`, `src/record.ts`): public data only (addresses, names, stakes,
+  scores, payout, signatures). With `HISTORY_FILE` set, every write appends one JSON line
+  (append-safe; loaded on start, a later line for the same match wins, a torn last line is
+  skipped). On Render it needs a persistent disk (see `render.yaml`); without one, history lives
+  until the next restart.
 - **Hardening:** CORS only for `CORS_ORIGINS` (default: localhost / LAN dev origins), 4 KB body
   cap, JSON-only writes, 240 requests / min per IP (`X-Forwarded-For` behind the proxy with
   `TRUST_PROXY=1`), secure headers, JSON errors without stack traces, strict validation of every

@@ -25,3 +25,12 @@ services:
         sync: false
       - key: BOT_SECRET_KEY
         sync: false
+      # Match history (profile page). Needs the disk below; without it, leave HISTORY_FILE unset
+      # and history lives in memory until the next restart. Kai: review before enabling the disk
+      # (paid instance feature; the plan above is Starter).
+      # - key: HISTORY_FILE
+      #   value: /data/history.jsonl
+    # disk:
+    #   name: lil-dudes-data
+    #   mountPath: /data
+    #   sizeGB: 1
