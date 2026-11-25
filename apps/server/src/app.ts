@@ -59,7 +59,8 @@ interface Ticket {
   stake: number;
   seenAt: number;
   createdAt: number;
-  match?: { id: string; role: Role; opponent: string; matchedAt: number; bot?: boolean };
+  /** Set once paired. `stake` is the matched stake: the lower of the two picks (both play for it). */
+  match?: { id: string; role: Role; opponent: string; matchedAt: number; bot?: boolean; stake?: number; picked?: number };
 }
 
 export interface ServerOptions {
@@ -114,6 +115,18 @@ export const TOPUP_POLICY: TopupPolicy = {
   ipWindowMs: 10 * 60_000,
   hourlyLamports: 3_000_000_000,
 };
+
+/**
+ * The waiting ticket `mine` pairs with: free only with free; staked with any staked ticket. The
+ * closest pick wins (by ratio, so 0.1 vs 0.12 is closer than 0.01 vs 0.03), then the longest wait.
+ */
+export function bestOpponent<T extends { player: string; stake: number; createdAt: number; match?: unknown }>(all: T[], mine: T): T | undefined {
+  const free = mine.stake === 0;
+  const gap = (s: number) => Math.abs(Math.log(s / mine.stake));
+  return all
+    .filter((k) => !k.match && k.player !== mine.player && (k.stake === 0) === free)
+    .sort((a, b) => (free ? 0 : gap(a.stake) - gap(b.stake)) || a.createdAt - b.createdAt)[0];
+}
 
 /** The caller's IP: X-Forwarded-For's first hop when behind a trusted proxy, else the socket. */
 export function clientIp(c: Context, trustProxy: boolean): string {
@@ -234,7 +247,9 @@ export function createApp(opts: ServerOptions = {}) {
     return c.json({ error: 'too many requests, try later', retryAfterSec: Math.ceil(r.retryMs / 1000) }, 429);
   };
   const ticketView = (k: Ticket) =>
-    k.match ? { ticket: k.ticket, state: 'matched' as const, stake: k.stake, ...k.match } : { ticket: k.ticket, state: 'waiting' as const, stake: k.stake };
+    k.match
+      ? { ticket: k.ticket, state: 'matched' as const, ...k.match, picked: k.stake, stake: k.match.stake ?? k.stake }
+      : { ticket: k.ticket, state: 'waiting' as const, stake: k.stake };
 
   const app = new Hono();
   for (const m of guard({ origins: opts.origins, now, perMinute: opts.perMinute, ipOf: (c) => clientIp(c, opts.trustProxy ?? false) })) app.use('*', m);
@@ -369,8 +384,11 @@ export function createApp(opts: ServerOptions = {}) {
   });
 
   // --- quick match -------------------------------------------------------------------------
-  // Join the queue at a stake; poll the ticket. Two waiting players at exactly the same stake are
-  // paired at once: the earlier one creates the match (role 'create'), the other joins.
+  // Join the queue at a stake; poll the ticket. Free pairs with free (the bot steps in after a
+  // while). Any staked ticket pairs with any other staked ticket: both play for the LOWER of the two
+  // picks (the ticket's `stake` once matched; `picked` is the player's own), so nobody risks more
+  // than the other. The closest pick is preferred (exact first), then the longest waiting. The
+  // earlier ticket creates the match (role 'create'), the other joins.
   app.post('/queue', async (c) => {
     sweep();
     const body = (await c.req.json().catch(() => null)) as { player?: unknown; stake?: unknown } | null;
@@ -388,19 +406,21 @@ export function createApp(opts: ServerOptions = {}) {
       tickets.delete(k.ticket);
     }
     const mine: Ticket = { ticket: token(16, CODE_ALPHABET.toLowerCase() + '0123456789'), player, stake: body.stake, seenAt: now(), createdAt: now() };
-    const waiting = [...tickets.values()].find((k) => !k.match && k.stake === mine.stake && k.player !== player);
+    const waiting = bestOpponent([...tickets.values()], mine);
     if (waiting) {
       const id = matchId();
       const t = now();
-      waiting.match = { id, role: 'create', opponent: player, matchedAt: t };
-      mine.match = { id, role: 'join', opponent: waiting.player, matchedAt: t };
+      const stake = Math.min(waiting.stake, mine.stake);
+      waiting.match = { id, role: 'create', opponent: player, matchedAt: t, stake };
+      mine.match = { id, role: 'join', opponent: waiting.player, matchedAt: t, stake };
     }
     tickets.set(mine.ticket, mine);
     return c.json(ticketView(mine), 201);
   });
 
-  // Queue liquidity: players waiting per exact stake, how many are online, and (with `?stake=`)
-  // the nearest other stakes that have someone waiting. `?player=` leaves the caller out.
+  // Queue liquidity: players waiting per stake, how many are online, and (with `?stake=`) how many
+  // you could be paired with now (`here`: every staked ticket for a stake, free ones for free).
+  // `near` (other free/staked pools) stays for older clients. `?player=` leaves the caller out.
   app.get('/queue/stats', (c) => {
     sweep();
     const stake = c.req.query('stake');
@@ -410,11 +430,12 @@ export function createApp(opts: ServerOptions = {}) {
     for (const k of tickets.values()) if (!k.match && k.player !== me) per.set(k.stake, (per.get(k.stake) ?? 0) + 1);
     const waiting = [...per].map(([s, players]) => ({ stake: s, players })).sort((a, b) => a.stake - b.stake);
     const dist = (s: number) => (want === null ? 0 : Math.abs(Math.log((s + 1e6) / (want + 1e6))));
-    const near = want === null ? [] : waiting.filter((w) => w.stake !== want).sort((a, b) => dist(a.stake) - dist(b.stake) || a.stake - b.stake).slice(0, 3);
+    // Staked pools are one pool now, so `near` only ever points across free/staked.
+    const near = want === null ? [] : waiting.filter((w) => (want === 0) !== (w.stake === 0)).sort((a, b) => dist(a.stake) - dist(b.stake) || a.stake - b.stake).slice(0, 3);
     return c.json({
       online: online(),
       waiting,
-      here: want === null ? null : (per.get(want) ?? 0),
+      here: want === null ? null : waiting.filter((w) => (want === 0 ? w.stake === 0 : w.stake > 0)).reduce((n, w) => n + w.players, 0),
       near,
       rooms: { waiting: [...rooms.values()].filter((r) => r.state === 'waiting').length },
     });

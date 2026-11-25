@@ -89,23 +89,27 @@ test('Quick Match pair registers its match as a room in either order (for the re
   assert.deepEqual([c.body.creator, c.body.joiner], [A, B]);
 });
 
-test('queue stats: waiting per exact stake, nearest stakes, online count; the bot never counts', async () => {
+test('queue stats: waiting per stake, who you could pair with, online count; the bot never counts', async () => {
   const bot = { address: C, available: () => false, play: () => undefined, stats: { active: 0, started: 0, finished: 0, cancelled: 0, failed: 0 } };
   const { call, tick } = setup({ bot });
+  // A staked ticket and a free one (they never pair with each other).
   await call('POST', '/queue', { player: A, stake: 100_000_000 });
-  await call('POST', '/queue', { player: B, stake: 250_000_000 });
+  await call('POST', '/queue', { player: B, stake: 0 });
   let s = await call('GET', '/queue/stats?stake=70000000');
   assert.deepEqual(s.body.waiting, [
+    { stake: 0, players: 1 },
     { stake: 100_000_000, players: 1 },
-    { stake: 250_000_000, players: 1 },
   ]);
-  assert.equal(s.body.here, 0);
+  // Any staked ticket is pairable for a staked pick; `near` only points across to the free pool.
+  assert.equal(s.body.here, 1);
   assert.deepEqual(
     s.body.near.map((x: { stake: number }) => x.stake),
-    [100_000_000, 250_000_000],
+    [0],
   );
   assert.equal(s.body.online, 2);
-  // The caller is left out of its own stake.
+  // Free counts the free pool only.
+  assert.equal((await call('GET', '/queue/stats?stake=0')).body.here, 1);
+  // The caller is left out.
   s = await call('GET', `/queue/stats?stake=100000000&player=${A}`);
   assert.equal(s.body.here, 0);
   assert.equal(s.body.waiting.length, 1);

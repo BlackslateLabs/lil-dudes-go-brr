@@ -110,16 +110,20 @@ export async function quickMatch(server: string, player: PublicKey, stake: numbe
 export interface QueueTicket {
   ticket: string;
   state: 'waiting' | 'matched';
+  /** Waiting: your pick. Matched: the stake both play for (the lower of the two picks). */
   stake: number;
+  /** Your own pick, once matched (it can be above `stake`; the difference never leaves your wallet). */
+  picked?: number;
   /** Set once matched (see QuickMatch). */
   match?: QuickMatch;
 }
 
-type TicketJson = { ticket: string; state: 'waiting' | 'matched'; id?: string; role?: 'create' | 'join'; opponent?: string; stake: number; bot?: boolean };
+type TicketJson = { ticket: string; state: 'waiting' | 'matched'; id?: string; role?: 'create' | 'join'; opponent?: string; stake: number; picked?: number; bot?: boolean };
 const ticketOf = (t: TicketJson): QueueTicket => ({
   ticket: t.ticket,
   state: t.state,
   stake: t.stake,
+  picked: t.picked,
   match: t.state === 'matched' ? { id: BigInt(t.id!), role: t.role!, opponent: t.opponent!, stake: t.stake, bot: !!t.bot } : undefined,
 });
 

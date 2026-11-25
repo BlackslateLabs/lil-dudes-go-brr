@@ -401,8 +401,9 @@ export function useCountdown(until: number | null): string | null {
   return until && until > now ? clock(until - now) : null;
 }
 
-/** "3 online · 1 searching at 0.1 SOL" (the Quick Match sheet and the queue screen). */
-export const whoLine = (online: number, here: number, stake: number) => `${online} online · ${here} searching at ${stake ? `${sol(stake)} SOL` : 'free'}`;
+/** "3 online · 1 searching" (the Quick Match sheet and the queue screen). Staked tickets pair at any
+ *  amount now, so `here` counts every staked player for a stake, free ones for free. */
+export const whoLine = (online: number, here: number, stake: number) => `${online} online · ${here} searching${stake ? '' : ' (free)'}`;
 
 /** Who's around at this stake, refreshed every ~5 s while `on` (GET /queue/stats); null until known. */
 export function useWhosAround(stake: number, on: boolean): string | null {
@@ -462,8 +463,9 @@ async function preflight(r: number, stake: number): Promise<boolean> {
 /** Alone this long at a stake: suggest the nearest stakes with players and the bot. */
 const LONELY_MS = 12_000;
 
-/** Queue at exactly `stake` lamports; pairs with the next player at that stake (the server's bot
- *  steps in on free tickets after ~5 s). */
+/** Queue with `stake` lamports. Staked: pairs with any staked player and both play for the lower of
+ *  the two picks (the server says which; the rest never leaves the wallet). Free: pairs with free,
+ *  and the server's bot steps in after ~5 s. */
 export async function quickMatch(stake: number): Promise<void> {
   const r = begin('queue', stake, 'queue');
   if (r === null) return go('lobby');
@@ -472,7 +474,7 @@ export async function quickMatch(stake: number): Promise<void> {
     steps: [
       { key: 'funds', label: 'Checking your balance', state: 'now' },
       { key: 'queue', label: `Joining the queue · ${solLabel(stake)}`, state: 'todo' },
-      { key: 'wait', label: stake ? `Waiting for a player at exactly ${solLabel(stake)}` : 'Waiting for a player (a Bot steps in after ~5 s)', state: 'todo' },
+      { key: 'wait', label: stake ? 'Waiting for a player' : 'Waiting for a player (a Bot steps in after ~5 s)', state: 'todo' },
       { key: 'found', label: 'Opponent found', state: 'todo' },
     ],
   });
@@ -530,7 +532,12 @@ export async function quickMatch(stake: number): Promise<void> {
   ticketId = null;
   const m = ticket.match;
   setStep('steps', 'wait', 'ok', { note: undefined });
-  setStep('steps', 'found', 'ok', { label: m.bot ? 'No one came: Bot stepped in' : `Matched with ${short(m.opponent)}` });
+  // Both play for the lower pick (m.stake); say so when it's below ours.
+  const lower = !m.bot && m.stake < stake;
+  setStep('steps', 'found', 'ok', {
+    label: m.bot ? 'No one came: Bot stepped in' : `Matched with ${short(m.opponent)}`,
+    note: lower ? `Playing for ${solLabel(m.stake)} (their stake). The rest stays in your wallet.` : undefined,
+  });
   await startMatch(r, { id: m.id, role: m.role, stake: m.stake, opponent: m.opponent, bot: m.bot });
 }
 

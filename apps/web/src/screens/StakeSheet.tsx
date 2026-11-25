@@ -91,7 +91,8 @@ export function StakeSheet({ title, stake, balance, onSign, onClose, around, sho
         ) : (
           <>
             <p className="sheet-fine">
-              The higher score wins a slice of the other stake; if an enemy reaches your cannon, you lose the whole stake.
+              You're matched with anyone searching; if their stake is lower, you both play for theirs. The higher score
+              wins a slice of the other stake; if an enemy reaches your cannon, you lose the whole stake.
               {balance != null && ` Your game wallet: ${sol(balance)} SOL (devnet play money).`}
             </p>
             <button className="big primary sheet-go" onClick={() => close(onSign)}>
