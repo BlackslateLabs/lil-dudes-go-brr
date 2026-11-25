@@ -1047,5 +1047,17 @@
   width: 100%;
   max-width: 320px;
   font-size: 22px;
-  animation: pop-in 0.35s var(--bounce) both;
+  animation: bot-in 0.5s ease-out both;
+}
+
+/* A quiet entrance: a short fade-up, no bounce, no pulsing. */
+@keyframes bot-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.lobby-bot:hover:not(:disabled) {
+  transform: none;
 }

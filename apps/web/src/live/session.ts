@@ -101,6 +101,8 @@ interface LiveState {
   lonely: boolean;
   /** Free Quick Match alone for ~5 s: offer "Play the Bot instead" (it never joins by itself). */
   botOffer: boolean;
+  /** The online bot couldn't be called: the offer becomes the bot on this device. */
+  botOffline: boolean;
   /** Queue liquidity while waiting (GET /queue/stats): others at my stake, the nearest stakes
    *  with someone waiting, players online. */
   qstats: { here: number; near: { stake: number; players: number }[]; online: number } | null;
@@ -133,6 +135,7 @@ const IDLE: Omit<LiveState, 'balance'> = {
   confirm: false,
   lonely: false,
   botOffer: false,
+  botOffline: false,
   qstats: null,
   resume: null,
   matchId: null,
@@ -564,11 +567,19 @@ export async function askForBot(): Promise<void> {
   try {
     await askBot(SERVER, id);
   } catch (e) {
+    // Whatever the reason (the bot is off, the server is older, the network), never leave the player
+    // stuck: offer the bot on this device instead, and say why the online one didn't come.
     asked = false;
-    set({ botOffer: true });
-    setStep('steps', 'wait', 'now', {
-      note: e instanceof ServerError && e.status === 503 ? 'The Bot is off right now' : 'Couldn’t reach the Bot. Try again.',
-    });
+    const why =
+      e instanceof ServerError && e.status === 503
+        ? 'The online Bot is off right now.'
+        : e instanceof ServerError && e.status === 0
+          ? 'Couldn’t reach the server.'
+          : e instanceof ServerError && /no such route/.test(e.message)
+            ? 'The online Bot isn’t available on this server yet.'
+            : 'The online Bot didn’t answer.';
+    set({ botOffer: true, botOffline: true });
+    setStep('steps', 'wait', 'now', { note: `${why} You can play it on this device.` });
   }
 }
 

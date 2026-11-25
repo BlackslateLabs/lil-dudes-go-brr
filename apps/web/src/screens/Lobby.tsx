@@ -78,8 +78,18 @@ export function Lobby() {
             </div>
           )}
           {s.botOffer && s.phase === 'queue' && (
-            <button className="big primary lobby-bot" onClick={() => void askForBot()}>
-              Play the Bot instead
+            <button
+              className="big primary lobby-bot"
+              onClick={() => {
+                if (!s.botOffline) return void askForBot();
+                // The online bot couldn't come: leave the queue and play it on this device (free).
+                void cancel().then(() => {
+                  useApp.getState().setTutorialAgain(false);
+                  useApp.getState().go('vs');
+                });
+              }}
+            >
+              {s.botOffline ? 'Play the Bot on this device' : 'Play the Bot instead'}
             </button>
           )}
           {s.lonely && s.phase === 'queue' && s.stake > 0 && (
