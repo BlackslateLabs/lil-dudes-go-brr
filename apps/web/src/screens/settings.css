@@ -1,0 +1,212 @@
+/* Settings: the gear on Home, the sheet, and the sound controls shared with the in-match cog. */
+
+.settings-btn {
+  position: absolute;
+  z-index: 3;
+  top: max(10px, env(safe-area-inset-top));
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: var(--edge);
+  background: #fff;
+  box-shadow: var(--gloss), 0 3px 0 var(--outline);
+  font-size: 21px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-btn:active {
+  transform: translateY(2px);
+  box-shadow: var(--gloss), 0 1px 0 var(--outline);
+}
+
+.set-sheet {
+  gap: 12px;
+  text-align: left;
+  align-items: stretch;
+}
+
+.set-sheet h3 {
+  text-align: center;
+}
+
+.set-group {
+  display: grid;
+  gap: 8px;
+}
+
+/* Toggle rows: label left, a chunky switch right. */
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 14px;
+  border: var(--edge);
+  background: #fff;
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.set-switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid var(--outline);
+  background: #d9d4ee;
+  transition: background 0.15s;
+}
+
+.set-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--outline);
+  transition: transform 0.18s var(--bounce);
+}
+
+.set-row.on .set-switch {
+  background: var(--mint);
+}
+
+.set-row.on .set-switch::after {
+  transform: translateX(20px);
+}
+
+/* Volume sliders: label, a thick track that fills, the number. */
+.set-slider {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: var(--edge);
+  background: #fff;
+  font-family: var(--display);
+  font-size: 16px;
+}
+
+.set-slider b {
+  font-weight: 400;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.set-slider.off {
+  opacity: 0.5;
+}
+
+.set-slider input {
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.set-slider input::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: linear-gradient(90deg, var(--gold) var(--v), #ece8ff var(--v));
+}
+
+.set-slider input::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--outline);
+  background: linear-gradient(90deg, var(--gold) var(--v), #ece8ff var(--v));
+}
+
+.set-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 50%;
+  border: 3px solid var(--outline);
+  background: #fff;
+}
+
+.set-slider input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid var(--outline);
+  background: #fff;
+}
+
+.set-slider input:focus-visible {
+  outline: 3px solid var(--grape);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Links: one tidy list. */
+.set-links {
+  display: grid;
+  border-radius: 14px;
+  border: var(--edge);
+  background: #fff;
+  overflow: hidden;
+}
+
+.set-links a,
+.set-links button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 2px solid #1b153018;
+  background: none;
+  font-family: var(--ui);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.set-links > :first-child {
+  border-top: 0;
+}
+
+.set-links small {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.set-links a:active,
+.set-links button:active {
+  background: #f3f0ff;
+}
+
+.set-fine {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}

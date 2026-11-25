@@ -107,8 +107,28 @@ const MUSIC_LEVEL = 0.35; // about -9 dB under the effects
 const MUSIC_DUCK = 0.25; // a further -12 dB under stingers, for ~0.6 s
 const BATTLE_DUCK = 0.25; // battle bus level during the end sequence
 
+const VOL_KEY = 'ldgb.volume';
+
+/** Player volume (Settings): music and effects, 0..1 each, on top of the mix levels above. */
+export interface Volumes {
+  music: number;
+  fx: number;
+}
+
+function readVolumes(): Volumes {
+  try {
+    const v = JSON.parse(localStorage.getItem(VOL_KEY) ?? '{}') as Partial<Volumes>;
+    const clamp = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1);
+    return { music: clamp(v.music), fx: clamp(v.fx) };
+  } catch {
+    return { music: 1, fx: 1 };
+  }
+}
+
+let vol = readVolumes();
 let ctx: AudioContext | null = null;
 let buses: Record<Bus, GainNode> | null = null;
+let musicBus: GainNode | null = null;
 let musicDuck: GainNode | null = null;
 let battleDucked = false;
 let enabled = readPref();
@@ -164,9 +184,10 @@ function ensureContext(): AudioContext | null {
       g.connect(to);
       return g;
     };
-    buses = { battle: bus(battleDucked ? BATTLE_DUCK : 1, master), ui: bus(1, master) };
+    buses = { battle: bus((battleDucked ? BATTLE_DUCK : 1) * vol.fx, master), ui: bus(vol.fx, master) };
     musicDuck = bus(1, master);
-    attachMusic(ac, bus(MUSIC_LEVEL, musicDuck), undoMusicDuck);
+    musicBus = bus(MUSIC_LEVEL * vol.music, musicDuck);
+    attachMusic(ac, musicBus, undoMusicDuck);
     loading ??= loadAll(ac);
   }
   return ctx;
@@ -394,7 +415,31 @@ export function setBattleDuck(on: boolean) {
   const now = ctx.currentTime;
   g.cancelScheduledValues(now);
   g.setValueAtTime(g.value, now);
-  g.linearRampToValueAtTime(on ? BATTLE_DUCK : 1, now + 0.15);
+  g.linearRampToValueAtTime((on ? BATTLE_DUCK : 1) * vol.fx, now + 0.15);
+}
+
+export function getVolumes(): Volumes {
+  return { ...vol };
+}
+
+/** Sets music and/or effects volume (0..1), saved on this device; applies at once with a short ramp. */
+export function setVolumes(next: Partial<Volumes>) {
+  vol = { ...vol, ...next };
+  try {
+    localStorage.setItem(VOL_KEY, JSON.stringify(vol));
+  } catch {
+    /* private mode: still applies for this session */
+  }
+  if (!ctx || !buses || !musicBus) return;
+  const now = ctx.currentTime;
+  const ramp = (g: AudioParam, v: number) => {
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(v, now + 0.08);
+  };
+  ramp(musicBus.gain, MUSIC_LEVEL * vol.music);
+  ramp(buses.ui.gain, vol.fx);
+  ramp(buses.battle.gain, (battleDucked ? BATTLE_DUCK : 1) * vol.fx);
 }
 
 /**

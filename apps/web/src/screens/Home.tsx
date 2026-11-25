@@ -28,6 +28,7 @@ import { setTutorialDone, tutorialDone, useApp } from '../store';
 import { AccountSheet } from './AccountSheet';
 import { FriendSheet } from './FriendSheet';
 import { StakePicker, checkStake } from './StakePicker';
+import { SettingsSheet } from './Settings';
 import { StakeSheet } from './StakeSheet';
 import { sol } from './format';
 import './flow.css';
@@ -53,6 +54,7 @@ export function Home() {
   const [bgKey, setBgKey] = useState(0);
   const [unlocked, setUnlocked] = useState(tutorialDone);
   const [sheet, setSheet] = useState<'quick' | 'friend' | 'account' | null>(null);
+  const [settings, setSettings] = useState(false);
   /** What to do once the wallet is connected (staked play needs an account). */
   const [then, setThen] = useState<(() => void) | null>(null);
   const account = useAccount((a) => a.wallet);
@@ -157,6 +159,18 @@ export function Home() {
           <Background key={bgKey} onEnd={() => setBgKey((k) => k + 1)} />
         </div>
       </div>
+      <button
+        className="settings-btn"
+        onClick={() => {
+          sfx.playButton();
+          setSettings(true);
+        }}
+        aria-label="Settings"
+        title="Settings"
+      >
+        ⚙
+      </button>
+      {settings && <SettingsSheet onClose={() => setSettings(false)} onHowToPlay={() => playBot(true)} />}
       {unlocked && (
         <button
           className={`profile-btn ${account ? 'signed' : ''}`}
@@ -244,11 +258,6 @@ export function Home() {
             </div>
           )}
 
-          <footer className="home-foot">
-            <button onClick={() => playBot(true)}>How to play</button>
-            <a href="/">About</a>
-            <span>Devnet play money</span>
-          </footer>
         </div>
       </div>
 
