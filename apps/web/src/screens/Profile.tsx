@@ -13,7 +13,7 @@ import {
 } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
 import { myBurner, myName, SERVER } from '../live/device';
-import { refreshBalance, short, topUpFor, useLive } from '../live/session';
+import { loadFaucetPolicy, refreshBalance, short, topUpFor, useCountdown, useFaucet, useLive } from '../live/session';
 import { useApp } from '../store';
 import { signedSol, sol } from './format';
 import './flow.css';
@@ -81,18 +81,20 @@ export function Profile() {
   const balance = useLive((s) => s.balance);
   const burner = myBurner();
   const address = burner.publicKey.toBase58();
-  const [note, setNote] = useState<{ text: string; at: number } | null>(null);
+  const [note, setNote] = useState<{ text: string; at: number; ms: number } | null>(null);
   const [topping, setTopping] = useState(false);
   const [rpcDown, setRpcDown] = useState(false);
-  const say = (text: string) => setNote({ text, at: performance.now() });
+  const say = (text: string, ms = 2600) => setNote({ text, at: performance.now(), ms });
+  const cooldown = useCountdown(useFaucet((f) => f.until));
 
   useEffect(() => {
+    loadFaucetPolicy();
     void refreshBalance().then((b) => setRpcDown(b === null));
   }, []);
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => setNote(null), 2600);
+    const t = setTimeout(() => setNote(null), note.ms);
     return () => clearTimeout(t);
   }, [note]);
 
@@ -107,7 +109,7 @@ export function Profile() {
     setTopping(true);
     const r = await topUpFor(stake);
     setTopping(false);
-    say(r.text);
+    say(r.text, r.ok ? 2600 : 4500);
   };
 
   return (
@@ -136,7 +138,7 @@ export function Profile() {
                 Copy
               </button>
               <a className="pf-mini" href={ACCOUNT_EXPLORER(address)} target="_blank" rel="noreferrer">
-                Explorer ↗
+                View on explorer (devnet) ↗
               </a>
             </div>
           </div>
@@ -147,9 +149,10 @@ export function Profile() {
             <b>{balance === null ? (rpcDown ? '—' : '…') : `${sol(balance)} SOL`}</b>
             {rpcDown && balance === null && <em>Can't reach Solana right now</em>}
           </div>
-          <button className="ls-topup" onClick={() => void doTopUp()} disabled={topping}>
-            {topping ? 'Topping up…' : '+ Top up'}
+          <button className={`ls-topup ${cooldown ? 'cooling' : ''}`} onClick={() => void doTopUp()} disabled={topping || !!cooldown} title={cooldown ? 'Next free top-up' : undefined}>
+            {topping ? 'Topping up…' : cooldown ?? '+ Top up'}
           </button>
+          {/* Part 2 hook: "Add SOL from wallet" (a connected wallet → this game wallet) goes here. */}
         </div>
         <p className="pf-note">A burner wallet that lives in this browser. Clearing site data loses it, so withdraw anything you want to keep.</p>
       </section>
@@ -158,7 +161,7 @@ export function Profile() {
       <History address={address} />
 
       {note && (
-        <div key={note.at} className="toast" role="status">
+        <div key={note.at} className={`toast ${note.text.length > 40 ? 'long' : ''}`} role="status">
           {note.text}
         </div>
       )}
@@ -175,7 +178,7 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [sig, setSig] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ sig: string; to: string; amount: number } | null>(null);
 
   const max = balance === null ? 0 : Math.max(0, balance - STAKE_RESERVE);
   const parsed = parseAddress(to, burner.publicKey);
@@ -200,7 +203,7 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
     setErr('');
     try {
       const r = await withdraw(baseConnection(), burner, parsed.key, all ? 'all' : lamports);
-      setSig(r.signature);
+      setSent({ sig: r.signature, to: parsed.key.toBase58(), amount: r.amount });
       setConfirm(false);
       setAmt('');
       setAll(false);
@@ -235,7 +238,7 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
           onChange={(e) => {
             setTo(e.target.value);
             setConfirm(false);
-            setSig(null);
+            setSent(null);
           }}
           placeholder="Paste address"
           autoComplete="off"
@@ -308,12 +311,18 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
         </button>
       )}
 
-      {sig && (
+      {sent && (
         <p className="pf-done">
-          Sent ·{' '}
-          <a href={BASE_EXPLORER(sig)} target="_blank" rel="noreferrer">
-            see the transaction ↗
+          Sent {sol(sent.amount)} SOL to{' '}
+          <a href={ACCOUNT_EXPLORER(sent.to)} target="_blank" rel="noreferrer">
+            {short(sent.to)} (devnet) ↗
+          </a>{' '}
+          ·{' '}
+          <a href={BASE_EXPLORER(sent.sig)} target="_blank" rel="noreferrer">
+            the transaction ↗
           </a>
+          <br />
+          <small>It's devnet SOL: check that address with your wallet on Devnet, or on the explorer.</small>
         </p>
       )}
     </section>
