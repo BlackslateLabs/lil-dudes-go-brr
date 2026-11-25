@@ -7,7 +7,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new build waits until the app says when (src/pwa.ts: on Home; the landing at once),
+      // so nobody keeps running an old build and nobody gets reloaded mid-match.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       // Precache everything the game needs offline: code, WASM, fonts, models, effects and sounds.
       // Query strings (?room=CODE, ?seed=…) still hit the cached pages. Unknown paths fall back to

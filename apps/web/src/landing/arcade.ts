@@ -1,6 +1,11 @@
 // Landing page: arcade attract mode. The CRT cycles demo → title → how to play → demo → fair play, like a real
 // cabinet idling; Enter / Space / 1 / 2 press Start. No game code here.
 
+import { registerSW } from 'virtual:pwa-register';
+
+// The landing has no state to lose: take a new build as soon as it's ready (it also precaches the game).
+const updateLanding = registerSW({ immediate: true, onNeedRefresh: () => void updateLanding(true) });
+
 const crt = document.getElementById('crt') as HTMLElement | null;
 const demo = document.getElementById('demo') as HTMLVideoElement | null;
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

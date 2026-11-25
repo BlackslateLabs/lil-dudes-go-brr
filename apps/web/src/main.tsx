@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
 import { sfx } from './feel/sound';
+import './pwa';
 
 // Every button press clicks (one listener instead of a call in each handler).
 document.addEventListener('click', (e) => {
