@@ -3,7 +3,9 @@ import { LAYOUTS } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
 import { layoutOfSeed, peekSeed } from '../match/nextSeed';
 import { LanePreview } from './LanePreview';
-import { tierLamports, useApp } from '../store';
+import { useLive } from '../live/session';
+import { LiveVs } from './LiveVs';
+import { useApp } from '../store';
 import { sol } from './format';
 import './flow.css';
 
@@ -154,16 +156,19 @@ function VsCard({ p, side }: { p: VsPlayer; side: 'me' | 'them' }) {
  */
 export function VsScreen() {
   const go = useApp((s) => s.go);
-  const stakeTier = useApp((s) => s.stake);
+  const stakeLamports = useApp((s) => s.stake);
+  // A live match (Quick Match, room, rematch) on its way: the real chain steps (live/session).
+  const live = useLive((s) => s.phase === 'starting' || (s.phase === 'error' && s.chain.length > 0));
   const params = new URLSearchParams(window.location.search);
   const demoStaked = params.get('staked') === '1';
   // The match's seed is picked now, so this screen can show the level it will be played on.
   const [layout] = useState(() => layoutOfSeed(peekSeed()));
   // `?name=` previews a long opponent name (layout testing).
   const rivalName = params.get('name');
+  if (live) return <LiveVs />;
   if (rivalName) return <Vs me={{ name: 'You' }} them={{ name: rivalName }} layout={layout} onDone={() => go('match')} />;
   if (demoStaked) {
-    const stake = tierLamports(stakeTier === 'free' ? '0.1' : stakeTier);
+    const stake = stakeLamports;
     return <Vs me={{ name: 'You', stake }} them={{ name: 'Rival', stake }} steps={STAKED_STEPS} layout={layout} onDone={() => go('match')} />;
   }
   return <Vs me={{ name: 'You' }} them={{ name: 'Bot', isBot: true }} layout={layout} onDone={() => go('match')} />;

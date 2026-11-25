@@ -2,20 +2,14 @@ import { create } from 'zustand';
 import type { MatchResult, Side } from '@lil-dudes/client';
 import { sfx } from './feel/sound';
 
-export type Screen = 'home' | 'vs' | 'match' | 'result';
-export type StakeTier = 'free' | '0.05' | '0.1' | '0.25';
+/** `lobby`: live waiting screens (Quick Match queue, room create / join), drawn from live/session. */
+export type Screen = 'home' | 'lobby' | 'vs' | 'match' | 'result';
 
-export const STAKE_TIERS: { id: StakeTier; label: string }[] = [
-  { id: 'free', label: 'Free' },
-  { id: '0.05', label: '0.05' },
-  { id: '0.1', label: '0.1' },
-  { id: '0.25', label: '0.25' },
-];
-
-/** A stake tier in lamports (0 = free). */
-export function tierLamports(tier: StakeTier): number {
-  return tier === 'free' ? 0 : Math.round(Number(tier) * 1e9);
-}
+/** Stake presets on Home (devnet SOL); any amount from 0.01 can be typed. */
+export const STAKE_PRESETS = [0.05, 0.1, 0.25, 0.5] as const;
+const STAKE_KEY = 'ldgb.stake';
+/** The stake picked last time (lamports), so Home opens on it. */
+const DEFAULT_STAKE = 100_000_000;
 
 /**
  * One player's score, part by part (SPEC v5 §6), tallied from match events for the result ceremony.
@@ -53,14 +47,18 @@ export const WIPE_OUT_MS = 350;
 
 interface AppState {
   screen: Screen;
-  stake: StakeTier;
+  /** Free (vs bot) or staked live play. */
+  free: boolean;
+  /** The staked amount in lamports (kept while Free is picked, so toggling back restores it). */
+  stake: number;
   lastMatch: LastMatch | null;
   wipe: WipeState;
   /** Replay the tutorial in the next bot match even though it's done ("How to play"). */
   tutorialAgain: boolean;
   /** Every screen change goes through here: it plays the logo wipe and swaps under it. */
   go: (screen: Screen) => void;
-  setStake: (stake: StakeTier) => void;
+  setFree: (free: boolean) => void;
+  setStake: (lamports: number) => void;
   setLastMatch: (m: LastMatch) => void;
   setTutorialAgain: (on: boolean) => void;
 }
@@ -78,7 +76,8 @@ let wipeTarget: Screen | null = null;
 
 export const useApp = create<AppState>((set, get) => ({
   screen: initialScreen(),
-  stake: 'free',
+  free: true,
+  stake: savedStake(),
   lastMatch: params.get('screen') === 'result' ? demoLastMatch(params.get('demo')) : null,
   wipe: 'idle',
   tutorialAgain: false,
@@ -100,7 +99,11 @@ export const useApp = create<AppState>((set, get) => ({
       wipeTimer = setTimeout(() => set({ wipe: 'idle' }), WIPE_OUT_MS);
     }, WIPE_IN_MS);
   },
-  setStake: (stake) => set({ stake }),
+  setFree: (free) => set({ free }),
+  setStake: (stake) => {
+    writeLs(STAKE_KEY, String(stake));
+    set({ stake, free: false });
+  },
   setLastMatch: (lastMatch) => set({ lastMatch }),
   setTutorialAgain: (tutorialAgain) => set({ tutorialAgain }),
 }));
@@ -125,6 +128,11 @@ function writeLs(key: string, value: string | null) {
   } catch {
     /* storage blocked: the flag just doesn't persist */
   }
+}
+
+function savedStake(): number {
+  const n = Number(readLs(STAKE_KEY));
+  return Number.isSafeInteger(n) && n > 0 ? n : DEFAULT_STAKE;
 }
 
 /** Has this device finished (or skipped) the first bot match? Unlocks staked PvP on Home. */
