@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ACCOUNT_EXPLORER,
   BASE_EXPLORER,
+  accountHistory,
+  accountProfile,
   baseConnection,
   matchHistory,
   playerStats,
@@ -12,13 +14,16 @@ import {
   type PlayerStats,
 } from '@lil-dudes/client';
 import { sfx } from '../feel/sound';
+import { addFromWallet, disconnect, rename, useAccount } from '../live/account';
 import { myBurner, myName, SERVER } from '../live/device';
 import { loadFaucetPolicy, refreshBalance, short, topUpFor, useCountdown, useFaucet, useLive } from '../live/session';
 import { useApp } from '../store';
+import { AccountSheet } from './AccountSheet';
 import { signedSol, sol } from './format';
 import './flow.css';
 import './live.css';
 import './profile.css';
+import './account.css';
 
 const PAGE = 15;
 
@@ -86,11 +91,16 @@ export function Profile() {
   const [rpcDown, setRpcDown] = useState(false);
   const say = (text: string, ms = 2600) => setNote({ text, at: performance.now(), ms });
   const cooldown = useCountdown(useFaucet((f) => f.until));
+  const wallet = useAccount((a) => a.wallet);
+  const accountName = useAccount((a) => a.name);
+  const [connecting, setConnecting] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     loadFaucetPolicy();
     void refreshBalance().then((b) => setRpcDown(b === null));
-  }, []);
+  }, [wallet]);
 
   useEffect(() => {
     if (!note) return;
@@ -131,8 +141,36 @@ export function Profile() {
         <div className="pf-who">
           <img src="/brand/head-you.webp" alt="" width={56} height={56} />
           <div>
-            <b className="pf-name">{myName()}</b>
+            {editing && wallet ? (
+              <NameEdit
+                initial={accountName ?? ''}
+                onDone={(err) => {
+                  if (err) say(err, 4500);
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              <b className="pf-name">
+                {wallet ? (accountName ?? short(wallet)) : myName()}
+                <span className={`pf-tag ${wallet ? '' : 'guest'}`}>{wallet ? 'Account' : 'Guest'}</span>
+                {wallet && (
+                  <button className="pf-mini" onClick={() => setEditing(true)}>
+                    {accountName ? 'Rename' : 'Set a name'}
+                  </button>
+                )}
+              </b>
+            )}
+            {wallet && (
+              <div className="pf-addr">
+                <small>Wallet</small>
+                <code title={wallet}>{short(wallet)}</code>
+                <a className="pf-mini" href={ACCOUNT_EXPLORER(wallet)} target="_blank" rel="noreferrer">
+                  ↗
+                </a>
+              </div>
+            )}
             <div className="pf-addr">
+              {wallet && <small>Game wallet</small>}
               <code title={address}>{short(address)}</code>
               <button className="pf-mini" onClick={copy}>
                 Copy
@@ -152,13 +190,50 @@ export function Profile() {
           <button className={`ls-topup ${cooldown ? 'cooling' : ''}`} onClick={() => void doTopUp()} disabled={topping || !!cooldown} title={cooldown ? 'Next free top-up' : undefined}>
             {topping ? 'Topping up…' : cooldown ?? '+ Top up'}
           </button>
-          {/* Part 2 hook: "Add SOL from wallet" (a connected wallet → this game wallet) goes here. */}
+          {wallet && (
+            <button className="ls-topup" onClick={() => setAdding((a) => !a)}>
+              + From wallet
+            </button>
+          )}
         </div>
-        <p className="pf-note">A burner wallet that lives in this browser. Clearing site data loses it, so withdraw anything you want to keep.</p>
+        {wallet && adding && (
+          <AddFromWallet
+            onDone={(t) => {
+              say(t, 4500);
+              setAdding(false);
+            }}
+          />
+        )}
+        {wallet ? (
+          <p className="pf-note">Your game wallet comes from your wallet's signature: connect the same wallet on any device to get it back.</p>
+        ) : (
+          <>
+            <p className="pf-note">A guest wallet that lives in this browser. Clearing site data loses it. Connect a wallet to keep it on any device (needed to play for SOL).</p>
+            <button className="big primary pf-connect" onClick={() => setConnecting(true)}>
+              Connect wallet
+            </button>
+          </>
+        )}
       </section>
 
-      <Withdraw burner={burner} balance={balance} onDone={say} />
-      <History address={address} />
+      <Withdraw key={wallet ?? 'guest'} burner={burner} balance={balance} mine={wallet} onDone={say} />
+      <History key={`${wallet ?? 'guest'}:${address}`} address={address} wallet={wallet} />
+
+      {wallet && (
+        <div className="pf-foot">
+          <button
+            className="link"
+            onClick={() => {
+              void disconnect();
+              say('Disconnected. Connect the same wallet to come back.');
+            }}
+          >
+            Disconnect wallet
+          </button>
+        </div>
+      )}
+
+      {connecting && <AccountSheet onClose={() => setConnecting(false)} onDone={() => setConnecting(false)} />}
 
       {note && (
         <div key={note.at} className={`toast ${note.text.length > 40 ? 'long' : ''}`} role="status">
@@ -170,9 +245,11 @@ export function Profile() {
 }
 
 /** Withdraw to a real wallet: paste an address, pick an amount, confirm on the page, see the tx. */
-function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number | null; onDone: (t: string) => void }) {
+function Withdraw({ burner, balance, mine, onDone }: { burner: Burner; balance: number | null; mine: string | null; onDone: (t: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [to, setTo] = useState('');
+  /** Signed in: the destination is the account's own wallet unless "send elsewhere". */
+  const [elsewhere, setElsewhere] = useState(!mine);
+  const [to, setTo] = useState(mine ?? '');
   const [amt, setAmt] = useState('');
   const [all, setAll] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -230,6 +307,20 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
   return (
     <section className="pf-card pf-withdraw">
       <h3>Withdraw to your wallet</h3>
+      {!elsewhere && mine ? (
+        <p className="pf-muted">
+          To your wallet <code>{short(mine)}</code> ·{' '}
+          <button
+            className="link"
+            onClick={() => {
+              setElsewhere(true);
+              setTo('');
+            }}
+          >
+            send elsewhere
+          </button>
+        </p>
+      ) : (
       <label className="pf-field">
         <span>To (a Solana address, e.g. your Phantom)</span>
         <input
@@ -248,6 +339,7 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
         />
         {addrErr && <em>{addrErr}</em>}
       </label>
+      )}
       <label className="pf-field">
         <span>Amount (SOL)</span>
         <div className="pf-amt">
@@ -332,7 +424,7 @@ function Withdraw({ burner, balance, onDone }: { burner: Burner; balance: number
 type Load = { state: 'loading' } | { state: 'down' } | { state: 'error'; text: string } | { state: 'ok' };
 
 /** Stats and recent matches from the server (records it read back from the match accounts). */
-function History({ address }: { address: string }) {
+function History({ address, wallet }: { address: string; wallet: string | null }) {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [rows, setRows] = useState<HistoryEntry[]>([]);
@@ -345,7 +437,12 @@ function History({ address }: { address: string }) {
   const fetchAll = useCallback(async () => {
     setLoad({ state: 'loading' });
     try {
-      const [st, h] = await Promise.all([playerStats(SERVER, address), matchHistory(SERVER, address, { limit: PAGE })]);
+      const [st, h] = wallet
+        ? await Promise.all([
+            accountProfile(SERVER, wallet).then((p) => p?.stats ?? { played: 0, won: 0, lost: 0, draw: 0, net: 0, staked: 0, best: 0 }),
+            accountHistory(SERVER, wallet, { limit: PAGE }).catch(() => ({ entries: [], next: null })),
+          ])
+        : await Promise.all([playerStats(SERVER, address), matchHistory(SERVER, address, { limit: PAGE })]);
       setStats(st);
       setRows(h.entries);
       setNext(h.next);
@@ -353,7 +450,7 @@ function History({ address }: { address: string }) {
     } catch (e) {
       setLoad(fail(e));
     }
-  }, [address]);
+  }, [address, wallet]);
 
   useEffect(() => {
     void fetchAll();
@@ -363,7 +460,7 @@ function History({ address }: { address: string }) {
     if (next === null) return;
     setMore(true);
     try {
-      const h = await matchHistory(SERVER, address, { limit: PAGE, before: next });
+      const h = wallet ? await accountHistory(SERVER, wallet, { limit: PAGE, before: next }) : await matchHistory(SERVER, address, { limit: PAGE, before: next });
       setRows((r) => [...r, ...h.entries]);
       setNext(h.next);
     } catch {
@@ -448,5 +545,68 @@ function Row({ m }: { m: HistoryEntry }) {
         )}
       </div>
     </li>
+  );
+}
+
+/** Set or change the account's display name (also the name in new matches). */
+function NameEdit({ initial, onDone }: { initial: string; onDone: (err: string | null) => void }) {
+  const [v, setV] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const ok = /^[A-Za-z0-9 _-]{1,16}$/.test(v.trim());
+  return (
+    <form
+      className="pf-name-edit"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!ok) return;
+        setBusy(true);
+        onDone(await rename(v.trim()));
+      }}
+    >
+      <input id="pf-name" value={v} maxLength={16} autoFocus onChange={(e) => setV(e.target.value)} placeholder="Your name" />
+      <button className="pf-mini" type="submit" disabled={!ok || busy}>
+        {busy ? '…' : 'Save'}
+      </button>
+      <button className="pf-mini" type="button" onClick={() => onDone(null)}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
+const ADD_PRESETS = [0.1, 0.25, 0.5, 1];
+
+/** "Add SOL from wallet": pick an amount, one wallet popup, devnet transfer to the game wallet. */
+function AddFromWallet({ onDone }: { onDone: (t: string) => void }) {
+  const [amt, setAmt] = useState('0.1');
+  const [busy, setBusy] = useState(false);
+  const lamports = toLamports(amt);
+  const ok = Number.isFinite(lamports) && lamports >= 1_000_000;
+  return (
+    <div className="pf-add">
+      <div className="stakes">
+        {ADD_PRESETS.map((p) => (
+          <button key={p} className={`chip ${lamports === Math.round(p * 1e9) ? 'on' : ''}`} onClick={() => setAmt(String(p))}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className="pf-amt">
+        <input id="pf-add" inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.,]/g, '').slice(0, 10))} />
+        <button
+          className="big primary"
+          disabled={!ok || busy}
+          onClick={async () => {
+            setBusy(true);
+            const r = await addFromWallet(lamports);
+            setBusy(false);
+            onDone(r.text);
+          }}
+        >
+          {busy ? 'Check your wallet…' : `Add ${ok ? sol(lamports) : ''} SOL`}
+        </button>
+      </div>
+      <small className="pf-muted">From your connected wallet, on devnet. Your wallet asks you to approve it.</small>
+    </div>
   );
 }

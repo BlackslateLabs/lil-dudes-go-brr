@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { FEE_BPS, stakeOnChain } from '@lil-dudes/client';
 import { cancel, confirmJoin, leave, needFor, quickMatch, refreshBalance, topUpFor, useLive, whoLine, type LiveError, type Step } from '../live/session';
+import { useAccount } from '../live/account';
+import { AccountSheet } from './AccountSheet';
 import { useApp } from '../store';
 import { bpsLabel, sol } from './format';
 import './flow.css';
@@ -188,6 +190,10 @@ function JoinConfirm() {
   const [msg, setMsg] = useState<string | null>(null);
   const need = needFor(room.stake);
   const short = balance !== null && balance < need;
+  const account = useAccount((a) => a.wallet);
+  const [connecting, setConnecting] = useState(false);
+  // Staked play needs a connected wallet (free rooms stay guest-friendly).
+  const needsAccount = room.stake > 0 && !account;
   return (
     <section className="card join-card">
       <p className="join-from">
@@ -208,7 +214,11 @@ function JoinConfirm() {
         Room {room.code} · your burner: {balance === null ? '…' : `${sol(balance)} SOL`}
         {short && ` · needs ${sol(need)}`}
       </p>
-      {short ? (
+      {needsAccount ? (
+        <button className="big primary" onClick={() => setConnecting(true)}>
+          Connect a wallet to play for SOL
+        </button>
+      ) : short ? (
         <button
           className="big primary"
           disabled={topping}
@@ -231,6 +241,7 @@ function JoinConfirm() {
       <button className="sheet-cancel" onClick={() => void cancel()}>
         Not now
       </button>
+      {connecting && <AccountSheet onClose={() => setConnecting(false)} onDone={() => setConnecting(false)} />}
     </section>
   );
 }

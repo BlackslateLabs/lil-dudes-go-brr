@@ -9,7 +9,7 @@ export const SERVER: string =
   (import.meta.env.VITE_SERVER_URL as string | undefined)?.replace(/\/$/, '') ??
   `${window.location.protocol}//${window.location.hostname}:8787`;
 
-function read(key: string): string | null {
+export function read(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -17,7 +17,7 @@ function read(key: string): string | null {
   }
 }
 
-function write(key: string, value: string | null) {
+export function write(key: string, value: string | null) {
   try {
     if (value === null) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, value);
@@ -30,23 +30,50 @@ const store: KeyStore = { getItem: read, setItem: (k, v) => write(k, v) };
 
 type Burner = ReturnType<typeof deviceBurner>;
 let burner: Burner | null = null;
+/** The account's game key (derived from the connected wallet, live/account.ts), when signed in. */
+let accountKey: Burner | null = null;
 
-/** This device's burner keypair (made and saved on first call). */
+/**
+ * The key that plays: the account's game key when a wallet is connected, else this browser's
+ * guest burner (made and saved on first call). Live play, the faucet and Profile all use it.
+ */
 export function myBurner(): Burner {
+  if (accountKey) return accountKey;
   burner ??= deviceBurner(store);
   return burner;
 }
 
-/** Has this device made a burner yet? (Recovery and balances wait until it has.) */
-export const hasBurner = (): boolean => burner !== null || read(BURNER_KEY) !== null;
+/** Signed in (live/account.ts) or out (null): switches what myBurner() returns. */
+export function setAccountKey(kp: Burner | null) {
+  accountKey = kp;
+}
+
+/** This browser's guest burner, if it ever made one (null otherwise; never makes one). */
+export function guestBurner(): Burner | null {
+  if (burner) return burner;
+  if (read(BURNER_KEY) === null) return null;
+  burner = deviceBurner(store);
+  return burner;
+}
+
+/** Has this device a key to play with yet? (Recovery and balances wait until it has.) */
+export const hasBurner = (): boolean => accountKey !== null || burner !== null || read(BURNER_KEY) !== null;
 
 // --- name -------------------------------------------------------------------------------------
 
 const NAME_KEY = 'ldgb.name';
 const NAMES = ['Bean', 'Pip', 'Taco', 'Nugget', 'Biscuit', 'Pickle', 'Waffle', 'Noodle', 'Muffin', 'Dumpling', 'Sprout', 'Pebble', 'Turnip', 'Mochi', 'Gizmo', 'Button'];
 
-/** "Lil Pickle": random once per device, ≤ 16 bytes (the on-chain name field). */
+/** The account's display name while signed in (live/account.ts). */
+let accountName: string | null = null;
+export function setAccountName(name: string | null) {
+  accountName = name;
+}
+
+/** The account's name when signed in; else "Lil Pickle": random once per device, ≤ 16 bytes (the
+ *  on-chain name field). */
 export function myName(): string {
+  if (accountName) return accountName;
   const saved = read(NAME_KEY);
   if (saved) return saved;
   const n = `Lil ${NAMES[Math.floor(Math.random() * NAMES.length)]}`;
