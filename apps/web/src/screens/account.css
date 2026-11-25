@@ -1,0 +1,156 @@
+/* Accounts: the connect sheet, the account chip and Profile's account bits. Same chunky look. */
+
+.acct-list {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acct-wallet {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: var(--edge);
+  background: linear-gradient(#fff, #f1eeff);
+  box-shadow: var(--gloss), 0 3px 0 var(--outline);
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.acct-wallet img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.acct-wallet:active {
+  transform: translateY(2px);
+  box-shadow: var(--gloss), 0 1px 0 var(--outline);
+}
+
+.acct-step {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #efeaff;
+  font-weight: 800;
+  text-align: center;
+  animation: acct-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes acct-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.acct-err {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--them-dark);
+  text-align: center;
+}
+
+.acct-none {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+}
+
+.acct-none p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.acct-none small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.acct-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.acct-links .chip {
+  text-decoration: none;
+  color: var(--ink);
+}
+
+/* Home chip when signed in: a mint dot says "account". */
+.profile-btn.signed span::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--mint);
+  border: 1.5px solid var(--outline);
+  vertical-align: 1px;
+}
+
+/* Profile */
+.pf-connect {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pf-name-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pf-name-edit input {
+  width: 9.5em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: var(--edge);
+  font: inherit;
+  font-weight: 800;
+}
+
+.pf-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 2px solid var(--outline);
+  background: var(--mint);
+  font-size: 11px;
+  font-weight: 800;
+  vertical-align: 2px;
+}
+
+.pf-tag.guest {
+  background: #e9e4ff;
+}
+
+.pf-add {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pf-add .stakes {
+  flex-wrap: wrap;
+}
+
+.pf-foot {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 10px;
+}

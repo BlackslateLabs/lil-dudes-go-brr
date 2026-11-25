@@ -3,6 +3,7 @@ import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { modelsReady } from '../arena/models/assets';
 import { sfx, unlockSound } from '../feel/sound';
+import { signedIn, useAccount } from '../live/account';
 import { hasBurner } from '../live/device';
 import {
   checkResume,
@@ -15,6 +16,7 @@ import {
   recoverStale,
   refreshBalance,
   resume,
+  short,
   topUpFor,
   useCountdown,
   useFaucet,
@@ -23,6 +25,7 @@ import {
 } from '../live/session';
 import { useFeed } from '../match/useFeed';
 import { setTutorialDone, tutorialDone, useApp } from '../store';
+import { AccountSheet } from './AccountSheet';
 import { FriendSheet } from './FriendSheet';
 import { StakePicker, checkStake } from './StakePicker';
 import { StakeSheet } from './StakeSheet';
@@ -49,7 +52,17 @@ export function Home() {
   const balance = useLive((s) => s.balance);
   const [bgKey, setBgKey] = useState(0);
   const [unlocked, setUnlocked] = useState(tutorialDone);
-  const [sheet, setSheet] = useState<'quick' | 'friend' | null>(null);
+  const [sheet, setSheet] = useState<'quick' | 'friend' | 'account' | null>(null);
+  /** What to do once the wallet is connected (staked play needs an account). */
+  const [then, setThen] = useState<(() => void) | null>(null);
+  const account = useAccount((a) => a.wallet);
+  const accountName = useAccount((a) => a.name);
+  /** Staked play needs a connected wallet: connect first, then carry on. */
+  const needAccount = (next: () => void) => {
+    if (signedIn()) return next();
+    setThen(() => next);
+    setSheet('account');
+  };
   const [note, setNote] = useState<{ text: string; at: number; ms: number } | null>(null);
   const [topping, setTopping] = useState(false);
   const back = useLive((s) => s.resume);
@@ -132,7 +145,7 @@ export function Home() {
       </div>
       {unlocked && (
         <button
-          className="profile-btn"
+          className={`profile-btn ${account ? 'signed' : ''}`}
           onClick={() => {
             sfx.playButton();
             go('profile');
@@ -140,7 +153,7 @@ export function Home() {
           aria-label="Your profile and wallet"
         >
           <img src="/brand/head-you.webp" alt="" width={30} height={30} />
-          <span>{balance === null ? 'Profile' : `${sol(balance)} SOL`}</span>
+          <span>{account ? (accountName ?? short(account)) : balance === null ? 'Profile' : `${sol(balance)} SOL`}</span>
         </button>
       )}
       <div className="home-ui flow-home">
@@ -184,7 +197,7 @@ export function Home() {
               onClick={() => {
                 unlockSound();
                 sfx.playButton();
-                setSheet('quick');
+                needAccount(() => setSheet('quick'));
               }}
             >
               FIND MATCH
@@ -258,15 +271,34 @@ export function Home() {
         />
       )}
 
+      {sheet === 'account' && (
+        <AccountSheet
+          onClose={() => {
+            setSheet(null);
+            setThen(null);
+          }}
+          onDone={() => {
+            const next = then;
+            setThen(null);
+            setSheet(null);
+            next?.();
+          }}
+        />
+      )}
+
       {sheet === 'friend' && (
         <FriendSheet
           stake={live}
           blocked={blocked}
           onClose={() => setSheet(null)}
           onCreate={() => {
-            setSheet(null);
             unlockSound();
-            void hostRoom(live);
+            const host = () => {
+              setSheet(null);
+              void hostRoom(live);
+            };
+            if (live > 0) needAccount(host);
+            else host();
           }}
           onJoin={(code) => {
             setSheet(null);
