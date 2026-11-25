@@ -141,7 +141,7 @@ export async function pollQueue(server: string, ticket: string, signal?: AbortSi
 /** Asks the server's bot to take this FREE ticket (the app offers it after ~5 s alone). The bot
  *  joins at once if it's free, else on a later poll; staked tickets are refused (409). */
 export async function askBot(server: string, ticket: string, signal?: AbortSignal): Promise<QueueTicket> {
-  return ticketOf(await call<TicketJson>(server, 'POST', `/queue/${encodeURIComponent(ticket)}/bot`, undefined, signal));
+  return ticketOf(await call<TicketJson>(server, 'POST', `/queue/${encodeURIComponent(ticket)}/bot`, {}, signal));
 }
 
 /** Leaves the queue (best effort). */
