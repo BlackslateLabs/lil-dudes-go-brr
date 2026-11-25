@@ -122,6 +122,10 @@ refund goes to the players recorded in the match.
   the leader has already flipped.
 - **Verify checks the deal, not every move.** Aim inputs are not logged on chain, so Verify
   re-derives the level, gate values and Scouts from the seed rather than replaying the whole match.
+- **Your game key comes from one wallet signature.** Connecting a wallet signs a fixed message
+  once; the game key is derived from that signature, so it comes back on any device. A site that
+  tricked your wallet into signing that exact message could rebuild your game key, so the message
+  says to sign it only here. It only ever holds devnet play money.
 - **One server instance.** Rooms, the queue, top-ups and the bot live in memory on one instance. If
   it is down, Quick Match, room codes and top-ups stop; Play vs Bot still works.
 - **Not battle-tested at scale.** Live matches have run on devnet bot-vs-bot and in the privacy

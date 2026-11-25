@@ -5,7 +5,8 @@
 //
 // In memory, plus an optional append-only JSON-lines file (`HISTORY_FILE`): one line per write,
 // loaded on start (a later line for the same match wins, so adding the settle signature is just
-// another line; a torn last line from a crash is skipped).
+// another line; a torn last line from a crash is skipped). With a database (store.ts,
+// DATABASE_URL) it is seeded from the `matches` table on start and writes through to it.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -59,9 +60,30 @@ const isRecord = (r: unknown): r is HistoryRecord => {
 export class History {
   private byId = new Map<string, HistoryRecord>();
   private byPlayer = new Map<string, Set<string>>();
+  /** Writes in flight to the database (flush() waits for them; tests). */
+  private pending = new Set<Promise<void>>();
 
-  constructor(private readonly file: string | null = null) {
+  /**
+   * @param file     optional JSON-lines file (HISTORY_FILE).
+   * @param persist  optional write-through (the database, store.ts): called with each changed
+   *                 record. A failed write is logged, not thrown: the record stays in memory and
+   *                 is written again the next time it changes.
+   */
+  constructor(
+    private readonly file: string | null = null,
+    private readonly persist: ((r: HistoryRecord) => Promise<void>) | null = null,
+  ) {
     if (file) this.load(file);
+  }
+
+  /** Loads records from the database on start (no write-back). */
+  seed(records: Iterable<HistoryRecord>): void {
+    for (const r of records) if (isRecord(r)) this.index(r);
+  }
+
+  /** Waits for the database writes in flight. */
+  async flush(): Promise<void> {
+    await Promise.all([...this.pending]);
   }
 
   private load(file: string) {
@@ -109,23 +131,39 @@ export class History {
       fs.mkdirSync(path.dirname(path.resolve(this.file)), { recursive: true });
       fs.appendFileSync(this.file, `${JSON.stringify(this.byId.get(r.matchId))}\n`);
     }
+    if (this.persist) {
+      const p: Promise<void> = this.persist(this.byId.get(r.matchId)!)
+        .catch((e: unknown) => console.error(`history: saving match ${r.matchId} failed: ${e instanceof Error ? e.message : String(e)}`))
+        .finally(() => this.pending.delete(p));
+      this.pending.add(p);
+    }
     return true;
   }
 
   /** A player's matches, newest first; `before` = an `endedAt` cursor from the previous page. */
   page(player: string, limit = 20, before?: number): { entries: PlayerRecord[]; next: number | null } {
-    const all = [...(this.byPlayer.get(player) ?? [])]
+    return this.pageMany([player], limit, before);
+  }
+
+  /** An account's matches over all its keys (game key + merged guest keys), newest first. */
+  pageMany(players: readonly string[], limit = 20, before?: number): { entries: PlayerRecord[]; next: number | null } {
+    const all = [...this.idsOf(players)]
       .map((id) => this.byId.get(id)!)
       .sort((a, b) => b.endedAt - a.endedAt || b.matchId.localeCompare(a.matchId))
       .filter((r) => before === undefined || r.endedAt < before);
-    const entries = all.slice(0, limit).map((r) => view(r, player));
+    const entries = all.slice(0, limit).map((r) => view(r, players));
     return { entries, next: all.length > limit ? entries[entries.length - 1]!.endedAt : null };
   }
 
   stats(player: string): PlayerStats {
+    return this.statsMany([player]);
+  }
+
+  /** Stats over all of an account's keys. */
+  statsMany(players: readonly string[]): PlayerStats {
     const s: PlayerStats = { played: 0, won: 0, lost: 0, draw: 0, net: 0, staked: 0, best: 0 };
-    for (const id of this.byPlayer.get(player) ?? []) {
-      const r = view(this.byId.get(id)!, player);
+    for (const id of this.idsOf(players)) {
+      const r = view(this.byId.get(id)!, players);
       s.played++;
       s[r.outcome]++;
       s.net += r.net;
@@ -134,10 +172,17 @@ export class History {
     }
     return s;
   }
+
+  private idsOf(players: readonly string[]): Set<string> {
+    const ids = new Set<string>();
+    for (const p of players) for (const id of this.byPlayer.get(p) ?? []) ids.add(id);
+    return ids;
+  }
 }
 
-function view(r: HistoryRecord, player: string): PlayerRecord {
-  const side: 0 | 1 = r.players[0] === player ? 0 : 1;
+function view(r: HistoryRecord, players: readonly string[]): PlayerRecord {
+  const side: 0 | 1 = players.includes(r.players[0]) ? 0 : 1;
+  const player = r.players[side];
   const other = (1 - side) as 0 | 1;
   return {
     ...r,
