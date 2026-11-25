@@ -38,7 +38,7 @@ export function guard(o: GuardOptions): MiddlewareHandler[] {
         };
   return [
     secureHeaders({ crossOriginResourcePolicy: 'cross-origin' }),
-    cors({ origin, allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'], allowHeaders: ['content-type'], maxAge: 600 }),
+    cors({ origin, allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'], allowHeaders: ['content-type', 'authorization'], maxAge: 600 }),
     async (c, next) => {
       // Platform health checks are never limited.
       if (c.req.path === '/healthz') return next();

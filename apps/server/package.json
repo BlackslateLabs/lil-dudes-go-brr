@@ -16,7 +16,8 @@
     "@lil-dudes/sim-wasm": "workspace:*",
     "@solana/web3.js": "1.98.4",
     "bs58": "6.0.0",
-    "hono": "4.13.19"
+    "hono": "4.13.19",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

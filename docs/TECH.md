@@ -427,8 +427,8 @@ Also: ✅ a burner with 0 SOL can send ER transactions; ❌ `advance` with 40 st
 ## 9. Server (`apps/server`, M5)
 
 Hono on Node, one instance, state in memory (rooms, queue, limits; a restart only drops waiting
-players and resets limits), except the match history, which can persist to a JSON-lines file
-(`HISTORY_FILE`). **Not in the trust path:** it never decides an outcome; every
+players and resets limits), except accounts and match history, which persist to Postgres (Neon,
+`DATABASE_URL`) or, for history only, a JSON-lines file (`HISTORY_FILE`). **Not in the trust path:** it never decides an outcome; every
 on-chain thing it does is permissionless or its own player's move, and every refund goes to the
 players recorded in the Match.
 
@@ -450,6 +450,12 @@ players recorded in the Match.
 | `POST /topup {burner, stake?}` | faucet: fills the burner to stake + 0.035 SOL (≤ 0.3); 1 / 10 min per burner, 3 / 10 min per IP, 3 SOL / hour; devnet only (genesis hash checked) |
 | `GET /faucet` | sponsor address, balance, policy, spent last hour |
 | `POST /settle {id}` | "Settle now" for a burner with no SOL: permissionless `settle`, sponsor pays (10 / 10 min per IP) |
+| `GET /auth/nonce` | a single-use nonce (5 min) for the first-time account link (30 / min per IP) |
+| `POST /account/link {wallet, burner, nonce, issuedAt, walletSignature, burnerSignature, name?}` | links a wallet to its game key: both signed `linkMessage(...)` (client `src/live/account.ts`), nonce single-use, `issuedAt` ±10 min. Same pair = refresh; a new game key for the same wallet replaces the old one, which becomes a merged guest key; a key owned by another account → 409; database down → 503 |
+| `POST /account/name {name}` | display name, 1–16 letters, digits, spaces, `_`, `-`. **Game-key auth** (below) |
+| `POST /account/merge-guest {wallet, guest, guestSignature}` | folds a guest key's history into the account: the guest key signs `mergeMessage(guest, wallet)`, the account's game key signs the request. A guest already merged elsewhere → 409 |
+| `GET /account/:wallet` | `{ wallet, burner, name, createdAt, lastSeen, guests, stats }` (stats over the game key and merged guest keys); 404 = never linked |
+| `GET /account/:wallet/history?limit=&before=` | the account's matches over all its keys, same shape as `/history/:player` |
 
 - **Sponsor wallet** (`SPONSOR_KEYPAIR_PATH` or `SPONSOR_SECRET_KEY`, env only, never logged):
   `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`. Pays top-ups, the bot's float, the sweeper's fees.
@@ -467,6 +473,26 @@ players recorded in the Match.
   (append-safe; loaded on start, a later line for the same match wins, a torn last line is
   skipped). On Render it needs a persistent disk (see `render.yaml`); without one, history lives
   until the next restart.
+- **Accounts** (`src/accounts.ts`, client `src/live/account.ts`): the player's own Solana wallet
+  (Wallet Standard: Phantom, Solflare, Backpack, MetaMask when it registers a Solana wallet) is the
+  account; a wallet is needed for staked play only. The in-match key (game key) is **derived**:
+  the wallet signs the fixed `GAME_KEY_MESSAGE` once, seed = sha256(signature),
+  `Keypair.fromSeed`. Ed25519 signatures are deterministic, so the same wallet rebuilds the same
+  game key on any device, after clearing site data; the signature never leaves the browser and the
+  server never holds a secret. First link: the wallet and the game key both sign `linkMessage`
+  (wallet, game key, server nonce, time); after that the game key signs account calls:
+  `Authorization: LDGB <gameKey>:<ms>:<sig>` over `method path`, the time (±2 min) and the
+  body's sha256, each signature usable once. **Never change `GAME_KEY_MESSAGE`** (every player's
+  key comes from its bytes). Caveat: a site that tricks a wallet into signing that exact text gets
+  that game key (devnet play money; the text says to sign it only here).
+- **Database** (`src/store.ts`, `DATABASE_URL` = Neon's pooled connection string; SSL, 3
+  connections, no prepared statements): tables `accounts`, `guest_links`, `matches` (the history
+  record as JSON plus indexed players, `ended_at`, `settle_sig`), created on start
+  (`CREATE TABLE IF NOT EXISTS`). Loaded into memory on start, written through on every change
+  (history writes are fire-and-forget and logged on failure; account writes answer 503 when the
+  database is down). Without `DATABASE_URL`, or if it is unreachable at start, the server runs in
+  memory (plus `HISTORY_FILE`) and `/health` says `database: false`. Live smoke test:
+  `cd apps/server && pnpm exec tsx --env-file-if-exists=.env --test test/db.test.ts`.
 - **Hardening:** CORS only for `CORS_ORIGINS` (default: localhost / LAN dev origins), 4 KB body
   cap, JSON-only writes, 240 requests / min per IP (`X-Forwarded-For` behind the proxy with
   `TRUST_PROXY=1`), secure headers, JSON errors without stack traces, strict validation of every

@@ -7,6 +7,7 @@
 // hackathon; a restart only drops waiting players); history can persist to a file.
 import { Hono, type Context } from 'hono';
 import { baseConnection, settleNow } from '@lil-dudes/client';
+import { Accounts, accountRoutes } from './accounts';
 import type { BotService } from './bot';
 import type { Faucet } from './faucet';
 import { guard } from './guard';
@@ -83,6 +84,10 @@ export interface ServerOptions {
   perMinute?: number;
   /** Match history (default: in memory only). */
   history?: History;
+  /** Accounts (wallet ↔ game key; default: in memory only). */
+  accounts?: Accounts;
+  /** For /health: is the database connected (DATABASE_URL)? */
+  database?: () => boolean;
   /** Reads a finished match from the base layer for the history (default: none: reports get 503). */
   reader?: MatchReader | null;
 }
@@ -139,6 +144,7 @@ export function createApp(opts: ServerOptions = {}) {
   /** Last time each player was seen (queue, rooms, /me): the online count. */
   const presence = new Map<string, number>();
   const history = opts.history ?? new History(null);
+  const accounts = opts.accounts ?? new Accounts(null, now);
   const reader = opts.reader ?? null;
   const reportLimit = new RateLimit(60_000, 30, now);
   const writeLimit = new RateLimit(60_000, 60, now);
@@ -247,6 +253,8 @@ export function createApp(opts: ServerOptions = {}) {
       queued: tickets.size,
       online: online(),
       history: history.size,
+      accounts: accounts.size,
+      database: opts.database?.() ?? false,
       faucet: !!faucet,
       bot: bot ? { address: bot.address, ...bot.stats } : null,
       sweeper: opts.sweeperStats?.() ?? null,
@@ -503,6 +511,9 @@ export function createApp(opts: ServerOptions = {}) {
     if (!isPubkey(player)) return c.json({ error: 'bad player' }, 400);
     return c.json(history.stats(player));
   });
+
+  // --- accounts (wallet ↔ game key, accounts.ts) -----------------------------------------------
+  accountRoutes(app, { accounts, history, now, ipOf: (c) => clientIp(c, opts.trustProxy ?? false) });
 
   // --- faucet (MVP §3.9 Top up, §4) -----------------------------------------------------------
   // Tops a burner up to stake + reserve (devnet SOL from the sponsor wallet). Already enough → no-op.
