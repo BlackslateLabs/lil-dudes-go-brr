@@ -2,25 +2,37 @@ import { useEffect, useState } from 'react';
 import { OfflineSource } from '@lil-dudes/client';
 import { Arena } from '../arena/Arena';
 import { sfx, unlockSound } from '../feel/sound';
+import { hasBurner } from '../live/device';
+import { checkResume, hostRoom, lookupRoom, quickMatch, recoverStale, refreshBalance, resume, topUpFor, useLive } from '../live/session';
 import { useFeed } from '../match/useFeed';
-import { STAKE_TIERS, setTutorialDone, tierLamports, tutorialDone, useApp } from '../store';
+import { setTutorialDone, tutorialDone, useApp } from '../store';
+import { FriendSheet } from './FriendSheet';
+import { StakePicker, checkStake } from './StakePicker';
 import { StakeSheet } from './StakeSheet';
+import { sol } from './format';
 import './flow.css';
+import './live.css';
 
 const NOTE_MS = 2600;
 
 /**
- * Home (SPEC v5 §8): one big primary button. Free → PLAY VS BOT; a paid stake → QUICK MATCH (and
- * Room Code as the secondary). Staked PvP unlocks after the first bot match. A silent bot-vs-bot
- * match loops behind it.
+ * Home (SPEC v5 §8, MVP §3.3). Free → PLAY VS BOT (instant, offline, no wallet); a stake → QUICK
+ * MATCH at exactly that amount, with Play a Friend (room code) beside it. Live play also works
+ * free from the small buttons (the server's Bot takes a free Quick Match after ~5 s). Staked play
+ * unlocks after the first bot match (or skip). A silent bot-vs-bot match loops behind it.
  */
 export function Home() {
-  const { stake, setStake, go, setTutorialAgain } = useApp();
+  const { free, stake, go, setTutorialAgain } = useApp();
+  const balance = useLive((s) => s.balance);
   const [bgKey, setBgKey] = useState(0);
   const [unlocked, setUnlocked] = useState(tutorialDone);
-  const [sheet, setSheet] = useState<'Quick Match' | 'Room Code' | null>(null);
+  const [sheet, setSheet] = useState<'quick' | 'friend' | null>(null);
   const [note, setNote] = useState<{ text: string; at: number } | null>(null);
-  const paid = unlocked && stake !== 'free';
+  const [topping, setTopping] = useState(false);
+  const back = useLive((s) => s.resume);
+  const live = free ? 0 : stake;
+  const check = free ? { ok: true, hint: '', short: false, notLive: false } : checkStake(stake, balance);
+  const say = (text: string) => setNote({ text, at: performance.now() });
 
   useEffect(() => {
     if (!note) return;
@@ -28,11 +40,35 @@ export function Home() {
     return () => clearTimeout(t);
   }, [note]);
 
+  // A reloaded tab (or one left mid-match): offer to go back (this device's match, else /me).
+  useEffect(() => {
+    void checkResume();
+  }, []);
+
+  // The burner is made on first live use; once it exists, show its balance and refund anything a
+  // crashed tab left behind (MVP §4).
+  useEffect(() => {
+    if (!unlocked) return;
+    const had = hasBurner();
+    void refreshBalance();
+    if (had) void recoverStale().then((t) => t && say(t));
+  }, [unlocked]);
+
   const playBot = (tutorial: boolean) => {
     unlockSound();
     setTutorialAgain(tutorial);
     go('vs');
   };
+
+  const doTopUp = async (amount = live) => {
+    setTopping(true);
+    const r = await topUpFor(amount);
+    setTopping(false);
+    say(r.text);
+  };
+
+  // The stake can't be played as is: why, for the Create button and the sheet.
+  const blocked = check.ok ? null : check.hint;
 
   return (
     <div className="screen home">
@@ -45,53 +81,30 @@ export function Home() {
         </h1>
 
         <div className="home-bottom">
-          <div className="stake-card">
-            <span className="stake-head">Stake · devnet SOL</span>
-            <div className="stakes" role="radiogroup" aria-label="Stake (devnet SOL)">
-              {STAKE_TIERS.map((t) => {
-                const locked = !unlocked && t.id !== 'free';
-                return (
-                  <button
-                    key={t.id}
-                    role="radio"
-                    aria-checked={stake === t.id}
-                    className={`chip ${stake === t.id ? 'on' : ''} ${locked ? 'locked' : ''}`}
-                    disabled={locked}
-                    onClick={() => setStake(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-            {!unlocked && (
-              <p className="unlock-line">
-                Staked PvP unlocks after your first bot match ·{' '}
-                <button
-                  className="link"
-                  onClick={() => {
-                    setTutorialDone();
-                    setUnlocked(true);
-                  }}
-                >
-                  skip
-                </button>
-              </p>
-            )}
-          </div>
-
-          {paid ? (
-            <button
-              className="big primary play"
-              onClick={() => {
-                unlockSound();
-                sfx.playButton();
-                setSheet('Quick Match');
-              }}
-            >
-              QUICK MATCH <small>{stake} SOL</small>
+          {back && (
+            <button className="rejoin-card" onClick={() => void resume()}>
+              <span>{back.label}</span>
+              <b className="rejoin-go">{back.kind === 'match' ? 'Rejoin' : 'Resume'}</b>
             </button>
-          ) : (
+          )}
+
+          <StakePicker locked={!unlocked} balance={balance} onTopUp={() => void doTopUp()} toppingUp={topping} />
+          {!unlocked && (
+            <p className="unlock-line on-sky">
+              Staked PvP unlocks after your first bot match ·{' '}
+              <button
+                className="link"
+                onClick={() => {
+                  setTutorialDone();
+                  setUnlocked(true);
+                }}
+              >
+                skip
+              </button>
+            </p>
+          )}
+
+          {free || !unlocked ? (
             <button
               className="big primary play"
               onClick={() => {
@@ -101,12 +114,45 @@ export function Home() {
             >
               PLAY VS BOT <small>free</small>
             </button>
+          ) : check.short && !check.notLive ? (
+            <button className="big primary play" disabled={topping} onClick={() => void doTopUp()}>
+              TOP UP <small>{sol(stake)} SOL</small>
+            </button>
+          ) : (
+            <button
+              className="big primary play"
+              disabled={!check.ok}
+              onClick={() => {
+                unlockSound();
+                sfx.playButton();
+                setSheet('quick');
+              }}
+            >
+              QUICK MATCH <small>{sol(stake)} SOL</small>
+            </button>
           )}
 
-          {paid && (
-            <button className="big secondary" onClick={() => setSheet('Room Code')}>
-              Room Code
-            </button>
+          {unlocked && (
+            <div className="actions row2 home-pvp">
+              {free ? (
+                <button
+                  className="big secondary"
+                  onClick={() => {
+                    unlockSound();
+                    void quickMatch(0);
+                  }}
+                >
+                  Quick Match <small>online</small>
+                </button>
+              ) : (
+                <button className="big secondary" onClick={() => playBot(false)}>
+                  vs Bot <small>free</small>
+                </button>
+              )}
+              <button className="big secondary" onClick={() => setSheet('friend')}>
+                Play a Friend
+              </button>
+            </div>
           )}
 
           <footer className="home-foot">
@@ -122,14 +168,33 @@ export function Home() {
         </div>
       )}
 
-      {sheet && (
+      {sheet === 'quick' && (
         <StakeSheet
-          title={sheet}
-          stake={tierLamports(stake)}
+          title="Quick Match"
+          stake={stake}
+          balance={balance}
           onClose={() => setSheet(null)}
           onSign={() => {
             setSheet(null);
-            setNote({ text: 'Live matches open soon', at: performance.now() });
+            void quickMatch(stake);
+          }}
+        />
+      )}
+
+      {sheet === 'friend' && (
+        <FriendSheet
+          stake={live}
+          blocked={blocked}
+          onClose={() => setSheet(null)}
+          onCreate={() => {
+            setSheet(null);
+            unlockSound();
+            void hostRoom(live);
+          }}
+          onJoin={(code) => {
+            setSheet(null);
+            unlockSound();
+            void lookupRoom(code);
           }}
         />
       )}

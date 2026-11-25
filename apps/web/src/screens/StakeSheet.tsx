@@ -10,7 +10,9 @@ export interface StakeSheetProps {
   title: string;
   /** Lamports per player. */
   stake: number;
-  /** Signed: start the staked flow. Live play isn't wired yet, so the caller just shows a note. */
+  /** The burner's balance (lamports), if known. */
+  balance?: number | null;
+  /** Signed: start the staked flow (live/session). */
   onSign: () => void;
   onClose: () => void;
 }
@@ -19,7 +21,7 @@ export interface StakeSheetProps {
  * Stake confirm (SPEC v5 §8): one bottom sheet, one signature. Opens in 0.25 s and closes in
  * 0.15 s, both with a back-ease. Tapping the dimmed backdrop cancels.
  */
-export function StakeSheet({ title, stake, onSign, onClose }: StakeSheetProps) {
+export function StakeSheet({ title, stake, balance, onSign, onClose }: StakeSheetProps) {
   const [closing, setClosing] = useState(false);
   const after = useRef<() => void>(onClose);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -56,6 +58,7 @@ export function StakeSheet({ title, stake, onSign, onClose }: StakeSheetProps) {
         </p>
         <p className="sheet-fine">
           The higher score wins a slice of the other stake; if an enemy reaches your cannon, you lose the whole stake.
+          {balance != null && ` Your burner: ${sol(balance)} SOL (devnet play money).`}
         </p>
         <button className="big primary sheet-go" onClick={() => close(onSign)}>
           Sign &amp; play
