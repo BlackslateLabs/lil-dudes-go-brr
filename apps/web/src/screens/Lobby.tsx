@@ -92,7 +92,7 @@ export function Lobby() {
                   </div>
                 </>
               ) : (
-                <p>No one around at {s.stake ? `exactly ${sol(s.stake)} SOL` : 'this stake'} yet.</p>
+                <p>No one else is searching right now.</p>
               )}
               <button
                 className="link"

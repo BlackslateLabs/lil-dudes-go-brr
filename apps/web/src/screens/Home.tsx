@@ -43,7 +43,7 @@ let bgShown = false;
 
 /**
  * Home (SPEC v5 §8, MVP §3.3). Free → PLAY VS BOT (instant, offline, no wallet); a stake → FIND
- * MATCH at exactly that amount (always the big button; a short balance is handled in its sheet),
+ * MATCH with anyone searching, both playing for the lower stake (always the big button; a short balance is handled in its sheet),
  * with Play a Friend (room code) beside it. Live play also works
  * free from the small buttons (the server's Bot takes a free Quick Match after ~5 s). Staked play
  * unlocks after the first bot match (or skip). A silent bot-vs-bot match loops behind it.

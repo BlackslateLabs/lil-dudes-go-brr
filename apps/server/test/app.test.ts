@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createApp } from '../src/app';
+import { bestOpponent, createApp } from '../src/app';
 
 const A = '4oarhNvGuppu2VKsYy3aSvYPSFTwovcY58t1B3a8aA4Z';
 const B = 'HJZnaPcLHcVBeqtUH5hcDYrq16Z8J4oBahKfz3hZH1br';
@@ -69,21 +69,21 @@ test('quick match pairs two players on the same tier, earlier one creates', asyn
   assert.equal((await call('GET', `/queue/${d.body.ticket}`)).status, 404);
 });
 
-test('any stake in [STAKE_MIN, STAKE_MAX] queues and pairs only at exactly that stake', async () => {
+test('any stake in [STAKE_MIN, STAKE_MAX] queues; a changed amount replaces the waiting ticket', async () => {
   const { call } = setup();
   assert.equal((await call('POST', '/queue', { player: A, stake: 9_999_999 })).status, 400);
   assert.equal((await call('POST', '/queue', { player: A, stake: 5_000_000_001 })).status, 400);
   assert.equal((await call('POST', '/queue', { player: A, stake: 12_345_678.5 })).status, 400);
   const a = await call('POST', '/queue', { player: A, stake: 70_000_000 });
   assert.equal(a.status, 201);
-  const b = await call('POST', '/queue', { player: B, stake: 70_000_001 });
-  assert.equal(b.body.state, 'waiting');
-  // A changes the amount (its DELETE was lost): the waiting ticket is replaced, then pairs with B.
+  // A changes the amount (its DELETE was lost): the waiting ticket is replaced.
   const a2 = await call('POST', '/queue', { player: A, stake: 70_000_001 });
   assert.notEqual(a2.body.ticket, a.body.ticket);
-  assert.equal(a2.body.state, 'matched');
-  assert.equal(a2.body.role, 'join');
+  assert.equal(a2.body.state, 'waiting');
   assert.equal((await call('GET', `/queue/${a.body.ticket}`)).status, 404);
+  const b = await call('POST', '/queue', { player: B, stake: 70_000_001 });
+  assert.equal(b.body.state, 'matched');
+  assert.equal(b.body.role, 'join');
   const made = await call('POST', '/rooms', { id: '7', stake: 70_000_000 });
   assert.deepEqual([made.status, made.body.stake], [201, 70_000_000]);
 });
@@ -103,4 +103,28 @@ test('rematch in the same room: the code moves from the old match to the new one
   assert.equal((await call('POST', `/rooms/${code}/next`, { prev: '100', id: '101' })).status, 200);
   tick(25 * 60_000);
   assert.equal((await call('GET', `/rooms/${code}`)).body.id, '101');
+});
+
+test('any staked amount pairs with any other at the lower stake; free stays with free', async () => {
+  const { call } = setup();
+  // Free and staked never pair.
+  const free = await call('POST', '/queue', { player: C, stake: 0 });
+  const a = await call('POST', '/queue', { player: A, stake: 10_000_000 });
+  assert.deepEqual([free.body.state, a.body.state], ['waiting', 'waiting']);
+  // B picks 0.02 and pairs with A at 0.01: both play for the lower stake.
+  const b = await call('POST', '/queue', { player: B, stake: 20_000_000 });
+  assert.equal(b.body.state, 'matched');
+  assert.deepEqual([b.body.role, b.body.opponent, b.body.stake, b.body.picked], ['join', A, 10_000_000, 20_000_000]);
+  const aPoll = (await call('GET', `/queue/${a.body.ticket}`)).body;
+  assert.deepEqual([aPoll.role, aPoll.stake, aPoll.picked, aPoll.id], ['create', 10_000_000, 10_000_000, b.body.id]);
+  assert.equal((await call('GET', `/queue/${free.body.ticket}`)).body.state, 'waiting');
+});
+
+test('the closest pick is preferred, then the longest wait', () => {
+  const t = (player: string, stake: number, createdAt: number) => ({ player, stake, createdAt });
+  const pool = [t('a', 10_000_000, 1), t('b', 1_000_000_000, 2), t('c', 120_000_000, 3), t('d', 0, 0)];
+  assert.equal(bestOpponent(pool, t('me', 100_000_000, 9))?.player, 'c');
+  assert.equal(bestOpponent(pool, t('me', 10_000_000, 9))?.player, 'a');
+  assert.equal(bestOpponent(pool, t('me', 0, 9))?.player, 'd');
+  assert.equal(bestOpponent([t('x', 50_000_000, 5), t('y', 50_000_000, 4)], t('me', 50_000_000, 9))?.player, 'y');
 });
