@@ -1698,3 +1698,35 @@ visual-only version is free.
 - **Suparno:** landing page rework; UI changes; enemy Champions (see above); README Verify row + landing copy +
   `docs/IDEA.md` up to date (no rig/raid); gameplay GIF and demo video once [DEPLOYED] is up; join the two-phone
   live test.
+## 2026-11-25 12:55 IST · Suparno · rules v11: enemy Champions · [CONTRACT] [HANDOFF]
+**Did:**
+- Rules v11 (SPEC_V5 §16): Fight 1 now brings an enemy giant per tower with wave 1 and every 6th wave after
+  it (Fight 2 unchanged: every small wave; never in the tutorial's soft waves). `giant_wave` in step.rs,
+  `GIANT_F1_FIRST` 1 / `GIANT_F1_EVERY` 6. Balance unchanged: 5.5% deaths, 65.2 s, 0 caps, 1.2% draws;
+  human vs perfect 30.8%.
+- `RULES_VERSION` 11 (sim, client constants), goldens and parity digest re-recorded, packages/sim-wasm rebuilt.
+  Client: the live-feed test sums same-tick waves into one new cohort (giant merging at ENEMY_CAP).
+- Web: enemy giants draw as the base's Champion (×4.8, crimson and gold, red-gold burst) with an
+  ENEMY CHAMPION! stamp.
+
+**Decided:** wave 1 rather than wave 4 for Fight 1's first giant (same balance; every player sees one).
+
+**Blocked / risks:** none. The worst tick can't grow (giants are enemy cohorts under ENEMY_CAP).
+
+**Next / handoff (Kai):** the program reuses crates/sim, so deploy with RULES_VERSION 11 (the account stores
+it; Verify must match). Include v11 in your worst-tick bench run.
+
+## 2026-11-25 12:55 IST · Suparno · web: landing redesign, credits page, Champion pathing
+**Did:**
+- Landing page redesigned (`apps/web/index.html`, `src/landing/`): left-aligned, one main button per view, a
+  canvas hero (cannon → ? gate flips ×3 → tower down), scroll reveals, gate flips, race bars.
+- Credits page at `/credits/` (third Vite input) with Built by: Suparno Saha (suparno.me), Priyanshu Saha
+  (github.com/Kai-972); the same section is in README and CREDITS.md.
+- Champions no longer stall in the Pillars field (`crowdSim.ts`: a smaller radius against obstacles, a sideways
+  slide on head-on hits, no gap-centring for giants). Web only.
+
+**Decided:** none.
+
+**Blocked / risks:** not checked on a real phone yet.
+
+**Next / handoff:** Suparno plays v11, then posts [RULES FINAL].
