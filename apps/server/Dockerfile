@@ -4,7 +4,8 @@
 # never from the image. One instance only: rooms, the queue and the limits live in memory.
 FROM node:22.12-slim
 ENV NODE_ENV=production PNPM_HOME=/pnpm PATH=/pnpm:$PATH
-RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
+# pnpm straight from npm: the Corepack bundled with this Node can't verify newer pnpm releases.
+RUN npm install -g pnpm@10.34.9
 WORKDIR /app
 # Only what the server needs: the workspace manifests, the client contract and the prebuilt WASM.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
