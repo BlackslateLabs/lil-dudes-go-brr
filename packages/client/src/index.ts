@@ -26,7 +26,7 @@ export {
   waitForStatus, matchTxs, settlementOf, myMatches, recoverMatches,
 } from './live/lobby';
 export type { Recovered } from './live/lobby';
-export { withdraw, planWithdraw, settleNow, vaultBalance, RENT_EXEMPT_MIN, BASE_FEE } from './live/wallet';
+export { withdraw, planWithdraw, sweepable, settleNow, vaultBalance, RENT_EXEMPT_MIN, BASE_FEE } from './live/wallet';
 export type { WithdrawPlan, SettleNowResult } from './live/wallet';
 export {
   createRoom, findRoom, quickMatch, topUp, joinQueue, pollQueue, leaveQueue, closeRoom, nextRoomMatch, serverHealth, ServerError, takeSeat, setRoomState,
@@ -39,6 +39,6 @@ export { STAKE_TIERS, PROGRAM_ID, TEE_RPC, BASE_RPC, newMatchId, teeToken } from
 export {
   GAME_KEY_MESSAGE, GAME_CHAIN, linkMessage, mergeMessage, signText, verifyText, parseAddress, burnerFromSignature, listWallets, onWalletsChange,
   connectWallet, disconnectWallet, deriveBurner, authText, authHeader, verifyAuthHeader, accountProfile, accountHistory, linkAccount, signIn,
-  setAccountName, depositTx, depositFromWallet, withdrawToWallet, migrateGuest, PublicKey, keyToText, keyFromText,
+  setAccountName, depositTx, depositFromWallet, withdrawToWallet, migrateGuest, sweepKey, mergeGuestHistory, PublicKey, keyToText, keyFromText,
 } from './live/account';
 export type { GameWallet, ConnectedWallet, AccountProfile } from './live/account';

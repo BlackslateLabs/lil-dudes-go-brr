@@ -36,6 +36,18 @@ export function planWithdraw(balance: number, amount: number | 'all', destBalanc
 }
 
 /**
+ * How much a sweep (send everything) from a key holding `balance` moves to a destination holding
+ * `destBalance` (pure). Everything minus the fee, or 0 when that's nothing, or when a brand-new
+ * destination would get less than the rent minimum (the runtime would refuse it). Never negative.
+ */
+export function sweepable(balance: number, destBalance: number, fee = BASE_FEE, rentMin = RENT_EXEMPT_MIN): number {
+  const all = balance - fee;
+  if (!Number.isFinite(all) || all <= 0) return 0;
+  if (destBalance <= 0 && all < rentMin) return 0;
+  return all;
+}
+
+/**
  * Wallet sheet "Withdraw" (MVP §3.9): sends `amount` lamports (default: everything) from the
  * burner to `to` (e.g. the player's Phantom). Stakes in a live match sit in its vault, not in the
  * burner, so this never touches a match. Throws with a readable reason (see planWithdraw).
