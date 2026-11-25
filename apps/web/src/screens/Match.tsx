@@ -12,8 +12,9 @@ import type { MatchFeed } from '../match/feed';
 import { useFeed } from '../match/useFeed';
 import { isBreach, useMatchHud } from '../match/useMatchHud';
 import { clearSeed, peekSeed } from '../match/nextSeed';
-import { liveMatchSource } from '../live/session';
+import { liveMatchSource, useLive } from '../live/session';
 import { LiveBadge } from './LiveBadge';
+import { PeekSheet } from './PeekConsole';
 import { SoundControls } from './Settings';
 import { isTutorialMatch, useApp } from '../store';
 import '../match/hud.css';
@@ -248,7 +249,10 @@ function ThumbControls({ feed }: { feed: MatchFeed }) {
 function CogMenu() {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [peek, setPeek] = useState(false);
   const stake = useHud((s) => s.stake);
+  // Live matches only: an offline bot match has no sealed accounts to try.
+  const live = useLive((s) => s.source);
   const close = () => {
     setOpen(false);
     setConfirming(false);
@@ -258,6 +262,7 @@ function CogMenu() {
       <button className="cog" onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(true)} title="Menu" aria-label="Menu">
         ⚙
       </button>
+      {peek && live && <PeekSheet src={live} onClose={() => setPeek(false)} />}
       {open && (
         <div className="cog-veil" onPointerDown={(e) => e.stopPropagation()} onClick={close}>
           <div className="cog-sheet" role="dialog" aria-label="Match menu" onClick={(e) => e.stopPropagation()}>
@@ -266,6 +271,18 @@ function CogMenu() {
                 <h3>Menu</h3>
                 <p className="cog-note">The match keeps going.</p>
                 <SoundControls />
+                {live && !live.reveal() && (
+                  <button
+                    className="cog-row cog-peek"
+                    onClick={() => {
+                      close();
+                      setPeek(true);
+                    }}
+                  >
+                    <span>Try to peek at their gates</span>
+                    <i>›</i>
+                  </button>
+                )}
                 <button className="cog-leave" onClick={() => setConfirming(true)}>
                   Leave match (forfeit)
                 </button>

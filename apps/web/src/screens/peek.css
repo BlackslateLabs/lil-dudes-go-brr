@@ -1,0 +1,156 @@
+/* "Try to cheat" console: real read attempts, one monospace line each. */
+
+.pk-sheet {
+  max-height: 92%;
+  overflow-y: auto;
+  text-align: left;
+  align-items: stretch;
+}
+
+.pk-sheet h3 {
+  text-align: center;
+}
+
+.pk {
+  display: grid;
+  gap: 10px;
+}
+
+.pk-head {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.pk-lines {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  border-radius: 12px;
+  border: var(--edge);
+  background: #16112b;
+  color: #e9e4ff;
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.35;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pk-line {
+  display: grid;
+  gap: 1px;
+  padding: 3px 0;
+  border-top: 1px solid #ffffff14;
+  animation: pk-in 0.25s ease-out both;
+}
+
+.pk-line:first-child {
+  border-top: 0;
+}
+
+.pk-line code {
+  font: inherit;
+  color: #ffffff;
+  word-break: break-all;
+}
+
+.pk-line small {
+  font-size: 10px;
+  color: #a79fd6;
+}
+
+.pk-line span {
+  word-break: break-word;
+}
+
+.pk-line b {
+  font-weight: 700;
+}
+
+.pk-line.ok b {
+  color: #5ff0a8;
+}
+
+.pk-line.bad b {
+  color: #ff7b88;
+}
+
+.pk-line.warn b {
+  color: #ffd166;
+}
+
+.pk-line.muted b {
+  color: #cfc6ff;
+}
+
+@keyframes pk-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+.pk-public {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: var(--edge);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.pk-public code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.pk-fine {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pk-run {
+  flex: none;
+  align-self: center;
+  width: 100%;
+  max-width: 320px;
+  font-size: 19px;
+  padding: 8px 14px 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-line {
+    animation: none;
+  }
+}
+
+/* In Verify. */
+.vf-cheat {
+  display: grid;
+  gap: 8px;
+}
+
+.vf-cheat h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+}
+
+/* The match menu row: an arrow, not the On/Off pill. */
+.cog-row.cog-peek i {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-size: 22px;
+  color: var(--ink);
+}
