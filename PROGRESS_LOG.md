@@ -1668,3 +1668,33 @@ can take the free seat (the on-chain join is what counts).
 **Next / handoff (Kai):** on Vercel, `/` is the landing page and `/play/` is the game (plain static files, no
 rewrites needed). Use `https://<host>/play/` wherever a direct game link is wanted, and `https://<host>/` for the
 README "PLAY NOW" and the submission website field.
+
+## 2026-11-25 · Kai · v10 checked end to end (chain, web, server) · [STAGE] [HANDOFF]
+**Did:** built `main` (rules v10) for SBF, regenerated the IDL (identical to the client copy), **MagicSVM 19/19
+green**, bench, played a full bot match in the browser (Pillars), read the live session / lobby / server code.
+
+**Found:**
+- **Compute: v10's worst tick is 48,637 CU** (no bot; v9 44,249). An 8-tick crank catch-up ≈ 403k: over budget,
+  and the ER's default is 200k CU per instruction (MagicBlock FAQ). Fix on Kai's side, no rules change: crank
+  catch-up 8 → 3 (≈160k worst). Busiest real match tick 14,609.
+- **Online bot wallet (`CJbQ…9ogW`) has 0 devnet SOL**: a free Quick Match vs the bot fails on devnet until funded
+  (Kai). Sponsor (faucet) has 3 SOL.
+- Program takes only the 4 stake tiers: any-amount change is Kai's (program + `stakeOnChain` + server `isTier`).
+- Live flow (queue → stakes → rollup → VRF → match → result/Verify) reads right; it can only be proven on devnet
+  after the deploy.
+- Docs: README still says Verify is "TODO (disabled)" (it is built now) and the privacy re-run / explorer links
+  are TBD (Kai fills after deploy). `docs/IDEA.md` still describes the rig, Peek and the raid (v4). The landing
+  says gates are "sealed on-chain until the match ends", but a gate flips when your dudes touch it.
+  This log's 22:40 entry says "Thu Nov 27": Nov 27 is a **Friday**, 19:30 IST.
+
+**Decided (Kai):** rules are final at v10. Anything that changes the sim (e.g. **Champions on the enemy side**) is a
+rules change: it costs on-chain compute and needs a re-bench before the deploy. Tell Kai before starting it; a
+visual-only version is free.
+
+**Next / handoff:**
+- **Kai:** crank catch-up 8 → 3; any-amount stakes (0.01–5 SOL); bench + MagicSVM; deploy; fund the bot; live
+  check (two phones, privacy check); Render + Vercel (`VITE_SERVER_URL`, `CORS_ORIGINS`); fill README/SUBMISSION
+  links. Post **[DEPLOYED]** with the URLs.
+- **Suparno:** landing page rework; UI changes; enemy Champions (see above); README Verify row + landing copy +
+  `docs/IDEA.md` up to date (no rig/raid); gameplay GIF and demo video once [DEPLOYED] is up; join the two-phone
+  live test.
