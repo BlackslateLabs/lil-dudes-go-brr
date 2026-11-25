@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { playMusic, setBattleDuck } from './feel/sound';
 import { useApp, type Screen } from './store';
+import { lookupRoom } from './live/session';
 import { Home } from './screens/Home';
+import { Lobby } from './screens/Lobby';
 import { Match } from './screens/Match';
 import { Result } from './screens/Result';
 import { VsScreen } from './screens/Vs';
@@ -27,6 +29,16 @@ export function App() {
   const prev = useRef<Screen | null>(null);
   const track = useRef<Track | undefined>(undefined);
 
+  // A share link (`?room=CODE`) goes straight to joining that room.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('room');
+    if (!code) return;
+    url.searchParams.delete('room');
+    window.history.replaceState(null, '', url);
+    void lookupRoom(code);
+  }, []);
+
   useEffect(() => {
     if (prev.current === 'match' && screen !== 'match') setBattleDuck(false);
     prev.current = screen;
@@ -40,6 +52,7 @@ export function App() {
   return (
     <div className="frame">
       {screen === 'home' && <Home />}
+      {screen === 'lobby' && <Lobby />}
       {screen === 'vs' && <VsScreen />}
       {screen === 'match' && <Match />}
       {screen === 'result' && <Result />}
