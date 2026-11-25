@@ -1721,3 +1721,20 @@ separate PR (`rules-v11`) for Kai to accept or close.
 **Next / handoff (Kai):** the deadline is **Fri** Nov 27, ~19:30 IST (thanks). Look at the `rules-v11` PR when you
 can: balance is unchanged, and the worst tick can't grow (giants are enemy cohorts under ENEMY_CAP), but it's your
 bench and your call. If it's a no, close it.
+
+## 2026-11-25 13:09 IST · Suparno · web: Profile screen, Champion-ready on the cannon · [HANDOFF]
+**Did:**
+- **Profile screen** (`screens/Profile.tsx`, chip at the top right of Home once staked play is unlocked):
+  - burner address (copy, explorer), balance, Top up;
+  - withdraw to a real wallet (base58 check, in-page confirm, tx link);
+  - stats and history from `/stats/:player` and `/history/:player`, with loading, empty and unreachable states.
+- **Champion charge on the 3D cannon:** a purple ring fills round the base; when full, a gold glow, pulse and
+  shockwave; a flash on release. The HUD ring stays, smaller and quieter. The tutorial points at the cannon.
+
+**Decided:** none.
+
+**Blocked / risks:** a real withdraw, the faucet and history can only be proven on devnet after [DEPLOYED].
+
+**Next / handoff (Kai, small):** `@lil-dudes/client` doesn't export `PublicKey` or an address parser, so Profile
+builds the destination key from the burner key's own class after a base58 check. A `parseAddress` (or `PublicKey`)
+export would be cleaner; no rush.
