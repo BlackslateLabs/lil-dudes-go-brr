@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
-import { chain, CODEC_VERSION, planWithdraw, RENT_EXEMPT_MIN as R, settleNow } from '../src/index';
+import { chain, CODEC_VERSION, planWithdraw, RENT_EXEMPT_MIN as R, settleNow, sweepable } from '../src/index';
 
 test('planWithdraw: all, partial, rent dust, new destinations, fee', () => {
   const fee = 5_000;
@@ -83,4 +83,18 @@ test('settleNow: waits for base, reports settled, pays with the burner or throug
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test('sweepable: everything minus the fee, never negative, and not below rent into a new address', () => {
+  const fee = 5_000;
+  assert.equal(sweepable(170_000_000, 0), 170_000_000 - fee);
+  assert.equal(sweepable(170_000_000, 50_000_000), 170_000_000 - fee);
+  assert.equal(sweepable(0, 0), 0);
+  assert.equal(sweepable(fee, 0), 0);
+  assert.equal(sweepable(fee - 1, 10), 0);
+  // Into a brand-new address it must clear the rent minimum; into a funded one any amount moves.
+  assert.equal(sweepable(R + fee - 1, 0), 0);
+  assert.equal(sweepable(R + fee, 0), R);
+  assert.equal(sweepable(10_000, 1_000_000), 10_000 - fee);
+  assert.equal(sweepable(Number.NaN, 0), 0);
 });

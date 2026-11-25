@@ -23,7 +23,7 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { baseConnection } from './lobby';
 import { ServerError, type HistoryEntry, type PlayerStats } from './server';
-import { BASE_FEE, RENT_EXEMPT_MIN, withdraw } from './wallet';
+import { BASE_FEE, RENT_EXEMPT_MIN, sweepable, withdraw } from './wallet';
 
 export { PublicKey };
 
@@ -376,19 +376,28 @@ export async function migrateGuest(
   base: Connection = baseConnection(),
 ): Promise<{ moved: number; signature?: string; merged: boolean }> {
   if (guest.publicKey.equals(accountBurner.publicKey)) return { moved: 0, merged: false };
-  let moved = 0;
-  let signature: string | undefined;
-  const balance = await base.getBalance(guest.publicKey, 'confirmed');
-  // Dust below the fee plus a new account's rent minimum can't move; it stays behind.
-  if (balance > BASE_FEE + RENT_EXEMPT_MIN) {
-    const r = await withdraw(base, guest, accountBurner.publicKey, 'all');
-    moved = r.amount;
-    signature = r.signature;
-  }
+  const { moved, signature } = await sweepKey(guest, accountBurner.publicKey, base);
+  await mergeGuestHistory(server, guest, accountBurner, wallet);
+  return { moved, signature, merged: true };
+}
+
+/**
+ * Sends everything a key holds (minus the fee) to `to`, silently (the key signs). Dust that can't
+ * move (see `sweepable`) stays behind. Returns what moved (0 = nothing to move).
+ */
+export async function sweepKey(from: Keypair, to: PublicKey, base: Connection = baseConnection()): Promise<{ moved: number; signature?: string }> {
+  if (from.publicKey.equals(to)) return { moved: 0 };
+  const [balance, dest] = await Promise.all([base.getBalance(from.publicKey, 'confirmed'), base.getBalance(to, 'confirmed')]);
+  if (sweepable(balance, dest, BASE_FEE, RENT_EXEMPT_MIN) <= 0) return { moved: 0 };
+  const r = await withdraw(base, from, to, 'all');
+  return { moved: r.amount, signature: r.signature };
+}
+
+/** Folds a guest key's match history into the account (idempotent on the server). */
+export async function mergeGuestHistory(server: string, guest: Keypair, accountBurner: Keypair, wallet: string): Promise<void> {
   await signedPost(server, accountBurner, '/account/merge-guest', {
     wallet,
     guest: guest.publicKey.toBase58(),
     guestSignature: signText(guest, mergeMessage(guest.publicKey.toBase58(), wallet)),
   });
-  return { moved, signature, merged: true };
 }
