@@ -34,7 +34,7 @@ export const CANNON_Z = wz(0) + 1.2;
  * Static camera (TECH §5): FOV 30° and a pitch of ~44° (the genre's measured values). It is solved
  * per viewport aspect so that, in portrait, your cannon sits at CAM_CANNON_AT of the screen height,
  * the lane at the cannon row fills CAM_FILL of the width, and the tower line lands near
- * CAM_TOWER_AT (below the HUD).
+ * CAM_TOWER_AT (below the HUD and the race bar).
  *
  * Two constraints fix the camera's height and distance; the pitch is the third knob. Tall phones
  * tilt up to CAM_PITCH_MAX to lift the towers to the target; wide screens (or a long lane) keep
@@ -44,7 +44,7 @@ export const CAM_FOV = 30;
 export const CAM_PITCH = 44;
 export const CAM_PITCH_MAX = 48;
 export const CAM_CANNON_AT = 0.77;
-export const CAM_TOWER_AT = 0.13;
+export const CAM_TOWER_AT = 0.185;
 export const CAM_FILL = 0.94;
 
 export interface CamPose {
