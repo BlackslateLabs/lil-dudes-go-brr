@@ -279,6 +279,10 @@ Plant 3 s → Fight 1 → Transit 2 s → Plant 3 s → Fight 2 → BREACH → R
     one (slower reactions, aim error, the odd second-best path, a late Champion, short firing
     pauses) that wins ~32% of decisive matches against the old full-strength bot, and `TUNE` is
     balanced on that human bot against itself.
+11. (Suparno, 25 Nov, rules v11) Enemy Champions in both fights (§16): Fight 1 now brings a giant
+    per tower with wave 1 and every 6th wave after it (Fight 2 keeps every small wave; never in the
+    tutorial's soft waves). Balance and `TUNE` are unchanged; the web draws them as the base's
+    crimson-and-gold Champion with an ENEMY CHAMPION! stamp.
 
 ---
 
@@ -643,6 +647,43 @@ the `wave_base` cliffs; 3,000 human-vs-human matches per layout)
   `wave_base` 5 gives ~37% at any HP.
 - The balance runner takes a mode: `human` (default), `perfect` or `calibrate`, and prints
   `A win%` (bot A's share of the decisive matches: the human bot in `calibrate`, else side 0).
+
+## 16. v11 enemy Champions in both fights (rules v11, Suparno, 25 Nov)
+
+Playtest: "the enemy side doesn't deploy Champions". In the genre the base sends big brutes now
+and then. Ours (§5's giants) only came in Fight 2, and drew smaller than our Champion, so few
+players noticed them.
+
+**Rule** (`crates/sim/src/step.rs` `giant_wave`; `GIANT_F1_FIRST` 1, `GIANT_F1_EVERY` 6)
+
+- Fight 2 is unchanged: every small wave (`k % 3 == 1`) brings one giant per live tower.
+- **Fight 1 now has them too, rarer:** wave 1 (7 s in, the first small wave) and every 6th wave
+  after it (7, 13…, ~41 s, ~75 s), one per live tower, `GIANT_COUNT` 5 at `GIANT_SPEED`.
+- Never at the tutorial's softened waves (`pct` ≠ 100: side 0's Fight 1 of the guided match).
+- A compile-time check keeps Fight 1's giants on small waves (`GIANT_F1_FIRST % 3 == 1`,
+  `GIANT_F1_EVERY % 3 == 0`).
+- **Cost:** a giant is an ordinary enemy cohort, bounded by `ENEMY_CAP` (16) like every other, so
+  the worst tick cannot grow; `giant_wave` is a few integer ops on a wave tick. Peak enemies in the
+  balance runs stay 9 of 16.
+- **Client:** `RULES_VERSION` 11 only (waves come from the sim's events or the snapshots). The live
+  feed's merged-wave note covers a giant that joins its tower's same-tick cohort at `ENEMY_CAP`.
+
+**Balance** (3,000 human-vs-human matches per layout; `TUNE` unchanged)
+
+| | v10 | v11 |
+|---|---|---|
+| Deaths (F1 / F2 / Rush) | 5.5% (681 / 328 / 20) | **5.5%** (686 / 332 / 19) |
+| Length | 65.0 s | 65.2 s |
+| Caps / draws | 0 / 1.2% | 0 / 1.2% |
+| Human vs perfect (`calibrate`) | 31.9% | 30.8% |
+
+A first giant at wave 4 (~24 s) was tried too. It changed nothing either, but most Fight 1s end
+before 24 s (avg 20.5 s), so players would rarely see one. Wave 1 shows every player an enemy
+Champion early, while their crowd is still building.
+
+**Web:** an enemy giant is drawn as the base's Champion: ×4.8 (was ×3.2; ours is ×5.5), dark
+crimson with gold trim, on its own mesh. It gets a red-and-gold staggered burst like ours, and a
+red **ENEMY CHAMPION!** stamp (with the danger cue) when one leaves a tower in your lane.
 
 ## Status (23 Nov, Kai): v5 built end to end
 

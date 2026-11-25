@@ -285,10 +285,12 @@ fn towers_release_waves_on_schedule_at_their_x() {
             _ => None,
         })
         .collect();
-    let want: Vec<(u32, u32)> = [(10, 0), (140, 1), (270, 2), (350, 3)]
+    // Rules v11 (SPEC_V5 §16): Fight 1's wave 1 brings a giant too, released right after it.
+    let mut want: Vec<(u32, u32)> = [(10, 0), (140, 1), (270, 2), (350, 3)]
         .iter()
         .map(|&(t, k)| (t, wave_size(tower.wave_base, k, t, 100)))
         .collect();
+    want.insert(2, (140, GIANT_COUNT));
     assert_eq!(waves, want);
 }
 
@@ -1492,11 +1494,37 @@ fn fight_two_small_waves_bring_giants_that_walk_slower() {
     let n = s.enemies().iter().find(|e| !e.giant).unwrap();
     assert_eq!(i32::from(gy - g.y), GIANT_SPEED);
     assert_eq!(i32::from(ny - n.y), CRUISE_SPEED);
-    // Fight 1 has none.
-    let mut f = fight(0);
-    f.public.sides[0].phase_ticks = at as u16;
-    idle(&mut f);
-    assert!(f.public.sides[0].enemies().iter().all(|e| !e.giant));
+}
+
+#[test]
+fn fight_one_brings_giants_rarely_and_never_in_the_tutorial() {
+    // SPEC_V5 §16 (rules v11): Fight 1 has a giant with wave GIANT_F1_FIRST and every
+    // GIANT_F1_EVERY-th after it; Fight 2 with every small wave; the tutorial's soft waves never.
+    for k in 0..30 {
+        let f1 = k >= GIANT_F1_FIRST && (k - GIANT_F1_FIRST) % GIANT_F1_EVERY == 0;
+        assert_eq!(giant_wave(0, k, 100), f1, "fight 1, wave {k}");
+        assert!(!giant_wave(0, k, TUTORIAL_WAVE_PCT));
+        assert_eq!(
+            giant_wave(FINAL_STAGE, k, 100),
+            k % 3 == 1,
+            "fight 2, wave {k}"
+        );
+    }
+    let at = FIRST_WAVE_TICKS + WAVE_GAPS[0];
+    let giants_at = |k_tick: u32| {
+        let mut f = fight(0);
+        sturdy(&mut f);
+        f.public.sides[0].phase_ticks = k_tick as u16;
+        idle(&mut f);
+        f.public.sides[0]
+            .enemies()
+            .iter()
+            .filter(|e| e.giant)
+            .count()
+    };
+    // Wave 1 (one tower in Fight 1 of layout 0): one giant; wave 4 (the next small one): none.
+    assert_eq!(giants_at(at), 1);
+    assert_eq!(giants_at(at + WAVE_PERIOD), 0);
 }
 
 // --- death and the end -------------------------------------------------------------------------

@@ -65,6 +65,32 @@ function sums(events: MatchEvent[]) {
 
 const sorted = (xs: (string | null)[]) => xs.filter((x): x is string => x !== null).sort();
 
+/**
+ * Waves into the same enemy cohort in one tick, summed. At ENEMY_CAP a wave's giant (rules v11:
+ * Fight 1 has them too) can join the cohort its tower released that same tick; a snapshot only
+ * shows the new cohort's total.
+ */
+function foldWaves(es: MatchEvent[]): MatchEvent[] {
+  const out: MatchEvent[] = [];
+  const at = new Map<string, number>();
+  for (const e of es) {
+    if (e.type !== 'wave') {
+      out.push(e);
+      continue;
+    }
+    const k = `${e.side}:${e.cohortId}`;
+    const i = at.get(k);
+    if (i === undefined) {
+      at.set(k, out.length);
+      out.push({ ...e });
+    } else {
+      const w = out[i] as Extract<MatchEvent, { type: 'wave' }>;
+      out[i] = { ...w, count: w.count + e.count };
+    }
+  }
+  return out;
+}
+
 const FIGHT = 1;
 const RUSH = 3;
 const DONE = 4;
@@ -118,7 +144,7 @@ test('diffEvents reconstructs the sim events of whole matches', () => {
       // A volley fired on a lane's last Rush tick is cleared with the lane at once: the
       // snapshots never show it.
       const lastRush = (e: MatchEvent) => e.type === 'volley' && prev.sides[e.side].phase === RUSH && next.sides[e.side].phase === DONE;
-      const exact = (es: MatchEvent[]) => sorted(es.filter((e) => !lastRush(e)).map((e) => exactKey(e, prev)));
+      const exact = (es: MatchEvent[]) => sorted(foldWaves(es.filter((e) => !lastRush(e))).map((e) => exactKey(e, prev)));
       assert.deepEqual(exact(derived), exact(got), at);
       // Fight 2 → Rush keeps the stage and the field, so its gates and crates stay exact.
       const inPlace = (s: Side) => prev.sides[s].phase === FIGHT && next.sides[s].phase === RUSH;
