@@ -1909,3 +1909,22 @@ deposit popups. The derived-key phishing caveat is in README Limits.
 
 **Next / handoff:** the two-phone live test (Suparno + Kai). Paste a staked match's settle tx into README and
 SUBMISSION. Prize wallet: decide. Demo video. After submitting: an uptime pinger on `/healthz`.
+
+## 2026-11-25 21:22 IST · Suparno · web: "try to cheat" console · [CONTRACT]
+**Did:**
+- Client (additive): `peekAttempts(source)` in src/live/peek.ts.
+  - The player's own browser, with its real rollup login (plus no login, plus the base layer), asks for the Secrets
+    account (true gate values, seed) and the opponent's Scout.
+  - It uses getAccountInfo, getMultipleAccounts, getProgramAccounts and a 2.5 s accountSubscribe, and reports each
+    answer (denied / hidden / zeroed / readable / failed).
+  - `classifyRead` and `peekLine` are pure and tested; LiveSource gains `teeRpcUrl` / `baseRpcUrl` getters.
+- Web:
+  - live match menu ⚙ → "Try to peek at their gates" opens a console sheet; the match keeps running;
+  - Verify → "Try to cheat": the in-match attempts, the same reads after the end, and the now-public seed and gates;
+  - the README proof row says it's done.
+
+**Decided:** no getSignaturesForAddress probe (your own set_aim/set_fire touch Secrets and would look like a leak).
+
+**Blocked / risks:** not yet run against a live TEE match (what the TEE returns per path: error vs null).
+
+**Next / handoff (Kai):** review the additive client exports (CONTRACT).
