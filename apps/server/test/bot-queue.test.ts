@@ -24,18 +24,19 @@ function setup(cap = 1) {
   return { call, played, tick: (ms: number) => (t += ms) };
 }
 
-test('a free ticket alone for 5 s gets the bot (human joins, bot creates)', async () => {
+test('the bot never steps in by itself; asked for, it joins (human joins, bot creates)', async () => {
   const { call, tick, played } = setup();
   const a = await call('POST', '/queue', { player: A, stake: 0 });
-  tick(4_000);
+  tick(30_000 - 1);
   assert.equal((await call('GET', `/queue/${a.ticket}`)).state, 'waiting');
-  tick(1_500);
-  const m = await call('GET', `/queue/${a.ticket}`);
+  assert.equal(played.length, 0);
+  const m = await call('POST', `/queue/${a.ticket}/bot`);
   assert.deepEqual([m.state, m.role, m.opponent, m.bot, m.stake], ['matched', 'join', BOT, true, 0]);
   assert.equal(played.length, 1);
   assert.equal(played[0]!.id.toString(), m.id);
   assert.equal(played[0]!.opponent, A);
-  // Polling again doesn't start a second bot match.
+  // Asking or polling again doesn't start a second bot match.
+  await call('POST', `/queue/${a.ticket}/bot`);
   await call('GET', `/queue/${a.ticket}`);
   assert.equal(played.length, 1);
 });
@@ -43,7 +44,8 @@ test('a free ticket alone for 5 s gets the bot (human joins, bot creates)', asyn
 test('the bot never takes a staked ticket, and a human pairs first', async () => {
   const { call, tick, played } = setup();
   const s = await call('POST', '/queue', { player: A, stake: 50_000_000 });
-  tick(30_000);
+  tick(20_000);
+  assert.match(String((await call('POST', `/queue/${s.ticket}/bot`)).error), /only plays free/);
   assert.equal((await call('GET', `/queue/${s.ticket}`)).state, 'waiting');
   await call('DELETE', `/queue/${s.ticket}`);
   const a = await call('POST', '/queue', { player: A, stake: 0 });
@@ -60,9 +62,10 @@ test('the bot is busy at its cap: the ticket keeps waiting', async () => {
   const { call, tick, played } = setup(1);
   const a = await call('POST', '/queue', { player: A, stake: 0 });
   tick(6_000);
-  await call('GET', `/queue/${a.ticket}`);
+  await call('POST', `/queue/${a.ticket}/bot`);
   const b = await call('POST', '/queue', { player: B, stake: 0 });
   tick(6_000);
+  assert.equal((await call('POST', `/queue/${b.ticket}/bot`)).state, 'waiting');
   assert.equal((await call('GET', `/queue/${b.ticket}`)).state, 'waiting');
   assert.equal(played.length, 1);
 });

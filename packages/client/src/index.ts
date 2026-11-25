@@ -29,7 +29,7 @@ export type { Recovered } from './live/lobby';
 export { withdraw, planWithdraw, sweepable, settleNow, vaultBalance, RENT_EXEMPT_MIN, BASE_FEE } from './live/wallet';
 export type { WithdrawPlan, SettleNowResult } from './live/wallet';
 export {
-  createRoom, findRoom, quickMatch, topUp, joinQueue, pollQueue, leaveQueue, closeRoom, nextRoomMatch, serverHealth, ServerError, takeSeat, setRoomState,
+  createRoom, findRoom, quickMatch, topUp, joinQueue, pollQueue, askBot, leaveQueue, closeRoom, nextRoomMatch, serverHealth, ServerError, takeSeat, setRoomState,
   queueStats, resumeInfo, reportMatch, matchHistory, playerStats,
 } from './live/server';
 export type { Room, RoomState, QuickMatch, TopUp, QueueTicket, QueueStats, Resume, HistoryEntry, PlayerStats } from './live/server';

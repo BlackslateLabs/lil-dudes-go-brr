@@ -1039,3 +1039,13 @@
     animation: none;
   }
 }
+
+/* Free Quick Match alone for ~5 s: the player can call the Bot (it never joins by itself). */
+.lobby-bot {
+  flex: none;
+  align-self: center;
+  width: 100%;
+  max-width: 320px;
+  font-size: 22px;
+  animation: pop-in 0.35s var(--bounce) both;
+}

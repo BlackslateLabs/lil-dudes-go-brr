@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FEE_BPS, stakeOnChain } from '@lil-dudes/client';
-import { cancel, confirmJoin, leave, needFor, quickMatch, refreshBalance, topUpFor, useLive, whoLine, type LiveError, type Step } from '../live/session';
+import { askForBot, cancel, confirmJoin, leave, needFor, quickMatch, refreshBalance, topUpFor, useLive, whoLine, type LiveError, type Step } from '../live/session';
 import { useAccount } from '../live/account';
 import { AccountSheet } from './AccountSheet';
 import { useApp } from '../store';
@@ -77,7 +77,12 @@ export function Lobby() {
               </p>
             </div>
           )}
-          {s.lonely && s.phase === 'queue' && (
+          {s.botOffer && s.phase === 'queue' && (
+            <button className="big primary lobby-bot" onClick={() => void askForBot()}>
+              Play the Bot instead
+            </button>
+          )}
+          {s.lonely && s.phase === 'queue' && s.stake > 0 && (
             <div className="lobby-lonely">
               {s.qstats && s.qstats.near.some((n) => n.stake === 0 || stakeOnChain(n.stake)) ? (
                 <>

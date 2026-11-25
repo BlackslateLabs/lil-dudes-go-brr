@@ -23,6 +23,7 @@ import {
   newMatchId,
   nextRoomMatch,
   pollQueue,
+  askBot,
   queueStats,
   recoverMatches,
   reportMatch,
@@ -98,6 +99,8 @@ interface LiveState {
   confirm: boolean;
   /** Quick Match: alone at this stake for ~12 s (suggest nearby stakes and the bot). */
   lonely: boolean;
+  /** Free Quick Match alone for ~5 s: offer "Play the Bot instead" (it never joins by itself). */
+  botOffer: boolean;
   /** Queue liquidity while waiting (GET /queue/stats): others at my stake, the nearest stakes
    *  with someone waiting, players online. */
   qstats: { here: number; near: { stake: number; players: number }[]; online: number } | null;
@@ -129,6 +132,7 @@ const IDLE: Omit<LiveState, 'balance'> = {
   room: null,
   confirm: false,
   lonely: false,
+  botOffer: false,
   qstats: null,
   resume: null,
   matchId: null,
@@ -156,6 +160,8 @@ const go = (s: Parameters<ReturnType<typeof useApp.getState>['go']>[0]) => useAp
 let run = 0;
 const alive = (r: number) => r === run;
 let ticketId: string | null = null;
+/** The player asked the Bot to take the current free ticket (don't offer it again). */
+let asked = false;
 let hostedOpen: { id: bigint; code?: string } | null = null;
 let wake: (() => void) | null = null;
 let unsub: (() => void) | null = null;
@@ -460,6 +466,9 @@ async function preflight(r: number, stake: number): Promise<boolean> {
 
 // --- Quick Match ---------------------------------------------------------------------------------
 
+/** Alone this long in the free queue: offer the Bot (the player decides; it never joins by itself). */
+const BOT_OFFER_MS = 5_000;
+
 /** Alone this long at a stake: suggest the nearest stakes with players and the bot. */
 const LONELY_MS = 12_000;
 
@@ -474,7 +483,7 @@ export async function quickMatch(stake: number): Promise<void> {
     steps: [
       { key: 'funds', label: 'Checking your balance', state: 'now' },
       { key: 'queue', label: `Joining the queue · ${solLabel(stake)}`, state: 'todo' },
-      { key: 'wait', label: stake ? 'Waiting for a player' : 'Waiting for a player (a Bot steps in after ~5 s)', state: 'todo' },
+      { key: 'wait', label: 'Waiting for a player', state: 'todo' },
       { key: 'found', label: 'Opponent found', state: 'todo' },
     ],
   });
@@ -482,6 +491,7 @@ export async function quickMatch(stake: number): Promise<void> {
   setStep('steps', 'funds', 'ok', { label: `Balance ${sol(get().balance ?? 0)} SOL` });
   setStep('steps', 'queue', 'now');
   const pk = myBurner().publicKey;
+  asked = false;
   let ticket: QueueTicket | null = null;
   let misses = 0;
   let polls = 0;
@@ -508,6 +518,7 @@ export async function quickMatch(stake: number): Promise<void> {
         if (st) set({ qstats: { here: st.here ?? 0, near: st.near, online: st.online } });
       }
       if (!get().lonely && Date.now() - get().since > LONELY_MS && (get().qstats?.here ?? 0) === 0) set({ lonely: true });
+      if (stake === 0 && !get().botOffer && !asked && Date.now() - get().since > BOT_OFFER_MS) set({ botOffer: true });
     } catch (e) {
       if (!alive(r)) return;
       if (e instanceof ServerError && e.status === 404) {
@@ -534,11 +545,31 @@ export async function quickMatch(stake: number): Promise<void> {
   setStep('steps', 'wait', 'ok', { note: undefined });
   // Both play for the lower pick (m.stake); say so when it's below ours.
   const lower = !m.bot && m.stake < stake;
+  set({ botOffer: false });
   setStep('steps', 'found', 'ok', {
-    label: m.bot ? 'No one came: Bot stepped in' : `Matched with ${short(m.opponent)}`,
+    label: m.bot ? 'Playing the Bot' : `Matched with ${short(m.opponent)}`,
     note: lower ? `Playing for ${solLabel(m.stake)} (their stake). The rest stays in your wallet.` : undefined,
   });
   await startMatch(r, { id: m.id, role: m.role, stake: m.stake, opponent: m.opponent, bot: m.bot });
+}
+
+/** "Play the Bot instead" (free Quick Match, offered after ~5 s alone): the server's bot takes the
+ *  ticket; the queue loop picks the match up on its next poll. A person can still pair first. */
+export async function askForBot(): Promise<void> {
+  const id = ticketId;
+  if (!id || asked) return;
+  asked = true;
+  set({ botOffer: false });
+  setStep('steps', 'wait', 'now', { note: 'Calling the Bot…' });
+  try {
+    await askBot(SERVER, id);
+  } catch (e) {
+    asked = false;
+    set({ botOffer: true });
+    setStep('steps', 'wait', 'now', {
+      note: e instanceof ServerError && e.status === 503 ? 'The Bot is off right now' : 'Couldn’t reach the Bot. Try again.',
+    });
+  }
 }
 
 // --- rooms -------------------------------------------------------------------------------------

@@ -59,6 +59,8 @@ interface Ticket {
   stake: number;
   seenAt: number;
   createdAt: number;
+  /** The player asked for the bot (POST /queue/:ticket/bot); it joins as soon as it's free. */
+  wantBot?: boolean;
   /** Set once paired. `stake` is the matched stake: the lower of the two picks (both play for it). */
   match?: { id: string; role: Role; opponent: string; matchedAt: number; bot?: boolean; stake?: number; picked?: number };
 }
@@ -72,8 +74,9 @@ export interface ServerOptions {
   trustProxy?: boolean;
   /** Override the faucet policy (tests, env). */
   topup?: Partial<TopupPolicy>;
-  /** The online bot: takes a FREE queue ticket nobody matched within `botAfterMs`. */
+  /** The online bot: takes a FREE queue ticket when its player asks (POST /queue/:ticket/bot). */
   bot?: BotService | null;
+  /** Unused since the bot joins only when asked (kept so older callers still type-check). */
   botAfterMs?: number;
   /** For /health (the sweeper runs on its own timer, see sweeper.ts). */
   sweeperStats?: () => unknown;
@@ -177,10 +180,10 @@ export function createApp(opts: ServerOptions = {}) {
         }
       : null);
   const bot = opts.bot ?? null;
-  const botAfterMs = opts.botAfterMs ?? 5_000;
-  /** MVP §3.5: nobody on the free tier after ~5 s → the server's bot joins (never staked). */
+  /** The server's bot joins a FREE ticket only when its player asks (the app offers it after ~5 s
+   *  alone); never a staked one. A busy bot leaves the ticket waiting; it joins on a later poll. */
   const maybeBot = (k: Ticket) => {
-    if (!bot || k.match || k.stake !== 0 || now() - k.createdAt < botAfterMs || !bot.available()) return;
+    if (!bot || k.match || k.stake !== 0 || !k.wantBot || !bot.available()) return;
     const id = matchId();
     // The bot creates (and pays the rent); the human only joins.
     k.match = { id, role: 'join', opponent: bot.address, matchedAt: now(), bot: true };
@@ -449,6 +452,21 @@ export function createApp(opts: ServerOptions = {}) {
     if (!k) return c.json({ error: 'no such ticket (expired?)' }, 404);
     k.seenAt = now();
     touch(k.player);
+    maybeBot(k);
+    return c.json(ticketView(k));
+  });
+
+  // Ask for the bot instead of waiting for a person (free tickets only).
+  app.post('/queue/:ticket/bot', (c) => {
+    sweep();
+    const id = c.req.param('ticket');
+    if (!isTicket(id)) return c.json({ error: 'bad ticket' }, 400);
+    const k = tickets.get(id);
+    if (!k) return c.json({ error: 'no such ticket (expired?)' }, 404);
+    if (!bot) return c.json({ error: 'the bot is off on this server' }, 503);
+    if (k.stake !== 0) return c.json({ error: 'the bot only plays free matches' }, 409);
+    k.seenAt = now();
+    k.wantBot = true;
     maybeBot(k);
     return c.json(ticketView(k));
   });
