@@ -54,13 +54,13 @@ The labels below are our guesses: match them to the options the form actually li
 
 ## Website
 
-<!-- TODO(Kai): the hosted web URL from [DEPLOYED]. -->
-TBD
+https://ldgb.blackslate.me
+
+(Also https://lil-dudes-go-brr.vercel.app. Game server: https://lil-dudes-server.onrender.com.)
 
 ## Public GitHub repo
 
-<!-- TODO(Suparno): the public repo URL (make sure CLAUDE.md, pvt-docs/ and keys are not in it). -->
-TBD
+https://github.com/BlackslateLabs/lil-dudes-go-brr
 
 ## Pitch & Demo
 
@@ -82,8 +82,8 @@ TBD
 
 ## Explorer link (integration proof)
 
-<!-- TODO(Kai): after the v10 deploy, play one staked live match and paste its settle transaction. -->
-TBD
+<!-- TODO(Suparno + Kai): from the two-phone live test, paste the staked match's settle transaction here. -->
+Until then, the program's devnet activity: https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet
 
 **Which transaction:** the base-layer **settle transaction of a real staked match** on the final
 program: the one transaction in which the TEE validator commits and undelegates the match accounts
@@ -97,15 +97,15 @@ Backup: the match account's page (its history shows create, join, delegate and s
 
 | Field | Value |
 |---|---|
-| Program ID | <!-- TODO(Kai): confirm after the v10 deploy --> `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` (devnet; today it still runs a pre-v10 build) |
-| Fee vault (treasury) | <!-- TODO(Kai): confirm the treasury wallet the final program pays the 5% fee to --> TBD |
-| App wallet (faucet sponsor) | <!-- TODO(Kai): confirm the sponsor wallet the hosted server uses --> TBD |
+| Program ID | `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` (devnet, rules v11) |
+| Fee vault (treasury) | `FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB` (the program's `TREASURY`; 5% of what moves) |
+| App wallet (faucet sponsor) | `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr` (the hosted server's sponsor: faucet top-ups, sweeper, settle-now) |
 | Prize wallet | <!-- TODO(Suparno + Kai): agree on the prize wallet --> TBD |
 
 ## Judge-facing checklist
 
-- [ ] Play vs the bot instantly, no wallet popups, from the hosted link (works locally; needs the hosted URL)
-- [ ] Share link / room code for a 1v1 (server routes done; web wiring in progress)
+- [x] Play vs the bot instantly, no wallet popups, from the hosted link (https://ldgb.blackslate.me)
+- [x] Share link / room code for a 1v1, and Quick Match at any stake
 - [x] PWA build: manifest, icons, offline precache
 - [ ] Installed and played from the hosted link on a real phone
 - [ ] 2-minute video

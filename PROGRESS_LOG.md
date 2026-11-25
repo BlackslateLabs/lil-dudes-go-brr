@@ -1885,3 +1885,27 @@ deposit popups. The derived-key phishing caveat is in README Limits.
 **Blocked / risks:** none. Server change: redeploy Render.
 
 **Next / handoff:** none.
+
+## 2026-11-25 21:15 IST · Suparno · hosting live, docs filled · [DEPLOYED] [HANDOFF]
+**Did:**
+- **Hosting:**
+  - web on Vercel: **https://ldgb.blackslate.me** (also https://lil-dudes-go-brr.vercel.app);
+  - server on Render (free plan, Docker): **https://lil-dudes-server.onrender.com** (`/health`: database, faucet, bot
+    and sweeper up);
+  - Neon Postgres holds accounts and history.
+- **Docs filled:**
+  - the README Play link;
+  - the On chain table: Play, program, treasury `FdZLtcw7…rfbB`, sponsor `8vJsz4WH…eVHr`;
+  - SUBMISSION: website, repo, program ID, fee vault, app wallet;
+  - og:image absolute.
+  - Gameplay GIF in `docs/assets/gameplay.gif` (recorded from the game).
+- **Repo is public.** The full-history scan is clean: no keys, keypair arrays, DB URLs, .env, CLAUDE.md or pvt-docs ever
+  committed, and no reference-game or studio names.
+
+**Decided:** `ldgb.blackslate.me` is the canonical URL.
+
+**Blocked / risks:** the server's `CORS_ORIGINS` must list every web origin
+(`https://ldgb.blackslate.me,https://lil-dudes-go-brr.vercel.app`), or the app says it "can't reach the game server".
+
+**Next / handoff:** the two-phone live test (Suparno + Kai). Paste a staked match's settle tx into README and
+SUBMISSION. Prize wallet: decide. Demo video. After submitting: an uptime pinger on `/healthz`.

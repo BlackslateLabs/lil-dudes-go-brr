@@ -5,8 +5,7 @@
 <h3 align="center">A live 1v1 crowd-cannon duel with hidden gates and real stakes, sealed inside a MagicBlock Private Ephemeral Rollup.</h3>
 
 <p align="center">
-  <!-- TODO(Kai): replace https://TBD with the hosted web URL once [DEPLOYED] is in PROGRESS_LOG. -->
-  <a href="https://TBD"><b>&#9654;&nbsp; PLAY NOW</b></a>
+  <a href="https://ldgb.blackslate.me"><b>&#9654;&nbsp; PLAY NOW: ldgb.blackslate.me</b></a>
   &nbsp;·&nbsp; phone or desktop &nbsp;·&nbsp; no wallet needed to start &nbsp;·&nbsp; Solana devnet
 </p>
 
@@ -22,7 +21,6 @@ Rollup, the level is dealt by VRF, an on-chain crank runs the clock at 20 Hz, an
 out on Solana by itself. Open the link and you're playing the bot within seconds: no wallet, no
 popups, no sign-up.
 
-<!-- TODO(Suparno): record docs/assets/gameplay.gif on a phone (~8 s: aim → a ? flips → Champion → BREACH → Rush). -->
 <p align="center">
   <img src="docs/assets/gameplay.gif" alt="Gameplay: a crowd pours through hidden gates and storms the town hall" width="320">
 </p>
@@ -74,7 +72,7 @@ Every piece does real work. Take any one out and the game stops being fair, live
 | In-app "try to read the sealed accounts" console | A button that fires the denied reads from your own browser. | Not built. |
 | The program does what it says | **MagicSVM 19/19** (`tests-magicsvm/`): every instruction, refused cases, money edges, timeout refunds, plus a compute bench. | Green on rules v9. |
 | Payouts add up | `tools/balance/settle_fuzz.py`: 300k random cases of the current payout, `winner + loser + fee = 2S` to the lamport. Three live devnet matches (22 Nov) paid out exactly by the Magic Action. | Done. |
-| It all happened on Solana | Program, settle transactions and match accounts on the explorer (below). | Links: TODO after the final deploy. |
+| It all happened on Solana | Program, settle transactions and match accounts on the explorer (below). | [Program activity on devnet](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet). |
 
 ## Architecture
 
@@ -174,13 +172,14 @@ cargo +stable test --manifest-path tests-magicsvm/Cargo.toml   # MagicSVM
 
 ## On chain
 
-<!-- TODO(Kai): after the v10 deploy, confirm the program ID and add explorer links to a staked match's settle tx and its match account. -->
-
 | | |
 |---|---|
-| Program (devnet) | [`4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa`](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet): current devnet program, **pre-v10** (it runs an earlier ruleset; the final rules deploy as an upgrade) |
+| Play | [ldgb.blackslate.me](https://ldgb.blackslate.me) (also [lil-dudes-go-brr.vercel.app](https://lil-dudes-go-brr.vercel.app)) · game server [`lil-dudes-server.onrender.com`](https://lil-dudes-server.onrender.com/health) |
+| Program (devnet) | [`4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa`](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet): rules v11, stakes 0 or 0.01–5 SOL |
+| Fee vault (treasury, 5% of what moves) | [`FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB`](https://explorer.solana.com/address/FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB?cluster=devnet) |
+| Faucet sponsor (app wallet) | [`8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`](https://explorer.solana.com/address/8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr?cluster=devnet) |
 | TEE validator | `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo` (`devnet-tee.magicblock.app`) |
-| A settled staked match | TBD |
+| A settled staked match | TBD (from the two-phone live test) |
 
 ## Credits
 
