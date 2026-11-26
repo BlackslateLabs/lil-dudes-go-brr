@@ -187,10 +187,11 @@ async function main() {
         }
       }
       if (view.status !== 'playing') return;
-      const [aim, peek, champion] = bots[side]!.decide(src.latestBytes);
+      const [aim, peek, champion, trigger] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
       if (peek! >= 0) src.peek(peek!);
       if (champion === 1) src.champion();
+      if (trigger! >= 0) src.setFiring(trigger === 1);
     });
     src.start();
   }

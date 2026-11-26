@@ -221,9 +221,10 @@ async function main() {
   for (const [side, src] of sources.entries()) {
     src.subscribe((view) => {
       if (view.status !== 'playing') return;
-      const [aim, peek, champion] = bots[side]!.decide(src.latestBytes);
+      const [aim, peek, champion, trigger] = bots[side]!.decide(src.latestBytes);
       if (aim! >= 0) src.setAim(aim!);
       if (champion === 1) src.champion();
+      if (trigger! >= 0) src.setFiring(trigger === 1);
       const me = view.sides[side]!;
       if ((me.phase === 'fight' || me.phase === 'rush') && !me.peekUsed && (peek! >= 0 || view.tick % 40 === 0)) {
         const cell = peek! >= 0 ? peek! : me.gates.findIndex((g) => !g.revealed && !g.timing);

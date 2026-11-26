@@ -6,6 +6,7 @@ import {
   Connection,
   PublicKey,
   Transaction,
+  TransactionExpiredBlockheightExceededError,
   TransactionInstruction,
   type Commitment,
   type Keypair,
@@ -351,19 +352,35 @@ export interface SendOptions {
 
 /** Signs and sends one tx; throws with the program logs if it fails. */
 export async function send(conn: Connection, instructions: TransactionInstruction[], signers: Keypair[], opts: SendOptions = {}): Promise<string> {
-  const tx = new Transaction();
-  if (opts.cu) tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: opts.cu }));
-  tx.add(...instructions);
-  tx.feePayer = signers[0]!.publicKey;
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
-  tx.recentBlockhash = blockhash;
-  tx.sign(...signers);
-  const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: opts.skipPreflight ?? true });
-  if (opts.confirm === false) return sig;
-  const res = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, opts.commitment ?? 'confirmed');
-  if (res.value.err) {
-    const t = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' }).catch(() => null);
-    throw new Error(`tx ${sig} failed: ${JSON.stringify(res.value.err)}\n${(t?.meta?.logMessages ?? []).join('\n')}`);
+  // Devnet drops transactions under load. A tx whose blockhash expired can never land later, so
+  // re-signing with a fresh blockhash is safe (no double send); up to SEND_ATTEMPTS tries.
+  for (let attempt = 1; ; attempt++) {
+    const tx = new Transaction();
+    if (opts.cu) tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: opts.cu }));
+    tx.add(...instructions);
+    tx.feePayer = signers[0]!.publicKey;
+    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    tx.sign(...signers);
+    const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: opts.skipPreflight ?? true });
+    if (opts.confirm === false) return sig;
+    let res;
+    try {
+      res = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, opts.commitment ?? 'confirmed');
+    } catch (e) {
+      if (!(e instanceof TransactionExpiredBlockheightExceededError)) throw e;
+      // Landed after all (seen late)? Then it counts.
+      const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true }).catch(() => null))?.value;
+      if (st && !st.err && st.confirmationStatus) return sig;
+      if (attempt >= SEND_ATTEMPTS) throw e;
+      continue;
+    }
+    if (res.value.err) {
+      const t = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' }).catch(() => null);
+      throw new Error(`tx ${sig} failed: ${JSON.stringify(res.value.err)}\n${(t?.meta?.logMessages ?? []).join('\n')}`);
+    }
+    return sig;
   }
-  return sig;
 }
+
+const SEND_ATTEMPTS = 3;

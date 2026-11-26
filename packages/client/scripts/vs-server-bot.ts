@@ -6,7 +6,7 @@
 //   pnpm --filter @lil-dudes/client exec tsx scripts/vs-server-bot.ts [--server http://localhost:8787]
 import { Bot } from '@lil-dudes/sim-wasm';
 import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
-import { baseConnection, chain, initSim, joinMatch, LiveSource, quickMatch, topUp, waitForStatus } from '../src/index';
+import { askBot, baseConnection, chain, initSim, joinMatch, joinQueue, LiveSource, pollQueue, topUp, waitForStatus } from '../src/index';
 
 const args = process.argv.slice(2);
 const server = args[args.indexOf('--server') + 1] && args.includes('--server') ? args[args.indexOf('--server') + 1]! : 'http://localhost:8787';
@@ -21,7 +21,16 @@ async function main() {
   const top = await topUp(server, me.publicKey, 0);
   lap.toppedUp = Date.now() - t0;
   log('topped up', top.sent, 'lamports', top.signature?.slice(0, 12));
-  const q = await quickMatch(server, me.publicKey, 0, { pollMs: 500 });
+  // Since 25 Nov the bot joins only when asked ("Play the Bot instead" in the queue).
+  let t = await joinQueue(server, me.publicKey, 0);
+  await new Promise((r) => setTimeout(r, 1_000));
+  if (t.state !== 'matched') t = await askBot(server, t.ticket);
+  for (let i = 0; t.state !== 'matched' && i < 120; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    t = await pollQueue(server, t.ticket);
+  }
+  if (!t.match) throw new Error('no match from the queue');
+  const q = t.match;
   lap.matched = Date.now() - t0;
   log('matched', q.bot ? 'with the server bot' : `with ${q.opponent}`, 'role', q.role, 'id', q.id.toString());
   if (!q.bot || q.role !== 'join') throw new Error('expected the server bot (role join)');
@@ -35,10 +44,11 @@ async function main() {
   src.subscribe((view) => {
     if (view.status !== 'playing') return;
     if (!playing) playing = Date.now() - t0;
-    const [aim, peek, champion] = brain.decide(src.latestBytes);
+    const [aim, peek, champion, trigger] = brain.decide(src.latestBytes);
     if (aim! >= 0) src.setAim(aim!);
     if (peek! >= 0) src.peek(peek!);
     if (champion === 1) src.champion();
+    if (trigger! >= 0) src.setFiring(trigger === 1);
   });
   src.start();
   while (src.currentStage !== 'finished') {
