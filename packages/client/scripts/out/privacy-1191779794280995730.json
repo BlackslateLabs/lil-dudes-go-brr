@@ -1,0 +1,685 @@
+{
+  "verdict": "PASS",
+  "match": "1191779794280995730",
+  "fails": [],
+  "controls": {
+    "A reads own Peek0 (mid-match)": true,
+    "B reads own Peek1 (mid-match)": true,
+    "everyone reads Match (mid-match)": true,
+    "B reads A's public set_aim in full (mid-match)": true,
+    "A reads own Peek0 (fight 2)": true,
+    "B reads own Peek1 (fight 2)": true,
+    "everyone reads Match (fight 2)": true,
+    "B reads A's public set_aim in full (fight 2)": true,
+    "B accountSubscribe(own Peek1) > 0": true,
+    "C accountSubscribe(Match) > 0": true,
+    "public snapshots during a plant window seen": true,
+    "A scouted (peek_cell)": true
+  },
+  "invariants": {
+    "snapshots": 1548,
+    "plantSnapshots": 419,
+    "seedBeforeFinish": 0,
+    "historyBeforeFinish": 0,
+    "revealedInPlant": 0
+  },
+  "subscriptions": {
+    "B": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 4,
+        "accountSubscribe(Match)": 1546,
+        "programSubscribe": 1549,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 1,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 2,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 1
+      },
+      "errors": {}
+    },
+    "C": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1546,
+        "programSubscribe": 1546,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    },
+    "anon": {
+      "beforeFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 1546,
+        "programSubscribe": 1546,
+        "logsSubscribe(program)": 26,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "afterFinish": {
+        "accountSubscribe(Secrets)": 0,
+        "accountSubscribe(Peek0)": 0,
+        "accountSubscribe(Peek1)": 0,
+        "accountSubscribe(Match)": 2,
+        "programSubscribe": 1,
+        "logsSubscribe(program)": 0,
+        "logsSubscribe(Secrets)": 0,
+        "logsSubscribe(Peek0)": 0,
+        "logsSubscribe(Peek1)": 0
+      },
+      "errors": {}
+    }
+  },
+  "needles": [
+    "A salt",
+    "A request_seed ix data",
+    "VRF output (base, after)",
+    "salt 1 (B, base, after)",
+    "secret state bytes 8..40",
+    "A Peek account bytes (56 B)"
+  ],
+  "corpusStrings": {
+    "A": 341,
+    "B": 29898,
+    "C": 29198,
+    "anon": 28640
+  },
+  "sigs": {
+    "A request_seed": 1,
+    "B request_seed": 1,
+    "A start": 1,
+    "A set_aim": 162,
+    "B set_aim": 161,
+    "A set_fire": 19,
+    "B set_fire": 24,
+    "A peek_cell": 2,
+    "B peek_cell": 2,
+    "A finish": 1
+  },
+  "cellsSent": [
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 1,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 2,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 2,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 0,
+      "phase": 0
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 2,
+      "phase": 1
+    },
+    {
+      "side": 1,
+      "what": "peek",
+      "cell": 1,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 0,
+      "phase": 1
+    },
+    {
+      "side": 0,
+      "what": "peek",
+      "cell": 3,
+      "phase": 1
+    }
+  ],
+  "probes": {
+    "baseSecretsDuringPlay": {
+      "owner": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+      "zeroVrfAndSalts": true,
+      "zeroState": true
+    },
+    "accounts mid-match": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction mid-match": {
+      "A request_seed 2mKzE9n3": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed 5hYafmC5": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 2AogGtx9": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5KC7vi4e": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 5byFN78E": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 5ZJNrySC": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 3PQkdNts": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 4mJxMEpE": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim eQ3qrYzN": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim bLkYnDC9": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "getSignaturesForAddress mid-match": {
+      "B Secrets": "5 sigs; A's secret txs listed: 0",
+      "B Peek0": "0 sigs; A's secret txs listed: 0",
+      "B Match": "69 sigs; A's secret txs listed: 0",
+      "B program": "692 sigs; A's secret txs listed: 0",
+      "B burnerA": "54 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "125 sigs; A's secret txs listed: 0",
+      "C program": "452 sigs; A's secret txs listed: 0",
+      "C burnerA": "83 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "190 sigs; A's secret txs listed: 0",
+      "anon program": "207 sigs; A's secret txs listed: 0",
+      "anon burnerA": "124 sigs; A's secret txs listed: 0"
+    },
+    "accounts fight 2": {
+      "A": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "visible",
+        "peek0 (multi)": "visible",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek0"
+      },
+      "B": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "visible",
+        "peek1 (multi)": "visible",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "1 accounts; ours: peek1"
+      },
+      "C": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      },
+      "anon": {
+        "secrets": "null",
+        "secrets (multi)": "null",
+        "peek0": "null",
+        "peek0 (multi)": "null",
+        "peek1": "null",
+        "peek1 (multi)": "null",
+        "match": "visible",
+        "match (multi)": "visible",
+        "gpa(1808 B)": "2 accounts; ours: match",
+        "gpa(144 B)": "0 accounts; ours: none",
+        "gpa(56 B)": "0 accounts; ours: none"
+      }
+    },
+    "getTransaction fight 2": {
+      "A request_seed 2mKzE9n3": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B request_seed 5hYafmC5": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A start 2AogGtx9": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5KC7vi4e": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 5byFN78E": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 5ZJNrySC": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell 3PQkdNts": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 4mJxMEpE": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 2H5DU2DZ": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire qh2Ybfm4": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 3yhk9WkS": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 2ecDUzeh": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 5LBwgdP7": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5acdMFWW": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 3RYYcxVN": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 29HquPHd": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 55DpJT94": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire Gb2kizYo": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5Wb71eJQ": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire gkWYe2Dh": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B peek_cell m3Yob6CL": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 2W1nmtyU": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A peek_cell 29q8M9ws": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 1Crbxm5o": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 2CbgeKom": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 5kWDgfLE": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 2VNgeMFD": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 4D8Qatn2": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 3YtaJSMy": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire epeYGcKB": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 4J8YTy64": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 4VHsfC2n": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5BtaEhy1": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 5VGNUq5y": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 3uZMKJu9": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 28s3JzMD": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 49TpPcHo": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire FSGbb6Fm": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 2kHYNg39": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 57zAmxfT": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire nqJUzCwi": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 2MeHjet9": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "B set_fire 5SGPUN3K": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 3gX4CVaM": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_fire 31zgmRoa": {
+        "A": "redacted",
+        "B": "redacted",
+        "C": "redacted",
+        "anon": "redacted"
+      },
+      "A set_aim eQ3qrYzN": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      },
+      "B set_aim bLkYnDC9": {
+        "A": "full",
+        "B": "full",
+        "C": "full",
+        "anon": "full"
+      }
+    },
+    "getSignaturesForAddress fight 2": {
+      "B Secrets": "23 sigs; A's secret txs listed: 0",
+      "B Peek0": "1 sigs; A's secret txs listed: 0",
+      "B Match": "221 sigs; A's secret txs listed: 0",
+      "B program": "220 sigs; A's secret txs listed: 0",
+      "B burnerA": "160 sigs; A's secret txs listed: 0",
+      "C Secrets": "0 sigs; A's secret txs listed: 0",
+      "C Peek0": "0 sigs; A's secret txs listed: 0",
+      "C Match": "202 sigs; A's secret txs listed: 0",
+      "C program": "201 sigs; A's secret txs listed: 0",
+      "C burnerA": "160 sigs; A's secret txs listed: 0",
+      "anon Secrets": "0 sigs; A's secret txs listed: 0",
+      "anon Peek0": "0 sigs; A's secret txs listed: 0",
+      "anon Match": "202 sigs; A's secret txs listed: 0",
+      "anon program": "201 sigs; A's secret txs listed: 0",
+      "anon burnerA": "160 sigs; A's secret txs listed: 0"
+    }
+  },
+  "sol": {
+    "before": 13.634009851,
+    "after": 13.685126491,
+    "spent": -0.05111664
+  }
+}

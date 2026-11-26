@@ -290,7 +290,7 @@ history in Neon. If it is down, Quick Match, rooms and top-ups stop; Play vs Bot
 | Your own reads come back empty, then public | **Verify → Try to cheat** shows the in-match attempts next to the same reads after the end, when the seed and gates are public. | Done. |
 | The program does what it says | **MagicSVM** ([`tests-magicsvm/`](tests-magicsvm)): every instruction, refused cases, money edges, stake range edges, timeout refunds, plus the compute bench. | 19/19 green on rules v11. |
 | Payouts add up | `settle_parity.rs` and `tools/balance/settle_fuzz.py` (300k cases): `winner + loser + fee = 2S` to the lamport. Live devnet matches paid out exactly through the Magic Action. | Done. |
-| It all happened on Solana | [Program activity on the explorer](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet). | A staked match's settle transaction: TBD (two-phone live test). |
+| It all happened on Solana | [Program activity on the explorer](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet). | A staked match's [settle transaction](https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet) (0.03 SOL room match through the hosted server). |
 
 ## Limits and trust assumptions
 
@@ -378,7 +378,7 @@ cargo +stable test --manifest-path tests-magicsvm/Cargo.toml   # MagicSVM
 | Fee vault (treasury, 5% of what moves) | [`FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB`](https://explorer.solana.com/address/FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB?cluster=devnet) |
 | Faucet sponsor (app wallet) | [`8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`](https://explorer.solana.com/address/8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr?cluster=devnet) |
 | TEE validator | `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo` (`devnet-tee.magicblock.app`) |
-| A settled staked match | TBD (from the two-phone live test) |
+| A settled staked match | [settle tx](https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet): commit + undelegate + Magic Action payout, 0.03 SOL room match, rules v11 |
 
 ## Credits
 

@@ -88,8 +88,9 @@ TBD
 
 ## Explorer link (integration proof)
 
-<!-- TODO(Suparno + Kai): from the two-phone live test, paste the staked match's settle transaction here. -->
-Until then, the program's devnet activity: https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet
+https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet
+(A 0.03 SOL room-code match through the hosted server on the final program, rules v11; swap in one from the
+two-phone test if you like.) Program activity: https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet
 
 **Which transaction:** the base-layer **settle transaction of a real staked match** on the final
 program: the one transaction in which the TEE validator commits and undelegates the match accounts
@@ -116,7 +117,7 @@ Backup: the match account's page (its history shows create, join, delegate and s
 - [x] PWA build: manifest, icons, offline precache
 - [ ] Installed and played from the hosted link on a real phone
 - [ ] 2-minute video
-- [ ] Explorer link to a staked match's settle transaction on the final program
+- [x] Explorer link to a staked match's settle transaction on the final program
 - [ ] Devnet usage numbers (matches played, players, SOL staked)
 - [x] README with the "remove it and what breaks" table, a step-by-step match lifecycle, Limits, the TEE trust note, and a claim-by-claim code index for AI reviewers (permalinks)
 - [x] Privacy check against the opponent, a stranger and a token-less client: PASS, 0 leaks on the deployed program (rules v11)

@@ -1969,3 +1969,33 @@ before judging.
 **Blocked / risks:** "A settled staked match" stays TBD until the two-phone live test.
 
 **Next / handoff:** after the live test, paste the settle tx into README "On chain" and SUBMISSION.
+
+## 2026-11-26 · Kai · checked Suparno's deploy end to end on devnet; TEE outage guard; tx resend · [HANDOFF]
+**Did:**
+- Pulled and checked everything since 518cc03: typecheck + tests green (client 37, server 35, web build; /play/ JS
+  370 kB gzip). Hosted server healthy (database, faucet, bot, sweeper), CORS right for both web origins.
+- **Live on devnet through the hosted server (final program, rules v11), all passing:**
+  - fresh phone vs the server bot (faucet → queue → "Play the Bot" → match → settled);
+  - staked Quick Match 0.05 SOL, both sides fighting (Champions, Rush): payouts = expected to the lamport, Verify
+    6 gates 0 mismatches;
+  - staked room code 0.03 SOL: same, Verify 8 gates 0 mismatches. Its settle tx is now in README and SUBMISSION;
+  - privacy-check PASS on a full fought match (0 leaks to tick 1,174).
+- **MagicBlock's devnet TEE went down mid-test** (connection refused for ~1 h; their non-TEE ER was fine). A match
+  froze at tick 100; when the TEE came back, it ran on, and our sweeper finished it and the stakes were refunded with
+  nobody around. Good proof the recovery path works.
+- **New guard:** `teeReachable()` (client) runs in the web preflight before any SOL moves. If the TEE is down, the
+  player sees "Private rollup is down… No SOL was moved. Play the Bot free" (tested in the browser during the outage).
+- **Client `send`:** a tx whose blockhash expired is re-signed and resent (max 3, never a double send). A room
+  creation failed once on that before.
+- Live scripts updated: the bots now hold/release fire (they never fired since rules v6, so matches had no action),
+  and vs-server-bot asks for the bot (it waits forever otherwise).
+
+**Blocked / risks:**
+- **The server sleeps** (Render free): the first request took 26 s. Set the uptime pinger on `/healthz` (every 5–10
+  min) **now, before judging**, not after submitting. While asleep the bot and the sweeper stop too.
+- The TEE can go down again during judging; the app now says so cleanly instead of locking a stake.
+- Not yet tried: real wallet extensions (Phantom/Solflare) for connect, deposit and the game key. Phantom must be in
+  devnet mode or a deposit fails (safely).
+
+**Next / handoff:** Suparno: the pinger; Vercel redeploy (session.ts changed); the two-phone test on real wallets;
+the video. Kai: none open.
