@@ -275,7 +275,9 @@ async function main() {
     revealChecks.paidMatchesDeltas = settledBy !== 'action' || (full.payout!.paid[0] === deltas[0] && full.payout!.paid[1] === deltas[1]);
     revealChecks.resultMatches = JSON.stringify(full.result) === JSON.stringify(r);
     const whats = full.txs!.map((t) => t.what);
-    for (const w of ['create_match', 'join_match', 'delegate_match', 'finish', 'request_seed']) revealChecks[`tx ${w}`] = whats.some((x) => x.startsWith(w));
+    for (const w of ['create_match', 'join_match', 'delegate_match', 'request_seed']) revealChecks[`tx ${w}`] = whats.some((x) => x.startsWith(w));
+    // Whoever lands `finish` first (either side, or the server's sweeper), the commit shows up.
+    revealChecks['tx finish'] = whats.some((x) => x.startsWith('finish') || x.startsWith('commit'));
     revealChecks['tx Magic Action'] = STAKE === 0 || whats.some((x) => x.includes('Magic Action')) || settledBy === 'fallback';
     revealChecks.twoStages = full.values.length === STAGES && full.history.length === STAGES;
     // Every published Scout shows that gate's dealt value.

@@ -1,0 +1,265 @@
+{
+  "stake": 50000000,
+  "started": "2026-11-26T09:03:56.799Z",
+  "match": {
+    "id": "3042686131423104062",
+    "account": "FHk9AEtx8KDWzuA8ATzpyjW8LvGxVAjAgMT8ZhRjGEgw",
+    "createSig": "3TUiNuLwJZPb8F2tgxz3jTxfKe4MsSBJ8eZWLHmrazc6w3cdBYLnt9RSsUHzPBVAAQUQHXoYu5TnyoR3xQtduuAo",
+    "joinSig": "A22spMVoV2J89iH7ERJdYAk8BcxCye9z45j1P4ntHMATXTVQEtBe34HrM4EZ96ShEdkx853vHuX22GazdcbSdaW",
+    "delegateSig": "2SaNXGdQZxWJ12VRGcRUvd51ui159vWrXh56erMS27qJrD3uW59nxhcLsf74GRfzkBvJ71jhqib9Y1ZNNWVc8w53",
+    "matchmaking": {
+      "via": "queue",
+      "id": "3042686131423104062"
+    }
+  },
+  "result": {
+    "winner": null,
+    "died": null,
+    "gold": [
+      0,
+      0
+    ],
+    "moved": 0,
+    "fee": 0
+  },
+  "finalTick": 3600,
+  "gold": [
+    0,
+    0
+  ],
+  "settledBy": "action",
+  "payoutDeltas": [
+    50000000,
+    50000000
+  ],
+  "payoutExpected": [
+    50000000,
+    50000000
+  ],
+  "payoutOk": true,
+  "seed": "4812927491212907766",
+  "history": [
+    {
+      "stage": 0,
+      "peeks": [
+        {
+          "slot": 2,
+          "op": {
+            "kind": "mul",
+            "value": 2
+          }
+        },
+        {
+          "slot": 0,
+          "op": {
+            "kind": "mul",
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "stage": 1,
+      "peeks": [
+        null,
+        null
+      ]
+    }
+  ],
+  "verify": {
+    "ok": true,
+    "revealedGatesChecked": 0,
+    "mismatches": 0
+  },
+  "reveal": {
+    "ok": false,
+    "checks": {
+      "settled": true,
+      "paidMatchesDeltas": true,
+      "resultMatches": true,
+      "tx create_match": true,
+      "tx join_match": true,
+      "tx delegate_match": true,
+      "tx finish": false,
+      "tx request_seed": true,
+      "tx Magic Action": true,
+      "twoStages": true,
+      "scoutsMatchDeals": true
+    },
+    "payout": {
+      "free": false,
+      "stake": 50000000,
+      "gold": [
+        0,
+        0
+      ],
+      "goldPm": [
+        0,
+        0
+      ],
+      "died": null,
+      "bothDied": false,
+      "moved": 0,
+      "fee": 0,
+      "sharePm": 0,
+      "paid": [
+        50000000,
+        50000000
+      ],
+      "net": [
+        0,
+        0
+      ],
+      "kind": "draw",
+      "winner": null,
+      "why": "Draw: no score on either side, both stakes refunded."
+    },
+    "settlement": {
+      "state": "settled",
+      "by": "action",
+      "signature": "2kM436qdFUFBR7FJyX5GakGdPCfrYFe51bJvvPsWb2tQkNSkNLQiixvrR1sp9cqutovnGG1PKcJhJbiwtaG1EYVs"
+    },
+    "txs": [
+      {
+        "what": "create_match",
+        "signature": "3TUiNuLwJZPb8F2tgxz3jTxfKe4MsSBJ8eZWLHmrazc6w3cdBYLnt9RSsUHzPBVAAQUQHXoYu5TnyoR3xQtduuAo",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/3TUiNuLwJZPb8F2tgxz3jTxfKe4MsSBJ8eZWLHmrazc6w3cdBYLnt9RSsUHzPBVAAQUQHXoYu5TnyoR3xQtduuAo?cluster=devnet",
+        "by": 0
+      },
+      {
+        "what": "join_match",
+        "signature": "A22spMVoV2J89iH7ERJdYAk8BcxCye9z45j1P4ntHMATXTVQEtBe34HrM4EZ96ShEdkx853vHuX22GazdcbSdaW",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/A22spMVoV2J89iH7ERJdYAk8BcxCye9z45j1P4ntHMATXTVQEtBe34HrM4EZ96ShEdkx853vHuX22GazdcbSdaW?cluster=devnet",
+        "by": 1
+      },
+      {
+        "what": "delegate_match",
+        "signature": "2SaNXGdQZxWJ12VRGcRUvd51ui159vWrXh56erMS27qJrD3uW59nxhcLsf74GRfzkBvJ71jhqib9Y1ZNNWVc8w53",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/2SaNXGdQZxWJ12VRGcRUvd51ui159vWrXh56erMS27qJrD3uW59nxhcLsf74GRfzkBvJ71jhqib9Y1ZNNWVc8w53?cluster=devnet",
+        "by": 0
+      },
+      {
+        "what": "init_permissions",
+        "signature": "2e7HiNeaBsVixfkzL4gU33XmGMf96LA4uTUUGas2Cwpmua3pt45MY6hujXkRNj2Fh8eru4dpQmxir9jzBwdZdrCA",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/2e7HiNeaBsVixfkzL4gU33XmGMf96LA4uTUUGas2Cwpmua3pt45MY6hujXkRNj2Fh8eru4dpQmxir9jzBwdZdrCA?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "request_seed",
+        "signature": "543iFG8ThQr9sNgjZSogMeuWKyhuEGWnuzx9eCvcPYckA4S3FPZYZkJx5tL4rkizCX3jwJX6EjEfTmWjFDtBM2nJ",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/543iFG8ThQr9sNgjZSogMeuWKyhuEGWnuzx9eCvcPYckA4S3FPZYZkJx5tL4rkizCX3jwJX6EjEfTmWjFDtBM2nJ?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "advance",
+        "signature": "L4yurBRrnkqgziATksh1heoLWiUSduhyWJUvdxML7UN3uKZF38Pou79f59ba54FBq99BsH42yFRbN8ThAGQcjxZ",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/L4yurBRrnkqgziATksh1heoLWiUSduhyWJUvdxML7UN3uKZF38Pou79f59ba54FBq99BsH42yFRbN8ThAGQcjxZ?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "peek_cell",
+        "signature": "5mjfsa7TBc12yzjGA2VAWatZ1jQKyjvYkNaoKdnfCP9J32oDc1sKnBjZnPDZD9zor6K9V544HHmLahisv8Z1ujfa",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/5mjfsa7TBc12yzjGA2VAWatZ1jQKyjvYkNaoKdnfCP9J32oDc1sKnBjZnPDZD9zor6K9V544HHmLahisv8Z1ujfa?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "advance",
+        "signature": "5r3bGvvwwMv2Sei6vkj8C7BCkj6EduuYHiaq14Ho8s4gGnmAdpbZdxnRMyWnx2pwNsrNsFu1jpRod8ivHf4Tj1R9",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/5r3bGvvwwMv2Sei6vkj8C7BCkj6EduuYHiaq14Ho8s4gGnmAdpbZdxnRMyWnx2pwNsrNsFu1jpRod8ivHf4Tj1R9?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "set_aim ×496",
+        "signature": "PXZKhtNCEi7v9wvokChAdDotyyDqThQ5qC9ymEbd4ts3bnf3GYPC2ZzpToUzQCCrAzzERDYrXDzHJ2CXnvDXQgb",
+        "layer": "tee",
+        "url": "https://explorer.solana.com/tx/PXZKhtNCEi7v9wvokChAdDotyyDqThQ5qC9ymEbd4ts3bnf3GYPC2ZzpToUzQCCrAzzERDYrXDzHJ2CXnvDXQgb?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app",
+        "by": 1
+      },
+      {
+        "what": "commit + undelegate + settle (Magic Action)",
+        "signature": "2kM436qdFUFBR7FJyX5GakGdPCfrYFe51bJvvPsWb2tQkNSkNLQiixvrR1sp9cqutovnGG1PKcJhJbiwtaG1EYVs",
+        "layer": "base",
+        "url": "https://explorer.solana.com/tx/2kM436qdFUFBR7FJyX5GakGdPCfrYFe51bJvvPsWb2tQkNSkNLQiixvrR1sp9cqutovnGG1PKcJhJbiwtaG1EYVs?cluster=devnet",
+        "by": "validator"
+      }
+    ]
+  },
+  "status": 5,
+  "txs": {
+    "init_permissions": 1,
+    "request_seed": 2,
+    "start": 1,
+    "set_aim": 1000,
+    "advance": 3,
+    "peek_cell": 2,
+    "finish": 1
+  },
+  "events": {
+    "stage": 4,
+    "wave": 66,
+    "end": 1
+  },
+  "renderedFrames": 3466,
+  "feed": [
+    {
+      "snapshots": 4614,
+      "emitted": 3476,
+      "maxQueue": 18,
+      "txs": 509,
+      "txFailures": 7
+    },
+    {
+      "snapshots": 4614,
+      "emitted": 3480,
+      "maxQueue": 20,
+      "txs": 501,
+      "txFailures": 11
+    }
+  ],
+  "frameGapMs": {
+    "p50": 50,
+    "p90": 51,
+    "p99": 59,
+    "max": 5220
+  },
+  "stages": [
+    "13.4s side 0: setup (permissions)",
+    "13.4s side 1: setup (permissions)",
+    "14.4s side 0: setup (seed)",
+    "14.4s side 1: setup (seed)",
+    "15.9s side 0: setup (start)",
+    "16.0s side 1: setup (start)",
+    "16.1s side 1: playing",
+    "16.5s side 0: playing",
+    "196.1s side 0: finishing",
+    "196.1s side 1: finishing",
+    "196.6s side 0: finished",
+    "197.4s side 1: finished",
+    "202.8s side 0: finished (settled)",
+    "204.0s side 1: finished (settled)"
+  ],
+  "timingsMs": {
+    "queued": 5525,
+    "created": 7575,
+    "joined": 9305,
+    "delegated": 11860,
+    "connected": 13393,
+    "playing": 16419,
+    "finished_on_tee": 197651,
+    "settled": 204609,
+    "done": 211209
+  },
+  "sol": {
+    "before": 13.758126771,
+    "after": 13.746142931,
+    "spent": 0.01198384
+  }
+}
