@@ -30,6 +30,7 @@ import {
   setRoomState,
   takeSeat,
   STAKE_MIN,
+  teeReachable,
   STAKE_RESERVE,
   stakeOnChain,
   topUp,
@@ -266,8 +267,16 @@ async function preflight(r: number, stake: number): Promise<boolean> {
     });
     return false;
   }
-  const b = await refreshBalance();
+  const [b, tee] = await Promise.all([refreshBalance(), teeReachable()]);
   if (!alive(r)) return false;
+  if (!tee) {
+    fail(r, {
+      kind: 'server',
+      title: 'Private rollup is down',
+      message: 'MagicBlock’s private rollup (TEE) isn’t answering right now, so live matches can’t start. No SOL was moved. Play the Bot free, or try again in a few minutes.',
+    });
+    return false;
+  }
   if (b === null) {
     fail(r, { kind: 'server', title: 'Devnet unreachable', message: 'Could not read your balance from the devnet RPC.' });
     return false;

@@ -322,6 +322,19 @@ export function peekPrivateView(p: PeekAccount | null, myStage: number): Private
 
 // --- TEE auth + sending ------------------------------------------------------------------------
 
+/** Is MagicBlock's TEE (the private rollup every live match runs on) answering? Asks for a login
+ *  challenge with a short timeout; any HTTP answer below 500 counts as up. Check it before any SOL
+ *  moves, so a TEE outage never leaves a stake waiting in a match that can't start. */
+export async function teeReachable(rpc = TEE_RPC, timeoutMs = 6_000): Promise<boolean> {
+  try {
+    const q = new URLSearchParams({ pubkey: PROGRAM_ID.toBase58() });
+    const res = await fetch(`${rpc}/auth/challenge?${q}`, { signal: AbortSignal.timeout(timeoutMs) });
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
 /** A TEE session token for `kp` (challenge → sign → login; TECH §6). Tokens last ~30 days. */
 export async function teeToken(kp: Keypair, rpc = TEE_RPC): Promise<string> {
   const q = new URLSearchParams({ pubkey: kp.publicKey.toBase58() });
