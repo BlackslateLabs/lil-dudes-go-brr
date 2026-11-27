@@ -1,7 +1,6 @@
 # Submission: MagicBlock Solana Blitz v10
 
 Text ready to paste into the submission form. Deadline: **Fri 27 Nov 2026, ~14:00 UTC (19:30 IST)**.
-Fill every `TBD` before submitting; each one has a TODO saying who fills it.
 
 ---
 
@@ -112,7 +111,6 @@ Backup: the match account's page (its history shows create, join, delegate and s
 | Program ID | `4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa` (devnet, rules v11) |
 | Fee vault (treasury) | `FdZLtcw7CMAHk2bsnqesxcYj3Ybjgux3GcqtDy63rfbB` (the program's `TREASURY`; 5% of what moves) |
 | App wallet (faucet sponsor) | `8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr` (the hosted server's sponsor: faucet top-ups, sweeper, settle-now) |
-| Prize wallet | <!-- TODO(Suparno + Kai): agree on the prize wallet --> TBD |
 
 ## Judge-facing checklist
 
