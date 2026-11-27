@@ -163,6 +163,9 @@ Two more actors, both optional:
 - **The sweeper.** A permissionless clean-up loop on the server: it cancels abandoned joins, aborts
   stuck delegated matches, settles late ones and closes paid-out ones. Refunds always go to the
   players recorded in the match ([`planSweep`](https://github.com/BlackslateLabs/lil-dudes-go-brr/blob/fbe58ba6484b91eaa4c060752eb9aed616a8d446/apps/server/src/sweeper.ts#L58-L91)).
+  This has happened for real: MagicBlock's devnet TEE went down for about an hour mid-match during our
+  testing. The match froze; when the TEE came back it ran on, and the sweeper finished it and refunded
+  both stakes with nobody around.
 
 ## Privacy: who can read what
 
@@ -291,7 +294,7 @@ history in Neon. If it is down, Quick Match, rooms and top-ups stop; Play vs Bot
 | Your own reads come back empty, then public | **Verify → Try to cheat** shows the in-match attempts next to the same reads after the end, when the seed and gates are public. | Done. |
 | The program does what it says | **MagicSVM** ([`tests-magicsvm/`](tests-magicsvm)): every instruction, refused cases, money edges, stake range edges, timeout refunds, plus the compute bench. | 19/19 green on rules v11. |
 | Payouts add up | `settle_parity.rs` and `tools/balance/settle_fuzz.py` (300k cases): `winner + loser + fee = 2S` to the lamport. Live devnet matches paid out exactly through the Magic Action. | Done. |
-| It all happened on Solana | [Program activity on the explorer](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet). | A staked match's [settle transaction](https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet) (0.03 SOL room match through the hosted server). |
+| It all happened on Solana | [Program activity on the explorer](https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet). | The demo video's match: [settle transaction](https://explorer.solana.com/tx/AUvqSq1VGas8L3LjNw84F6yxYqCSmfxVSro7tutwJ7gktnhK2LM1GWofhq3cRuWoYygY9xfMPH5PLp6U6UEuBvE?cluster=devnet) (commit + undelegate + the Magic Action payout). Also a 0.03 SOL room match: [settle transaction](https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet). |
 
 ## Limits and trust assumptions
 
@@ -312,6 +315,13 @@ history in Neon. If it is down, Quick Match, rooms and top-ups stop; Play vs Bot
   leader has already flipped.
 - **Verify checks the deal, not every move.** Aim inputs are not logged on chain, so Verify re-derives
   the level, gate values and Scouts from the seed rather than replaying the whole match.
+- **The private rollup can go down.** Live play depends on MagicBlock's devnet TEE. Before any SOL
+  moves, the app checks that it answers ([`teeReachable`](https://github.com/BlackslateLabs/lil-dudes-go-brr/blob/8943dcefd256b1ff4f2a0a0b63fb74a80c7a926f/packages/client/src/live/chain.ts#L328-L336), called in the live preflight
+  ([`session.ts`](https://github.com/BlackslateLabs/lil-dudes-go-brr/blob/8943dcefd256b1ff4f2a0a0b63fb74a80c7a926f/apps/web/src/live/session.ts#L270-L279))). If it doesn't, the player sees "Private rollup is down… No SOL was moved"
+  and can play the bot. A match caught mid-outage resumes when the TEE returns, or the sweeper refunds it.
+- **Devnet drops transactions under load.** The client re-signs and resends a transaction whose
+  blockhash expired, up to 3 tries ([`send`](https://github.com/BlackslateLabs/lil-dudes-go-brr/blob/8943dcefd256b1ff4f2a0a0b63fb74a80c7a926f/packages/client/src/live/chain.ts#L367-L397)). An expired transaction can never land later, so
+  this can't double-send.
 - **One server instance, free plan.** The queue, rooms and the bot live in memory on one Render
   instance that sleeps when idle (the first request after a quiet spell waits about a minute).
 - **On-chain compute caps the simulation** at 40 crowd groups and 16 enemy groups per side
@@ -380,6 +390,7 @@ cargo +stable test --manifest-path tests-magicsvm/Cargo.toml   # MagicSVM
 | Faucet sponsor (app wallet) | [`8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr`](https://explorer.solana.com/address/8vJsz4WH7YrVzztA5U87fwsm8D4Lg18d8FUQduj3eVHr?cluster=devnet) |
 | TEE validator | `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo` (`devnet-tee.magicblock.app`) |
 | A settled staked match | [settle tx](https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet): commit + undelegate + Magic Action payout, 0.03 SOL room match, rules v11 |
+| The demo video's match | [settle tx](https://explorer.solana.com/tx/AUvqSq1VGas8L3LjNw84F6yxYqCSmfxVSro7tutwJ7gktnhK2LM1GWofhq3cRuWoYygY9xfMPH5PLp6U6UEuBvE?cluster=devnet) (commit + undelegate + Magic Action payout) · [match account](https://explorer.solana.com/address/BwKFMSRT8W1hiw9WvuYuSmJLcyqfQRkSPLzgT6z1ZyxB?cluster=devnet) (closed after the payout; its history shows every step) |
 
 ## Credits
 
