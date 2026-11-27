@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://ldgb.blackslate.me"><b>&#9654;&nbsp; PLAY NOW: ldgb.blackslate.me</b></a>
+  &nbsp;·&nbsp; <a href="https://youtu.be/4Vu_xe0hR_8"><b>DEMO VIDEO (3 min)</b></a>
   &nbsp;·&nbsp; phone or desktop &nbsp;·&nbsp; no wallet needed to start &nbsp;·&nbsp; Solana devnet
 </p>
 

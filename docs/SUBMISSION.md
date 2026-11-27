@@ -81,18 +81,23 @@ https://github.com/BlackslateLabs/lil-dudes-go-brr
 > paid. Then the seed goes public and anyone can verify the deal. Open the link, play the bot in
 > seconds, no wallet.
 
-Video (≤ 2 min: hook → gameplay → denied read → Verify → payout landing on Solana):
+Video (about 3 min: hook → what it is → gameplay → stakes → try to peek → Verify → payout landing on Solana):
 
-<!-- TODO(Suparno): record and upload; paste the link here and in the form. -->
-TBD
+https://youtu.be/4Vu_xe0hR_8
 
 ## Explorer link (integration proof)
 
-https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet
-(A 0.03 SOL room-code match through the hosted server on the final program, rules v11; swap in one from the
-two-phone test if you like.) Program activity: https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet
+https://explorer.solana.com/tx/AUvqSq1VGas8L3LjNw84F6yxYqCSmfxVSro7tutwJ7gktnhK2LM1GWofhq3cRuWoYygY9xfMPH5PLp6U6UEuBvE?cluster=devnet
 
-**Which transaction:** the base-layer **settle transaction of a real staked match** on the final
+This is the settle transaction of the live match in the demo video, on the final program (rules v11).
+
+| | Link |
+|---|---|
+| Its match account (closed after the payout; its history shows create → join → delegate → settle) | https://explorer.solana.com/address/BwKFMSRT8W1hiw9WvuYuSmJLcyqfQRkSPLzgT6z1ZyxB?cluster=devnet |
+| Another settled match (a 0.03 SOL room-code match through the hosted server) | https://explorer.solana.com/tx/3ZkGQkU38QF7sTmB6X3qbrD39tKB2zy8TZBZRQV7GdbrJ3YJ83QuHvPM8DyrztGg9v4wyZk1TcH74zJwn1rNqiFn?cluster=devnet |
+| All program activity | https://explorer.solana.com/address/4QFSXrcGWGKhFZR6iBweLoiPU4ixrE95sTsKdg9n9FDa?cluster=devnet |
+
+**Which transaction:** the base-layer **settle transaction of a real match** on the final
 program: the one transaction in which the TEE validator commits and undelegates the match accounts
 and the `settle_action` Magic Action pays winner, loser and fee out of the vault PDA. Why this one:
 it shows, in a single explorer page, our program, the Ephemeral Rollup delegation coming back to
@@ -116,8 +121,8 @@ Backup: the match account's page (its history shows create, join, delegate and s
 - [x] Wallet sign-in for staked play: the game key comes from one wallet signature (same wallet, same key, any device)
 - [x] PWA build: manifest, icons, offline precache
 - [ ] Installed and played from the hosted link on a real phone
-- [ ] 2-minute video
-- [x] Explorer link to a staked match's settle transaction on the final program
+- [x] Demo video: https://youtu.be/4Vu_xe0hR_8
+- [x] Explorer link to a settle transaction on the final program (the demo's match)
 - [ ] Devnet usage numbers (matches played, players, SOL staked)
 - [x] README with the "remove it and what breaks" table, a step-by-step match lifecycle, Limits, the TEE trust note, and a claim-by-claim code index for AI reviewers (permalinks)
 - [x] Privacy check against the opponent, a stranger and a token-less client: PASS, 0 leaks on the deployed program (rules v11)
